@@ -3302,7 +3302,6 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm)
   }
   const network_type nettype = testnet ? TESTNET : stagenet ? STAGENET : MAINNET;
 
-  epee::wipeable_string multisig_keys;
   epee::wipeable_string password;
 
   if (!handle_command_line(vm))
@@ -3315,7 +3314,7 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm)
     fail_msg_writer() << tr("can't specify more than one of --generate-new-wallet=\"wallet_name\", --wallet-file=\"wallet_name\", --generate-from-view-key=\"wallet_name\", --generate-from-spend-key=\"wallet_name\", --generate-from-keys=\"wallet_name\", --generate-from-multisig-keys=\"wallet_name\", --generate-from-json=\"jsonfilename\" and --generate-from-device=\"wallet_name\"");
     return false;
   }
-  else if (m_generate_new.empty() && m_wallet_file.empty() && m_generate_from_device.empty() && m_generate_from_view_key.empty() && m_generate_from_spend_key.empty() && m_generate_from_keys.empty() && m_generate_from_multisig_keys.empty() && m_generate_from_json.empty())
+  else if (m_generate_new.empty() && m_wallet_file.empty() && m_generate_from_device.empty() && m_generate_from_view_key.empty() && m_generate_from_spend_key.empty() && m_generate_from_keys.empty() && m_generate_from_json.empty())
   {
     if(!ask_wallet_create_if_needed()) return false;
   }
@@ -3327,7 +3326,7 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm)
 
     std::string old_language;
     // check for recover flag.  if present, require electrum word list (only recovery option for now).
-    if (m_restore_deterministic_wallet || m_restore_multisig_wallet)
+    if (m_restore_deterministic_wallet )
     {
       if (m_non_deterministic)
       {
@@ -3336,29 +3335,13 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm)
       }
       if (!m_wallet_file.empty())
       {
-        if (m_restore_multisig_wallet)
-          fail_msg_writer() << tr("--restore-multisig-wallet uses --generate-new-wallet, not --wallet-file");
-        else
           fail_msg_writer() << tr("--restore-deterministic-wallet uses --generate-new-wallet, not --wallet-file");
         return false;
       }
 
       if (m_electrum_seed.empty())
       {
-        if (m_restore_multisig_wallet)
-        {
-            const char *prompt = "Specify multisig seed";
-            m_electrum_seed = input_secure_line(prompt);
-            if (std::cin.eof())
-              return false;
-            if (m_electrum_seed.empty())
-            {
-              fail_msg_writer() << tr("specify a recovery parameter with the --electrum-seed=\"multisig seed here\"");
-              return false;
-            }
-        }
-        else
-        {
+      
           m_electrum_seed = "";
           do
           {
@@ -3374,7 +3357,7 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm)
             m_electrum_seed += electrum_seed;
             m_electrum_seed += ' ';
           } while (might_be_partial_seed(m_electrum_seed));
-        }
+        
       }
 
    
@@ -3611,8 +3594,9 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm)
 
     if (m_restoring && m_generate_from_json.empty() && m_generate_from_device.empty())
     {
-      m_wallet->explicit_refresh_from_block_height(!(command_line::is_arg_defaulted(vm, arg_restore_height) &&
-        command_line::is_arg_defaulted(vm, arg_restore_date)));
+      const auto explicit_restore = !(command_line::is_arg_defaulted(vm, arg_restore_height) &&
+        command_line::is_arg_defaulted(vm, arg_restore_date));
+      m_wallet->explicit_refresh_from_block_height(explicit_restore);
       if (command_line::is_arg_defaulted(vm, arg_restore_height) && !command_line::is_arg_defaulted(vm, arg_restore_date))
       {
         uint16_t year;
@@ -3902,7 +3886,9 @@ boost::optional<epee::wipeable_string> simple_wallet::new_wallet(const boost::pr
   const crypto::secret_key& recovery_key, bool recover, bool two_random, const std::string &old_language)
 {
   std::pair<std::unique_ptr<tools::wallet2>, tools::password_container> rc;
-  try { rc = tools::wallet2::make_new(vm, false, password_prompter); }
+  try {
+   rc = tools::wallet2::make_new(vm, false, password_prompter);
+    }
   catch(const std::exception &e) { fail_msg_writer() << tr("Error creating wallet: ") << e.what(); return {}; }
   m_wallet = std::move(rc.first);
   if (!m_wallet)
@@ -9418,12 +9404,13 @@ int main(int argc, char* argv[])
   bool should_terminate = false;
   std::tie(vm, should_terminate) = wallet_args::main(
    argc, argv,
-   "monero-wallet-cli [--wallet-file=<filename>|--generate-new-wallet=<filename>] [<COMMAND>]",
+   "wallet-cli [--wallet-file=<filename>|--generate-new-wallet=<filename>] [<COMMAND>]",
     sw::tr("This is the command line monero wallet. It needs to connect to a monero\ndaemon to work correctly.\nWARNING: Do not reuse your Monero keys on another fork, UNLESS this fork has key reuse mitigations built in. Doing so will harm your privacy."),
     desc_params,
     positional_options,
     [](const std::string &s, bool emphasis){ tools::scoped_message_writer(emphasis ? epee::console_color_white : epee::console_color_default, true) << s; },
-    "monero-wallet-cli.log"
+    "wallet-cli.log",
+    true
   );
 
   if (!vm)

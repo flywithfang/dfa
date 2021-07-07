@@ -985,6 +985,7 @@ std::pair<std::unique_ptr<wallet2>, tools::password_container> wallet2::make_fro
 std::pair<std::unique_ptr<wallet2>, password_container> wallet2::make_from_file(
   const boost::program_options::variables_map& vm, bool unattended, const std::string& wallet_file, const std::function<boost::optional<tools::password_container>(const char *, bool)> &password_prompter)
 {
+  std::cout<<"print vm"<<std::endl;
   for(auto e : vm){
     auto &k = e.first;
     auto &value = e.second.value();
@@ -1000,6 +1001,7 @@ std::pair<std::unique_ptr<wallet2>, password_container> wallet2::make_from_file(
     std::cout << "unknown";
   std::cout<<std::endl;
   }
+  std::cout<<"end print vm"<<std::endl;
   std::cout<<"make_from_file"<< wallet_file<<std::endl;
   const options opts{};
   auto pwd = get_password(vm, opts, password_prompter, false);
@@ -3035,91 +3037,6 @@ void wallet2::init_type(hw::device::device_type device_type)
   m_multisig_signers.clear();
   m_original_keys_available = false;
   m_key_device_type = device_type;
-}
-
-/*!
- * \brief  Generates a wallet or restores one.
- * \param  wallet_              Name of wallet file
- * \param  password             Password of wallet file
- * \param  multisig_data        The multisig restore info and keys
- * \param  create_address_file  Whether to create an address file
- */
-void wallet2::generate(const std::string& wallet_, const epee::wipeable_string& password,
-  const epee::wipeable_string& multisig_data, bool create_address_file)
-{
-  clear();
-  prepare_file_names(wallet_);
-
-  if (!wallet_.empty())
-  {
-    boost::system::error_code ignored_ec;
-    THROW_WALLET_EXCEPTION_IF(boost::filesystem::exists(m_wallet_file, ignored_ec), error::file_exists, m_wallet_file);
-    THROW_WALLET_EXCEPTION_IF(boost::filesystem::exists(m_keys_file,   ignored_ec), error::file_exists, m_keys_file);
-  }
-
-  m_account.generate(rct::rct2sk(rct::zero()), true, false);
-
-  THROW_WALLET_EXCEPTION_IF(multisig_data.size() < 32, error::invalid_multisig_seed);
-  size_t offset = 0;
-  uint32_t threshold = *(uint32_t*)(multisig_data.data() + offset);
-  offset += sizeof(uint32_t);
-  uint32_t total = *(uint32_t*)(multisig_data.data() + offset);
-  offset += sizeof(uint32_t);
-  THROW_WALLET_EXCEPTION_IF(threshold < 2, error::invalid_multisig_seed);
-  THROW_WALLET_EXCEPTION_IF(total != threshold && total != threshold + 1, error::invalid_multisig_seed);
-  const size_t n_multisig_keys =  total == threshold ? 1 : threshold;
-  THROW_WALLET_EXCEPTION_IF(multisig_data.size() != 8 + 32 * (4 + n_multisig_keys + total), error::invalid_multisig_seed);
-
-  std::vector<crypto::secret_key> multisig_keys;
-  std::vector<crypto::public_key> multisig_signers;
-  crypto::secret_key spend_secret_key = *(crypto::secret_key*)(multisig_data.data() + offset);
-  offset += sizeof(crypto::secret_key);
-  crypto::public_key spend_public_key = *(crypto::public_key*)(multisig_data.data() + offset);
-  offset += sizeof(crypto::public_key);
-  crypto::secret_key view_secret_key = *(crypto::secret_key*)(multisig_data.data() + offset);
-  offset += sizeof(crypto::secret_key);
-  crypto::public_key view_public_key = *(crypto::public_key*)(multisig_data.data() + offset);
-  offset += sizeof(crypto::public_key);
-  for (size_t n = 0; n < n_multisig_keys; ++n)
-  {
-    multisig_keys.push_back(*(crypto::secret_key*)(multisig_data.data() + offset));
-    offset += sizeof(crypto::secret_key);
-  }
-  for (size_t n = 0; n < total; ++n)
-  {
-    multisig_signers.push_back(*(crypto::public_key*)(multisig_data.data() + offset));
-    offset += sizeof(crypto::public_key);
-  }
-
-  crypto::public_key calculated_view_public_key;
-  THROW_WALLET_EXCEPTION_IF(!crypto::secret_key_to_public_key(view_secret_key, calculated_view_public_key), error::invalid_multisig_seed);
-  THROW_WALLET_EXCEPTION_IF(view_public_key != calculated_view_public_key, error::invalid_multisig_seed);
-  crypto::public_key local_signer;
-  THROW_WALLET_EXCEPTION_IF(!crypto::secret_key_to_public_key(spend_secret_key, local_signer), error::invalid_multisig_seed);
-  THROW_WALLET_EXCEPTION_IF(std::find(multisig_signers.begin(), multisig_signers.end(), local_signer) == multisig_signers.end(), error::invalid_multisig_seed);
-  rct::key skey = rct::zero();
-  for (const auto &msk: multisig_keys)
-    sc_add(skey.bytes, skey.bytes, rct::sk2rct(msk).bytes);
-  THROW_WALLET_EXCEPTION_IF(!(rct::rct2sk(skey) == spend_secret_key), error::invalid_multisig_seed);
-  memwipe(&skey, sizeof(rct::key));
-
-  m_account.make_multisig(view_secret_key, spend_secret_key, spend_public_key, multisig_keys);
-  m_account.finalize_multisig(spend_public_key);
-
-  // Not possible to restore a multisig wallet that is able to activate the MMS
-  // (because the original keys are not (yet) part of the restore info), so
-  // keep m_original_keys_available to false
-  init_type(hw::device::device_type::SOFTWARE);
-  m_multisig = true;
-  m_multisig_threshold = threshold;
-  m_multisig_signers = multisig_signers;
-  setup_keys(password);
-
-  create_keys_file(wallet_, false, password, m_nettype != MAINNET || create_address_file);
-  setup_new_blockchain();
-
-  if (!wallet_.empty())
-    store();
 }
 
 /*!

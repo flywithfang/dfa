@@ -46,7 +46,7 @@
 #undef MONERO_DEFAULT_LOG_CATEGORY
 #define MONERO_DEFAULT_LOG_CATEGORY "logging"
 
-#define MLOG_BASE_FORMAT "%datetime{%Y-%M-%d %H:%m:%s.%g}\t%thread\t%level\t%logger\t%loc\t%msg"
+#define MLOG_BASE_FORMAT "%datetime{%M-%d %H:%m:%s.%g}%thread %level %logger %loc %msg"
 
 #define MLOG_LOG(x) CINFO(el::base::Writer,el::base::DispatchAction::FileOnlyLog,MONERO_DEFAULT_LOG_CATEGORY) << x
 
@@ -147,7 +147,7 @@ bool EnableVTMode()
 
 void mlog_configure(const std::string &filename_base, bool console, const std::size_t max_log_file_size, const std::size_t max_log_files)
 {
-  std::cout<<"mlog_configure "<<filename_base<<console<<max_log_file_size<<"/"<<max_log_files<<std::endl;
+  std::cout<<"mlog_configure "<<filename_base<<","<<console<<","<<max_log_file_size<<"/"<<max_log_files<<std::endl;
   el::Configurations c;
   c.setGlobally(el::ConfigurationType::Filename, filename_base);
   c.setGlobally(el::ConfigurationType::ToFile, "true");
