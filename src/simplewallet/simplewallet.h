@@ -229,24 +229,7 @@ namespace cryptonote
     bool change_password(const std::vector<std::string>& args);
     bool payment_id(const std::vector<std::string> &args);
     bool print_fee_info(const std::vector<std::string> &args);
-    bool prepare_multisig(const std::vector<std::string>& args);
-    bool prepare_multisig_main(const std::vector<std::string>& args, bool called_by_mms);
-    bool make_multisig(const std::vector<std::string>& args);
-    bool make_multisig_main(const std::vector<std::string>& args, bool called_by_mms);
-    bool finalize_multisig(const std::vector<std::string> &args);
-    bool exchange_multisig_keys(const std::vector<std::string> &args);
-    bool exchange_multisig_keys_main(const std::vector<std::string> &args, bool called_by_mms);
-    bool export_multisig(const std::vector<std::string>& args);
-    bool export_multisig_main(const std::vector<std::string>& args, bool called_by_mms);
-    bool import_multisig(const std::vector<std::string>& args);
-    bool import_multisig_main(const std::vector<std::string>& args, bool called_by_mms);
     bool accept_loaded_tx(const tools::wallet2::multisig_tx_set &txs);
-    bool sign_multisig(const std::vector<std::string>& args);
-    bool sign_multisig_main(const std::vector<std::string>& args, bool called_by_mms);
-    bool submit_multisig(const std::vector<std::string>& args);
-    bool submit_multisig_main(const std::vector<std::string>& args, bool called_by_mms);
-    bool export_raw_multisig(const std::vector<std::string>& args);
-    bool mms(const std::vector<std::string>& args);
     bool print_ring(const std::vector<std::string>& args);
     bool set_ring(const std::vector<std::string>& args);
     bool unset_ring(const std::vector<std::string>& args);
@@ -337,7 +320,6 @@ namespace cryptonote
     // idle thread workers
     bool check_inactivity();
     bool check_refresh();
-    bool check_mms();
     bool check_rpc_payment();
 
     void handle_transfer_exception(const std::exception_ptr &e, bool trusted_daemon);
@@ -458,7 +440,6 @@ namespace cryptonote
 
     epee::math_helper::once_a_time_seconds<1> m_inactivity_checker;
     epee::math_helper::once_a_time_seconds_range<get_random_interval<80 * 1000000, 100 * 1000000>> m_refresh_checker;
-    epee::math_helper::once_a_time_seconds_range<get_random_interval<90 * 1000000, 110 * 1000000>> m_mms_checker;
     epee::math_helper::once_a_time_seconds_range<get_random_interval<90 * 1000000, 115 * 1000000>> m_rpc_payment_checker;
     
     std::atomic<bool> m_need_payment;
@@ -471,41 +452,5 @@ namespace cryptonote
 
     std::unordered_map<std::string, uint32_t> m_claimed_cph;
 
-    // MMS
-    mms::message_store& get_message_store() const { return m_wallet->get_message_store(); };
-    mms::multisig_wallet_state get_multisig_wallet_state() const { return m_wallet->get_multisig_wallet_state(); };
-    bool mms_active() const { return get_message_store().get_active(); };
-    bool choose_mms_processing(const std::vector<mms::processing_data> &data_list, uint32_t &choice);
-    void list_mms_messages(const std::vector<mms::message> &messages);
-    void list_signers(const std::vector<mms::authorized_signer> &signers);
-    void add_signer_config_messages();
-    void show_message(const mms::message &m);
-    void ask_send_all_ready_messages();
-    void check_for_messages();
-    bool user_confirms(const std::string &question);
-    bool user_confirms_auto_config();
-    bool get_message_from_arg(const std::string &arg, mms::message &m);
-    bool get_number_from_arg(const std::string &arg, uint32_t &number, const uint32_t lower_bound, const uint32_t upper_bound); 
-
-    void mms_init(const std::vector<std::string> &args);
-    void mms_info(const std::vector<std::string> &args);
-    void mms_signer(const std::vector<std::string> &args);
-    void mms_list(const std::vector<std::string> &args);
-    void mms_next(const std::vector<std::string> &args);
-    void mms_sync(const std::vector<std::string> &args);
-    void mms_transfer(const std::vector<std::string> &args);
-    void mms_delete(const std::vector<std::string> &args);
-    void mms_send(const std::vector<std::string> &args);
-    void mms_receive(const std::vector<std::string> &args);
-    void mms_export(const std::vector<std::string> &args);
-    void mms_note(const std::vector<std::string> &args);
-    void mms_show(const std::vector<std::string> &args);
-    void mms_set(const std::vector<std::string> &args);
-    void mms_help(const std::vector<std::string> &args);
-    void mms_send_signer_config(const std::vector<std::string> &args);
-    void mms_start_auto_config(const std::vector<std::string> &args);
-    void mms_config_checksum(const std::vector<std::string> &args);
-    void mms_stop_auto_config(const std::vector<std::string> &args);
-    void mms_auto_config(const std::vector<std::string> &args);
   };
 }

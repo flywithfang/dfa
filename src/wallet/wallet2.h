@@ -64,7 +64,7 @@
 #include "serialization/string.h"
 #include "serialization/pair.h"
 #include "serialization/containers.h"
-
+#include "ringct/rctSigs.h"
 #include "wallet_errors.h"
 #include "common/password.h"
 #include "node_rpc_proxy.h"
@@ -1485,24 +1485,6 @@ private:
     }
     template<typename T> void handle_payment_changes(const T &res, std::false_type) {}
 
-    // Light wallet specific functions
-    // fetch unspent outs from lw node and store in m_transfers
-    void light_wallet_get_unspent_outs();
-    // fetch txs and store in m_payments
-    void light_wallet_get_address_txs();
-    // get_address_info
-    bool light_wallet_get_address_info(tools::COMMAND_RPC_GET_ADDRESS_INFO::response &response);
-    // Login. new_address is true if address hasn't been used on lw node before.
-    bool light_wallet_login(bool &new_address);
-    // Send an import request to lw node. returns info about import fee, address and payment_id
-    bool light_wallet_import_wallet_request(tools::COMMAND_RPC_IMPORT_WALLET_REQUEST::response &response);
-    // get random outputs from light wallet server
-    void light_wallet_get_outs(std::vector<std::vector<get_outs_entry>> &outs, const std::vector<size_t> &selected_transfers, size_t fake_outputs_count);
-    // Parse rct string
-    bool light_wallet_parse_rct_str(const std::string& rct_string, const crypto::public_key& tx_pub_key, uint64_t internal_output_index, rct::key& decrypted_mask, rct::key& rct_commit, bool decrypt) const;
-    // check if key image is ours
-    bool light_wallet_key_image_is_ours(const crypto::key_image& key_image, const crypto::public_key& tx_public_key, uint64_t out_index);
-
     /*
      * "attributes" are a mechanism to store an arbitrary number of string values
      * on the level of the wallet as a whole, identified by keys. Their introduction,
@@ -2472,5 +2454,70 @@ template<typename T>
       }
     }
   }
+
+   inline  uint64_t decodeRct(const rct::rctSig & rv, const crypto::key_derivation &derivation, unsigned int out_index, rct::key & mask, hw::device &hwdev)
+{
+  crypto::secret_key scalar1;
+  hwdev.derivation_to_scalar(derivation, out_index, scalar1);
+  try
+  {
+    switch (rv.type)
+    {
+    case rct::RCTTypeSimple:
+    case rct::RCTTypeBulletproof:
+    case rct::RCTTypeBulletproof2:
+    case rct::RCTTypeCLSAG:
+      return rct::decodeRctSimple(rv, rct::sk2rct(scalar1), out_index, mask, hwdev);
+    case rct::RCTTypeFull:
+      return rct::decodeRct(rv, rct::sk2rct(scalar1), out_index, mask, hwdev);
+    default:
+      LOG_ERROR("Unsupported rct type: " << rv.type);
+      return 0;
+    }
+  }
+  catch (const std::exception &e)
+  {
+    LOG_ERROR("Failed to decode input " << out_index);
+    return 0;
+  }
+}
+
+
+inline bool get_pruned_tx(const cryptonote::COMMAND_RPC_GET_TRANSACTIONS::entry &entry, cryptonote::transaction &tx, crypto::hash &tx_hash)
+{
+  cryptonote::blobdata bd;
+
+  // easy case if we have the whole tx
+  if (!entry.as_hex.empty() || (!entry.prunable_as_hex.empty() && !entry.pruned_as_hex.empty()))
+  {
+    CHECK_AND_ASSERT_MES(epee::string_tools::parse_hexstr_to_binbuff(entry.as_hex.empty() ? entry.pruned_as_hex + entry.prunable_as_hex : entry.as_hex, bd), false, "Failed to parse tx data");
+    CHECK_AND_ASSERT_MES(cryptonote::parse_and_validate_tx_from_blob(bd, tx), false, "Invalid tx data");
+    tx_hash = cryptonote::get_transaction_hash(tx);
+    // if the hash was given, check it matches
+    CHECK_AND_ASSERT_MES(entry.tx_hash.empty() || epee::string_tools::pod_to_hex(tx_hash) == entry.tx_hash, false,
+        "Response claims a different hash than the data yields");
+    return true;
+  }
+  // case of a pruned tx with its prunable data hash
+  if (!entry.pruned_as_hex.empty() && !entry.prunable_hash.empty())
+  {
+    crypto::hash ph;
+    CHECK_AND_ASSERT_MES(epee::string_tools::hex_to_pod(entry.prunable_hash, ph), false, "Failed to parse prunable hash");
+    CHECK_AND_ASSERT_MES(epee::string_tools::parse_hexstr_to_binbuff(entry.pruned_as_hex, bd), false, "Failed to parse pruned data");
+    CHECK_AND_ASSERT_MES(parse_and_validate_tx_base_from_blob(bd, tx), false, "Invalid base tx data");
+    // only v2 txes can calculate their txid after pruned
+    if (bd[0] > 1)
+    {
+      tx_hash = cryptonote::get_pruned_transaction_hash(tx, ph);
+    }
+    else
+    {
+      // for v1, we trust the dameon
+      CHECK_AND_ASSERT_MES(epee::string_tools::hex_to_pod(entry.tx_hash, tx_hash), false, "Failed to parse tx hash");
+    }
+    return true;
+  }
+  return false;
+}
   //----------------------------------------------------------------------------------------------------
 }

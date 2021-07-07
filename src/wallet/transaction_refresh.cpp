@@ -70,32 +70,7 @@ using namespace cryptonote;
 namespace tools
 {
   //----------------------------------------------------------------------------------------------------
-static uint64_t decodeRct(const rct::rctSig & rv, const crypto::key_derivation &derivation, unsigned int out_index, rct::key & mask, hw::device &hwdev)
-{
-  crypto::secret_key scalar1;
-  hwdev.derivation_to_scalar(derivation, out_index, scalar1);
-  try
-  {
-    switch (rv.type)
-    {
-    case rct::RCTTypeSimple:
-    case rct::RCTTypeBulletproof:
-    case rct::RCTTypeBulletproof2:
-    case rct::RCTTypeCLSAG:
-      return rct::decodeRctSimple(rv, rct::sk2rct(scalar1), out_index, mask, hwdev);
-    case rct::RCTTypeFull:
-      return rct::decodeRct(rv, rct::sk2rct(scalar1), out_index, mask, hwdev);
-    default:
-      LOG_ERROR("Unsupported rct type: " << rv.type);
-      return 0;
-    }
-  }
-  catch (const std::exception &e)
-  {
-    LOG_ERROR("Failed to decode input " << out_index);
-    return 0;
-  }
-}
+
   //----------------------------------------------------------------------------------------------------
 void wallet2::refresh(bool trusted_daemon)
 {
@@ -118,38 +93,7 @@ void wallet2::refresh(bool trusted_daemon, uint64_t start_height, uint64_t & blo
     return;
   }
 
-  if(m_light_wallet) {
 
-    // MyMonero get_address_info needs to be called occasionally to trigger wallet sync.
-    // This call is not really needed for other purposes and can be removed if mymonero changes their backend.
-    tools::COMMAND_RPC_GET_ADDRESS_INFO::response res;
-
-    // Get basic info
-    if(light_wallet_get_address_info(res)) {
-      // Last stored block height
-      uint64_t prev_height = m_light_wallet_blockchain_height;
-      // Update lw heights
-      m_light_wallet_scanned_block_height = res.scanned_block_height;
-      m_light_wallet_blockchain_height = res.blockchain_height;
-      // If new height - call new_block callback
-      if(m_light_wallet_blockchain_height != prev_height)
-      {
-        MDEBUG("new block since last time!");
-        m_callback->on_lw_new_block(m_light_wallet_blockchain_height - 1);
-      }
-      m_light_wallet_connected = true;
-      MDEBUG("lw scanned block height: " <<  m_light_wallet_scanned_block_height);
-      MDEBUG("lw blockchain height: " <<  m_light_wallet_blockchain_height);
-      MDEBUG(m_light_wallet_blockchain_height-m_light_wallet_scanned_block_height << " blocks behind");
-      // TODO: add wallet created block info
-
-      light_wallet_get_address_txs();
-    } else
-      m_light_wallet_connected = false;
-
-    // Lighwallet refresh done
-    return;
-  }
   received_money = false;
   blocks_fetched = 0;
   uint64_t added_blocks = 0;

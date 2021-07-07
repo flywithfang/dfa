@@ -68,112 +68,6 @@ using namespace cryptonote;
 
 namespace tools
 {
-void wallet2::light_wallet_get_outs(std::vector<std::vector<tools::wallet2::get_outs_entry>> &outs, const std::vector<size_t> &selected_transfers, size_t fake_outputs_count) {
-  
-  MDEBUG("LIGHTWALLET - Getting random outs");
-      
-  tools::COMMAND_RPC_GET_RANDOM_OUTS::request oreq;
-  tools::COMMAND_RPC_GET_RANDOM_OUTS::response ores;
-  
-  size_t light_wallet_requested_outputs_count = (size_t)((fake_outputs_count + 1) * 1.5 + 1);
-  
-  // Amounts to ask for
-  // MyMonero api handle amounts and fees as strings
-  for(size_t idx: selected_transfers) {
-    const uint64_t ask_amount = m_transfers[idx].is_rct() ? 0 : m_transfers[idx].amount();
-    std::ostringstream amount_ss;
-    amount_ss << ask_amount;
-    oreq.amounts.push_back(amount_ss.str());
-  }
-  
-  oreq.count = light_wallet_requested_outputs_count;
-
-  {
-    const boost::lock_guard<boost::recursive_mutex> lock{m_daemon_rpc_mutex};
-    bool r = epee::net_utils::invoke_http_json("/get_random_outs", oreq, ores, *m_http_client, rpc_timeout, "POST");
-    m_daemon_rpc_mutex.unlock();
-    THROW_WALLET_EXCEPTION_IF(!r, error::no_connection_to_daemon, "get_random_outs");
-    THROW_WALLET_EXCEPTION_IF(ores.amount_outs.empty() , error::wallet_internal_error, "No outputs received from light wallet node. Error: " + ores.Error);
-    size_t n_outs = 0; for (const auto &e: ores.amount_outs) n_outs += e.outputs.size();
-  }
-  
-  // Check if we got enough outputs for each amount
-  for(auto& out: ores.amount_outs) {
-    THROW_WALLET_EXCEPTION_IF(out.outputs.size() < light_wallet_requested_outputs_count , error::wallet_internal_error, "Not enough outputs for amount: " + boost::lexical_cast<std::string>(out.amount));
-    MDEBUG(out.outputs.size() << " outputs for amount "+ boost::lexical_cast<std::string>(out.amount) + " received from light wallet node");
-  }
-
-  MDEBUG("selected transfers size: " << selected_transfers.size());
-
-  for(size_t idx: selected_transfers)
-  { 
-    // Create new index
-    outs.push_back(std::vector<get_outs_entry>());
-    outs.back().reserve(fake_outputs_count + 1);
-    
-    // add real output first
-    const transfer_details &td = m_transfers[idx];
-    const uint64_t amount = td.is_rct() ? 0 : td.amount();
-    outs.back().push_back(std::make_tuple(td.m_global_output_index, td.get_public_key(), rct::commit(td.amount(), td.m_mask)));
-    MDEBUG("added real output " << string_tools::pod_to_hex(td.get_public_key()));
-    
-    // Even if the lightwallet server returns random outputs, we pick them randomly.
-    std::vector<size_t> order;
-    order.resize(light_wallet_requested_outputs_count);
-    for (size_t n = 0; n < order.size(); ++n)
-      order[n] = n;
-    std::shuffle(order.begin(), order.end(), crypto::random_device{});
-    
-    
-    LOG_PRINT_L2("Looking for " << (fake_outputs_count+1) << " outputs with amounts " << print_money(td.is_rct() ? 0 : td.amount()));
-    MDEBUG("OUTS SIZE: " << outs.back().size());
-    for (size_t o = 0; o < light_wallet_requested_outputs_count && outs.back().size() < fake_outputs_count + 1; ++o)
-    {
-      // Random pick
-      size_t i = order[o];
-             
-      // Find which random output key to use
-      bool found_amount = false;
-      size_t amount_key;
-      for(amount_key = 0; amount_key < ores.amount_outs.size(); ++amount_key)
-      {
-        if(boost::lexical_cast<uint64_t>(ores.amount_outs[amount_key].amount) == amount) {
-          found_amount = true;
-          break;
-        }
-      }
-      THROW_WALLET_EXCEPTION_IF(!found_amount , error::wallet_internal_error, "Outputs for amount " + boost::lexical_cast<std::string>(ores.amount_outs[amount_key].amount) + " not found" );
-
-      LOG_PRINT_L2("Index " << i << "/" << light_wallet_requested_outputs_count << ": idx " << ores.amount_outs[amount_key].outputs[i].global_index << " (real " << td.m_global_output_index << "), unlocked " << "(always in light)" << ", key " << ores.amount_outs[0].outputs[i].public_key);
-      
-      // Convert light wallet string data to proper data structures
-      crypto::public_key tx_public_key;
-      rct::key mask = AUTO_VAL_INIT(mask); // decrypted mask - not used here
-      rct::key rct_commit = AUTO_VAL_INIT(rct_commit);
-      THROW_WALLET_EXCEPTION_IF(string_tools::validate_hex(64, ores.amount_outs[amount_key].outputs[i].public_key), error::wallet_internal_error, "Invalid public_key");
-      string_tools::hex_to_pod(ores.amount_outs[amount_key].outputs[i].public_key, tx_public_key);
-      const uint64_t global_index = ores.amount_outs[amount_key].outputs[i].global_index;
-      if(!light_wallet_parse_rct_str(ores.amount_outs[amount_key].outputs[i].rct, tx_public_key, 0, mask, rct_commit, false))
-        rct_commit = rct::zeroCommit(td.amount());
-      
-      if (tx_add_fake_output(outs, global_index, tx_public_key, rct_commit, td.m_global_output_index, true)) {
-        MDEBUG("added fake output " << ores.amount_outs[amount_key].outputs[i].public_key);
-        MDEBUG("index " << global_index);
-      }
-    }
-
-    THROW_WALLET_EXCEPTION_IF(outs.back().size() < fake_outputs_count + 1 , error::wallet_internal_error, "Not enough fake outputs found" );
-    
-    // Real output is the first. Shuffle outputs
-    MTRACE(outs.back().size() << " outputs added. Sorting outputs by index:");
-    std::sort(outs.back().begin(), outs.back().end(), [](const get_outs_entry &a, const get_outs_entry &b) { return std::get<0>(a) < std::get<0>(b); });
-
-    // Print output order
-    for(auto added_out: outs.back())
-      MTRACE(std::get<0>(added_out));
-
-  }
-}
 
 std::pair<std::set<uint64_t>, size_t> outs_unique(const std::vector<std::vector<tools::wallet2::get_outs_entry>> &outs)
 {
@@ -225,10 +119,6 @@ void wallet2::get_outs(std::vector<std::vector<tools::wallet2::get_outs_entry>> 
   LOG_PRINT_L2("fake_outputs_count: " << fake_outputs_count);
   outs.clear();
 
-  if(m_light_wallet && fake_outputs_count > 0) {
-    light_wallet_get_outs(outs, selected_transfers, fake_outputs_count);
-    return;
-  }
 
   if (fake_outputs_count > 0)
   {

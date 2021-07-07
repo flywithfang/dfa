@@ -69,6 +69,39 @@ using namespace cryptonote;
 
 namespace tools
 {
+    void add_reason(std::string &reasons, const char *reason)
+  {
+    if (!reasons.empty())
+      reasons += ", ";
+    reasons += reason;
+  }
+
+  
+  std::string get_text_reason(const cryptonote::COMMAND_RPC_SEND_RAW_TX::response &res)
+  {
+      std::string reason;
+      if (res.low_mixin)
+        add_reason(reason, "bad ring size");
+      if (res.double_spend)
+        add_reason(reason, "double spend");
+      if (res.invalid_input)
+        add_reason(reason, "invalid input");
+      if (res.invalid_output)
+        add_reason(reason, "invalid output");
+      if (res.too_few_outputs)
+        add_reason(reason, "too few outputs");
+      if (res.too_big)
+        add_reason(reason, "too big");
+      if (res.overspend)
+        add_reason(reason, "overspend");
+      if (res.fee_too_low)
+        add_reason(reason, "fee too low");
+      if (res.sanity_check_failed)
+        add_reason(reason, "tx sanity check failed");
+      if (res.not_relayed)
+        add_reason(reason, "tx was not relayed");
+      return reason;
+  }
 
   struct TX {
     std::vector<size_t> selected_transfers;
@@ -307,13 +340,7 @@ uint64_t wallet2::get_dynamic_base_fee_estimate()
 //----------------------------------------------------------------------------------------------------
 uint64_t wallet2::get_base_fee()
 {
-  if(m_light_wallet)
-  {
-    if (use_fork_rules(HF_VERSION_PER_BYTE_FEE))
-      return m_light_wallet_per_kb_fee / 1024;
-    else
-      return m_light_wallet_per_kb_fee;
-  }
+
   bool use_dyn_fee = use_fork_rules(HF_VERSION_DYNAMIC_FEE, -30 * 1);
   if (!use_dyn_fee)
     return FEE_PER_KB;
@@ -323,10 +350,7 @@ uint64_t wallet2::get_base_fee()
 //----------------------------------------------------------------------------------------------------
 uint64_t wallet2::get_fee_quantization_mask()
 {
-  if(m_light_wallet)
-  {
-    return 1; // TODO
-  }
+
   bool use_per_byte_fee = use_fork_rules(HF_VERSION_PER_BYTE_FEE, 0);
   if (!use_per_byte_fee)
     return 1;
@@ -382,7 +406,7 @@ size_t get_num_outputs(const std::vector<cryptonote::tx_destination_entry> &dsts
       ++outputs; // extra 0 dummy output
     return outputs;
   }
-  
+
 // Another implementation of transaction creation that is hopefully better
 // While there is anything left to pay, it goes through random outputs and tries
 // to fill the next destination/amount. If it fully fills it, it will use the
@@ -409,7 +433,6 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(std::vector<cryp
   for(auto dst : dsts){
     cout<<"dst "<<dst.original<<","<<dst.amount<<","<<dst.addr.m_view_public_key<<","<<dst.is_subaddress<<","<<dst.is_integrated<<endl;
   }
-  cout<<"light "<<m_light_wallet<<endl;
   
   //ensure device is let in NONE mode in any case
   hw::device &hwdev = m_account.get_device();
@@ -418,10 +441,6 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(std::vector<cryp
 
   auto original_dsts = dsts;
 
-  if(m_light_wallet) {
-    // Populate m_transfers
-    light_wallet_get_unspent_outs();
-  }
   std::vector<std::pair<uint32_t, std::vector<size_t>>> unused_transfers_indices_per_subaddr;
   std::vector<std::pair<uint32_t, std::vector<size_t>>> unused_dust_indices_per_subaddr;
   uint64_t needed_money;
@@ -1350,6 +1369,84 @@ std::pair<size_t, uint64_t> wallet2::estimate_tx_size_and_weight(bool use_rct, i
   size_t size = estimate_tx_size(use_rct, n_inputs, ring_size - 1, n_outputs, extra_size, bulletproof, clsag);
   uint64_t weight = estimate_tx_weight(use_rct, n_inputs, ring_size - 1, n_outputs, extra_size, bulletproof, clsag);
   return std::make_pair(size, weight);
+}
+
+
+// take a pending tx and actually send it to the daemon
+void wallet2::commit_tx(pending_tx& ptx)
+{
+  using namespace cryptonote;
+  
+
+  {
+    // Normal submit
+    COMMAND_RPC_SEND_RAW_TX::request req;
+    req.tx_as_hex = epee::string_tools::buff_to_hex_nodelimer(tx_to_blob(ptx.tx));
+    req.do_not_relay = false;
+    req.do_sanity_checks = true;
+    COMMAND_RPC_SEND_RAW_TX::response daemon_send_resp;
+
+    {
+      const boost::lock_guard<boost::recursive_mutex> lock{m_daemon_rpc_mutex};
+      uint64_t pre_call_credits = m_rpc_payment_state.credits;
+      req.client = get_client_signature();
+      bool r = epee::net_utils::invoke_http_json("/sendrawtransaction", req, daemon_send_resp, *m_http_client, rpc_timeout);
+      THROW_ON_RPC_RESPONSE_ERROR(r, {}, daemon_send_resp, "sendrawtransaction", error::tx_rejected, ptx.tx, get_rpc_status(daemon_send_resp.status), get_text_reason(daemon_send_resp));
+      check_rpc_cost("/sendrawtransaction", daemon_send_resp.credits, pre_call_credits, COST_PER_TX_RELAY);
+    }
+
+    // sanity checks
+    for (size_t idx: ptx.selected_transfers)
+    {
+      THROW_WALLET_EXCEPTION_IF(idx >= m_transfers.size(), error::wallet_internal_error,
+          "Bad output index in selected transfers: " + boost::lexical_cast<std::string>(idx));
+    }
+  }
+  crypto::hash txid;
+
+  txid = get_transaction_hash(ptx.tx);
+  crypto::hash payment_id = crypto::null_hash;
+  std::vector<cryptonote::tx_destination_entry> dests;
+  uint64_t amount_in = 0;
+  if (store_tx_info())
+  {
+    payment_id = get_payment_id(ptx);
+    dests = ptx.dests;
+    for(size_t idx: ptx.selected_transfers)
+      amount_in += m_transfers[idx].amount();
+  }
+  add_unconfirmed_tx(ptx.tx, amount_in, dests, payment_id, ptx.change_dts.amount, ptx.construction_data.subaddr_account, ptx.construction_data.subaddr_indices);
+  if (store_tx_info() && ptx.tx_key != crypto::null_skey)
+  {
+    m_tx_keys[txid] = ptx.tx_key;
+    m_additional_tx_keys[txid] = ptx.additional_tx_keys;
+  }
+
+  LOG_PRINT_L2("transaction " << txid << " generated ok and sent to daemon, key_images: [" << ptx.key_images << "]");
+
+  for(size_t idx: ptx.selected_transfers)
+  {
+    set_spent(idx, 0);
+  }
+
+  // tx generated, get rid of used k values
+  for (size_t idx: ptx.selected_transfers)
+    memwipe(m_transfers[idx].m_multisig_k.data(), m_transfers[idx].m_multisig_k.size() * sizeof(m_transfers[idx].m_multisig_k[0]));
+
+  //fee includes dust if dust policy specified it.
+  LOG_PRINT_L1("Transaction successfully sent. <" << txid << ">" << ENDL
+            << "Commission: " << print_money(ptx.fee) << " (dust sent to dust addr: " << print_money((ptx.dust_added_to_fee ? 0 : ptx.dust)) << ")" << ENDL
+            << "Balance: " << print_money(balance(ptx.construction_data.subaddr_account, false)) << ENDL
+            << "Unlocked: " << print_money(unlocked_balance(ptx.construction_data.subaddr_account, false)) << ENDL
+            << "Please, wait for confirmation for your balance to be unlocked.");
+}
+
+void wallet2::commit_tx(std::vector<pending_tx>& ptx_vector)
+{
+  for (auto & ptx : ptx_vector)
+  {
+    commit_tx(ptx);
+  }
 }
 
 }

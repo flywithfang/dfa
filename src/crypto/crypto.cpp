@@ -187,7 +187,7 @@ namespace crypto {
     return true;
   }
 
-
+  //xA
   bool crypto_ops::generate_key_derivation(const public_key &key1, const secret_key &key2, key_derivation &derivation) {
     ge_p3 point;
     ge_p2 point2;
@@ -202,7 +202,7 @@ namespace crypto {
     ge_tobytes(&derivation, &point2);
     return true;
   }
-
+  //H(x,i)
   void crypto_ops::derivation_to_scalar(const key_derivation &derivation, size_t output_index, ec_scalar &res) {
     struct {
       key_derivation derivation;

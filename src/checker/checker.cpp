@@ -25,7 +25,6 @@
 #include "rapidjson/document.h"
 #include "common/json_util.h"
 #include "ringct/rctSigs.h"
-#include "multisig/multisig.h"
 #include "version.h"
 #include "string_tools.h"
 #include <stdexcept>
