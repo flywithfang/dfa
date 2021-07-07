@@ -147,6 +147,7 @@ bool EnableVTMode()
 
 void mlog_configure(const std::string &filename_base, bool console, const std::size_t max_log_file_size, const std::size_t max_log_files)
 {
+  std::cout<<"mlog_configure "<<filename_base<<console<<max_log_file_size<<"/"<<max_log_files<<std::endl;
   el::Configurations c;
   c.setGlobally(el::ConfigurationType::Filename, filename_base);
   c.setGlobally(el::ConfigurationType::ToFile, "true");

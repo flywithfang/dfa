@@ -1,33 +1,3 @@
-// Copyright (c) 2014-2020, The Monero Project
-// 
-// All rights reserved.
-// 
-// Redistribution and use in source and binary forms, with or without modification, are
-// permitted provided that the following conditions are met:
-// 
-// 1. Redistributions of source code must retain the above copyright notice, this list of
-//    conditions and the following disclaimer.
-// 
-// 2. Redistributions in binary form must reproduce the above copyright notice, this list
-//    of conditions and the following disclaimer in the documentation and/or other
-//    materials provided with the distribution.
-// 
-// 3. Neither the name of the copyright holder nor the names of its contributors may be
-//    used to endorse or promote products derived from this software without specific
-//    prior written permission.
-// 
-// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY
-// EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
-// MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL
-// THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-// SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-// PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-// INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
-// STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
-// THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-// 
-// Parts of this file are originally copyright (c) 2012-2013 The Cryptonote developers
-
 #include <cstddef>
 #include <cstring>
 #include <fstream>
@@ -40,6 +10,7 @@
 #include "crypto/hash.h"
 #include "crypto-tests.h"
 #include "../io.h"
+#include "hex.h"
 
 using namespace std;
 using namespace crypto;
@@ -77,6 +48,7 @@ int main(int argc, char *argv[]) {
     if (!(input >> cmd)) {
       break;
     }
+     cout<<cmd<<endl;
     input.exceptions(ios_base::badbit | ios_base::failbit | ios_base::eofbit);
     if (cmd == "check_scalar") {
       ec_scalar scalar;
@@ -89,7 +61,9 @@ int main(int argc, char *argv[]) {
     } else if (cmd == "random_scalar") {
       ec_scalar expected, actual;
       get(input, expected);
+      std::cout<<expected<<endl;
       random_scalar(actual);
+      std::cout<<"actural "<< actual<<endl;
       if (expected != actual) {
         goto error;
       }
@@ -119,16 +93,19 @@ int main(int argc, char *argv[]) {
       }
     } else if (cmd == "secret_key_to_public_key") {
       secret_key sec;
-      bool expected1, actual1;
-      public_key expected2, actual2;
+      bool expected1;
+      public_key expected2, pub2;
       get(input, sec, expected1);
       if (expected1) {
         get(input, expected2);
       }
-      actual1 = secret_key_to_public_key(sec, actual2);
-      if (expected1 != actual1 || (expected1 && expected2 != actual2)) {
+      cout<<"sec"<<sec<<endl;
+      
+      auto valid = secret_key_to_public_key(sec, pub2);
+      if (expected1 != valid || (expected1 && expected2 != pub2)) {
         goto error;
       }
+      cout<<"pub"<<pub2<<endl;
     } else if (cmd == "generate_key_derivation") {
       public_key key1;
       secret_key key2;
@@ -167,13 +144,22 @@ int main(int argc, char *argv[]) {
         goto error;
       }
     } else if (cmd == "generate_signature") {
+
       chash prefix_hash;
       public_key pub;
       secret_key sec;
-      signature expected, actual;
-      get(input, prefix_hash, pub, sec, expected);
-      generate_signature(prefix_hash, pub, sec, actual);
-      if (expected != actual) {
+      signature sig1, sig2;
+      get(input, prefix_hash, pub, sec, sig1);
+      cout<<"sec"<<sec<<endl;
+      cout<<"pub"<<pub<<endl;
+      public_key p2;
+      secret_key_to_public_key(sec,p2);
+
+      cout<<"pub"<<p2<<endl;
+      generate_signature(prefix_hash, p2, sec, sig2);
+      cout<<"sig1"<<sig1<<endl;
+      cout<<"sig2"<<sig2<<endl;
+      if (sig1 != sig2) {
         goto error;
       }
     } else if (cmd == "check_signature") {
@@ -205,21 +191,25 @@ int main(int argc, char *argv[]) {
     } else if (cmd == "generate_key_image") {
       public_key pub;
       secret_key sec;
-      key_image expected, actual;
-      get(input, pub, sec, expected);
-      generate_key_image(pub, sec, actual);
-      if (expected != actual) {
+      key_image ki1, ki2;
+      get(input, pub, sec, ki1);
+      public_key p2;
+      crypto::secret_key_to_public_key(sec,p2);
+      cout<<"p1"<<pub<<endl;
+      cout<<"p2"<<p2<<endl;
+      generate_key_image(pub, sec, ki2);
+      if (ki1 != ki2) {
         goto error;
       }
     } else if (cmd == "generate_ring_signature") {
-      chash prefix_hash;
+      crypto::hash prefix_hash;
       key_image image;
       vector<public_key> vpubs;
       vector<const public_key *> pubs;
       size_t pubs_count;
       secret_key sec;
       size_t sec_index;
-      vector<signature> expected, actual;
+      vector<signature> sigs1, sigs2;
       size_t i;
       get(input, prefix_hash, image, pubs_count);
       vpubs.resize(pubs_count);
@@ -229,13 +219,16 @@ int main(int argc, char *argv[]) {
         pubs[i] = &vpubs[i];
       }
       get(input, sec, sec_index);
-      expected.resize(pubs_count);
-      getvar(input, pubs_count * sizeof(signature), expected.data());
-      actual.resize(pubs_count);
-      generate_ring_signature(prefix_hash, image, pubs.data(), pubs_count, sec, sec_index, actual.data());
-      if (expected != actual) {
+      sigs1.resize(pubs_count);
+      getvar(input, pubs_count * sizeof(signature), sigs1.data());
+      sigs2.resize(pubs_count);
+      generate_ring_signature(prefix_hash, image, pubs.data(), pubs_count, sec, sec_index, sigs2.data());
+      cout<<"sigs1"<<sigs1<<endl;
+      cout<<"sigs2"<<sigs2<<endl;
+      if (sigs1 != sigs2) {
         goto error;
       }
+
     } else if (cmd == "check_ring_signature") {
       chash prefix_hash;
       key_image image;
@@ -246,16 +239,22 @@ int main(int argc, char *argv[]) {
       bool expected, actual;
       size_t i;
       get(input, prefix_hash, image, pubs_count);
+      cout<<"image"<<image<<endl;
+      cout<<"p_count"<<pubs_count<<endl;
       vpubs.resize(pubs_count);
       pubs.resize(pubs_count);
       for (i = 0; i < pubs_count; i++) {
         get(input, vpubs[i]);
+        cout<<vpubs[i]<<endl;
         pubs[i] = &vpubs[i];
       }
       sigs.resize(pubs_count);
       getvar(input, pubs_count * sizeof(signature), sigs.data());
+      cout<<sigs<<endl;
       get(input, expected);
+      cout<<expected<<endl;
       actual = check_ring_signature(prefix_hash, image, pubs.data(), pubs_count, sigs.data());
+      cout<<actual<<expected<<endl;
       if (expected != actual) {
         goto error;
       }

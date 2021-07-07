@@ -190,7 +190,7 @@ void test_generator::get_block_chain(std::vector<block_info>& blockchain, const 
     auto it = m_blocks_info.find(curr);
     if (m_blocks_info.end() == it)
     {
-      throw std::runtime_error("block hash wasn't found");
+      throw std::runtime_error("get_block_chain block hash wasn't found");
     }
 
     blockchain.push_back(it->second);
@@ -214,7 +214,10 @@ uint64_t test_generator::get_already_generated_coins(const crypto::hash& blk_id)
 {
   auto it = m_blocks_info.find(blk_id);
   if (it == m_blocks_info.end())
-    throw std::runtime_error("block hash wasn't found");
+  {
+    std::ostringstream ss; ss<<blk_id;
+    throw std::runtime_error("get_already_generated_coins block hash wasn't found" + ss.str());
+  }
 
   return it->second.already_generated_coins;
 }
@@ -229,7 +232,9 @@ uint64_t test_generator::get_already_generated_coins(const cryptonote::block& bl
 void test_generator::add_block(const cryptonote::block& blk, size_t txs_weight, std::vector<size_t>& block_weights, uint64_t already_generated_coins, uint64_t block_reward, uint8_t hf_version)
 {
   const size_t block_weight = txs_weight + get_transaction_weight(blk.miner_tx);
-  m_blocks_info[get_block_hash(blk)] = block_info(blk.prev_id, already_generated_coins + block_reward, block_weight);
+  auto blk_hash =get_block_hash(blk);
+  m_blocks_info[blk_hash] = block_info(blk.prev_id, already_generated_coins + block_reward, block_weight);
+  std::cout<<"add block "<<blk_hash<<",block reward "<<block_reward<<"/"<<already_generated_coins<<"/"<<block_weight<<std::endl;
 }
 
 bool test_generator::construct_block(cryptonote::block& blk, uint64_t height, const crypto::hash& prev_id,
@@ -265,10 +270,14 @@ bool test_generator::construct_block(cryptonote::block& blk, uint64_t height, co
   size_t target_block_weight = txs_weight + get_transaction_weight(blk.miner_tx);
   while (true)
   {
+    std::cout<<"construct_miner_tx "<<height<<","<< miner_acc.get_public_address_str(network_type::MAINNET)<<std::endl;
+    
     if (!construct_miner_tx(height, misc_utils::median(block_weights), already_generated_coins, target_block_weight, total_fee, miner_acc.get_keys().m_account_address, blk.miner_tx, blobdata(), 10, hf_ver ? hf_ver.get() : 1))
       return false;
 
-    size_t actual_block_weight = txs_weight + get_transaction_weight(blk.miner_tx);
+    auto tx_w =  get_transaction_weight(blk.miner_tx);
+    size_t actual_block_weight = txs_weight + tx_w;
+    std::cout<<tx_w<<"/"<<target_block_weight<<"/"<<actual_block_weight<<std::endl;
     if (target_block_weight < actual_block_weight)
     {
       target_block_weight = actual_block_weight;
@@ -452,7 +461,9 @@ bool init_output_indices(map_output_idx_t& outs, std::map<uint64_t, std::vector<
             for (size_t j = 0; j < tx.vout.size(); ++j) {
                 const tx_out &out = tx.vout[j];
 
-                output_index oi(out.target, out.amount, boost::get<txin_gen>(*blk.miner_tx.vin.begin()).height, i, j, &blk, vtx[i]);
+                const auto blk_height=boost::get<txin_gen>(*blk.miner_tx.vin.begin()).height;
+                const auto out_no= j;
+                output_index oi(out.target, out.amount, blk_height, i, out_no, &blk, vtx[i]);
                 oi.set_rct(tx.version == 2);
                 oi.unlock_time = tx.unlock_time;
                 oi.is_coin_base = i == 0;
@@ -483,9 +494,14 @@ bool init_spent_output_indices(map_output_idx_t& outs, map_output_t& outs_mine, 
             crypto::key_image img;
             keypair in_ephemeral;
             crypto::public_key out_key = boost::get<txout_to_key>(oi.out).key;
+            const account_keys& acc_keys= from.get_keys();
             std::unordered_map<crypto::public_key, cryptonote::subaddress_index> subaddresses;
-            subaddresses[from.get_keys().m_account_address.m_spend_public_key] = {0,0};
-            generate_key_image_helper(from.get_keys(), subaddresses, out_key, get_tx_pub_key_from_extra(*oi.p_tx), get_additional_tx_pub_keys_from_extra(*oi.p_tx), oi.out_no, in_ephemeral, img, hw::get_device(("default")));
+            subaddresses[acc_keys.m_account_address.m_spend_public_key] = {0,0};
+            const auto tx_key=get_tx_pub_key_from_extra(*oi.p_tx); 
+             std::vector<crypto::public_key> tx_keys=get_additional_tx_pub_keys_from_extra(*oi.p_tx);
+             
+             auto &  dev=hw::get_device(("default"));
+            generate_key_image_helper(acc_keys, subaddresses, out_key,tx_key ,tx_keys, oi.out_no, in_ephemeral, img,dev );
 
             // lookup for this key image in the events vector
             BOOST_FOREACH(auto& tx_pair, mtx) {
@@ -495,6 +511,7 @@ bool init_spent_output_indices(map_output_idx_t& outs, map_output_t& outs_mine, 
                         const txin_to_key &itk = boost::get<txin_to_key>(in);
                         if (itk.k_image == img) {
                             oi.spent = true;
+                            break;
                         }
                     }
                 }
@@ -548,9 +565,8 @@ bool fill_tx_sources(std::vector<tx_source_entry>& sources, const std::vector<te
     map_output_idx_t outs;
     map_output_t outs_mine;
 
-    std::vector<cryptonote::block> blockchain;
-    map_hash2tx_t mtx;
-    if (!find_block_chain(events, blockchain, mtx, get_block_hash(blk_head)))
+    auto [r,blockchain, mtx] = events_to_block_chain(events,get_block_hash(blk_head));
+    if (!r)
         return false;
 
     if (!init_output_indices(outs, outs_mine, blockchain, mtx, from))
@@ -1235,6 +1251,43 @@ cryptonote::block get_head_block(const std::vector<test_event_entry>& events)
   throw std::runtime_error("No block event");
 }
 
+
+std::tuple<bool, std::vector<cryptonote::block> , map_hash2tx_t > events_to_block_chain(const std::vector<test_event_entry>& events,const crypto::hash& head)
+{
+    std::unordered_map<crypto::hash, const block*> block_index;
+  std::vector<cryptonote::block> blockchain;
+   map_hash2tx_t mtx;
+  BOOST_FOREACH(const test_event_entry& ev, events)
+    {
+        if (typeid(block) == ev.type())
+        {
+            const block* blk = &boost::get<block>(ev);
+            block_index[get_block_hash(*blk)] = blk;
+        }
+        else if (typeid(transaction) == ev.type())
+        {
+            const transaction& tx = boost::get<transaction>(ev);
+            mtx[get_transaction_hash(tx)] = &tx;
+        }
+    }
+
+    bool b_success = false;
+    crypto::hash id = head;
+    for (auto it = block_index.find(id); block_index.end() != it; it = block_index.find(id))
+    {
+        blockchain.push_back(*it->second);
+        id = it->second->prev_id;
+        if (null_hash == id)
+        {
+            b_success = true;
+            break;
+        }
+    }
+    reverse(blockchain.begin(), blockchain.end());
+
+    return std::make_tuple(b_success,blockchain,mtx);
+
+}
 bool find_block_chain(const std::vector<test_event_entry>& events, std::vector<cryptonote::block>& blockchain, map_hash2tx_t& mtx, const crypto::hash& head) {
     std::unordered_map<crypto::hash, const block*> block_index;
     BOOST_FOREACH(const test_event_entry& ev, events)

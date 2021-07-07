@@ -26,7 +26,6 @@
 // STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#include "tests/benchmark.h"
 
 #include <boost/fusion/adapted/std_tuple.hpp>
 #include <boost/fusion/algorithm/iteration/fold.hpp>
@@ -59,8 +58,7 @@
 
 #include "crypto/crypto.h"
 #include "cryptonote_basic/cryptonote_basic.h"
-#include "monero/crypto/amd64-64-24k.h"
-#include "monero/crypto/amd64-51-30k.h"
+
 
 #define CHECK(...)                           \
     if(!( __VA_ARGS__ ))                      \

@@ -4723,6 +4723,8 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm)
       return false;
     }
     auto r = open_wallet(vm);
+    auto p = r ?  (*r).data():"";
+    std::cout<<"open_wallet return "<< p<<std::endl;
     CHECK_AND_ASSERT_MES(r, false, tr("failed to open account"));
     password = *r;
   }
@@ -5186,6 +5188,7 @@ boost::optional<epee::wipeable_string> simple_wallet::open_wallet(const boost::p
     }
 
     m_wallet->callback(this);
+    std::cout<<"open_wallet "<<m_wallet_file<<","<<password.data()<<std::endl;
     m_wallet->load(m_wallet_file, password);
     std::string prefix;
     bool ready;
@@ -5244,6 +5247,7 @@ boost::optional<epee::wipeable_string> simple_wallet::open_wallet(const boost::p
       try
       {
         password_is_correct = m_wallet->verify_password(password);
+        std::cout<<"password_is_correct"<<password_is_correct<<std::endl;
       }
       catch (...) { } // guard against I/O errors
       if (password_is_correct)
@@ -6916,70 +6920,8 @@ bool simple_wallet::transfer_main(int transfer_type, const std::vector<std::stri
         }
     }
 
-    // actually commit the transactions
-    if (m_wallet->multisig() && called_by_mms)
-    {
-      std::string ciphertext = m_wallet->save_multisig_tx(ptx_vector);
-      if (!ciphertext.empty())
-      {
-        get_message_store().process_wallet_created_data(get_multisig_wallet_state(), mms::message_type::partially_signed_tx, ciphertext);
-        success_msg_writer(true) << tr("Unsigned transaction(s) successfully written to MMS");
-      }
-    }
-    else if (m_wallet->multisig())
-    {
-      bool r = m_wallet->save_multisig_tx(ptx_vector, "multisig_monero_tx");
-      if (!r)
-      {
-        fail_msg_writer() << tr("Failed to write transaction(s) to file");
-        return false;
-      }
-      else
-      {
-        success_msg_writer(true) << tr("Unsigned transaction(s) successfully written to file: ") << "multisig_monero_tx";
-      }
-    }
-    else if (m_wallet->get_account().get_device().has_tx_cold_sign())
-    {
-      try
-      {
-        tools::wallet2::signed_tx_set signed_tx;
-        if (!cold_sign_tx(ptx_vector, signed_tx, dsts_info, [&](const tools::wallet2::signed_tx_set &tx){ return accept_loaded_tx(tx); })){
-          fail_msg_writer() << tr("Failed to cold sign transaction with HW wallet");
-          return false;
-        }
-
-        commit_or_save(signed_tx.ptx, m_do_not_relay);
-      }
-      catch (const std::exception& e)
-      {
-        handle_transfer_exception(std::current_exception(), m_wallet->is_trusted_daemon());
-        return false;
-      }
-      catch (...)
-      {
-        LOG_ERROR("Unknown error");
-        fail_msg_writer() << tr("unknown error");
-        return false;
-      }
-    }
-    else if (m_wallet->watch_only())
-    {
-      bool r = m_wallet->save_tx(ptx_vector, "unsigned_monero_tx");
-      if (!r)
-      {
-        fail_msg_writer() << tr("Failed to write transaction(s) to file");
-        return false;
-      }
-      else
-      {
-        success_msg_writer(true) << tr("Unsigned transaction(s) successfully written to file: ") << "unsigned_monero_tx";
-      }
-    }
-    else
-    {
       commit_or_save(ptx_vector, m_do_not_relay);
-    }
+    
   }
   catch (const std::exception &e)
   {
@@ -9377,6 +9319,7 @@ std::string simple_wallet::get_prompt() const
 //----------------------------------------------------------------------------------------------------
 bool simple_wallet::run()
 {
+  std::cout<<"simple_wallet::run()"<<std::endl;
   // check and display warning, but go on anyway
   try_connect_to_daemon();
 
@@ -10557,6 +10500,8 @@ void simple_wallet::commit_or_save(std::vector<tools::wallet2::pending_tx>& ptx_
   {
     auto & ptx = ptx_vector.back();
     const crypto::hash txid = get_transaction_hash(ptx.tx);
+    cout<<"commit_or_save" <<txid<<","<<do_not_relay<<endl;
+    continue;
     if (do_not_relay)
     {
       cryptonote::blobdata blob;
@@ -10644,9 +10589,11 @@ int main(int argc, char* argv[])
 
   cryptonote::simple_wallet w;
   const bool r = w.init(*vm);
+  std::cout<<"init return "<<r<<std::endl;
   CHECK_AND_ASSERT_MES(r, 1, sw::tr("Failed to initialize wallet"));
 
   std::vector<std::string> command = command_line::get_arg(*vm, arg_command);
+  std::cout<<"command "<<command.size()<<std::endl;
   if (!command.empty())
   {
     if (!w.process_command(command))

@@ -71,6 +71,7 @@
 #include "message_store.h"
 #include "wallet_light_rpc.h"
 #include "wallet_rpc_helpers.h"
+#include <iostream>
 
 #undef MONERO_DEFAULT_LOG_CATEGORY
 #define MONERO_DEFAULT_LOG_CATEGORY "wallet.wallet2"
@@ -90,6 +91,53 @@ class wallet_accessor_test;
 
 namespace tools
 {
+  #define MONERO_DEFAULT_LOG_CATEGORY "wallet.wallet2"
+
+// used to choose when to stop adding outputs to a tx
+#define APPROXIMATE_INPUT_BYTES 80
+
+// used to target a given block weight (additional outputs may be added on top to build fee)
+#define TX_WEIGHT_TARGET(bytes) (bytes*2/3)
+
+#define UNSIGNED_TX_PREFIX "Monero unsigned tx set\005"
+#define SIGNED_TX_PREFIX "Monero signed tx set\005"
+#define MULTISIG_UNSIGNED_TX_PREFIX "Monero multisig unsigned tx set\001"
+
+#define RECENT_OUTPUT_RATIO (0.5) // 50% of outputs are from the recent zone
+#define RECENT_OUTPUT_DAYS (1.8) // last 1.8 day makes up the recent zone (taken from monerolink.pdf, Miller et al)
+#define RECENT_OUTPUT_ZONE ((time_t)(RECENT_OUTPUT_DAYS * 86400))
+#define RECENT_OUTPUT_BLOCKS (RECENT_OUTPUT_DAYS * 720)
+
+#define FEE_ESTIMATE_GRACE_BLOCKS 10 // estimate fee valid for that many blocks
+
+#define SECOND_OUTPUT_RELATEDNESS_THRESHOLD 0.0f
+
+#define SUBADDRESS_LOOKAHEAD_MAJOR 50
+#define SUBADDRESS_LOOKAHEAD_MINOR 200
+
+#define KEY_IMAGE_EXPORT_FILE_MAGIC "Monero key image export\003"
+
+#define MULTISIG_EXPORT_FILE_MAGIC "Monero multisig export\001"
+
+#define OUTPUT_EXPORT_FILE_MAGIC "Monero output export\004"
+
+#define SEGREGATION_FORK_HEIGHT 99999999
+#define TESTNET_SEGREGATION_FORK_HEIGHT 99999999
+#define STAGENET_SEGREGATION_FORK_HEIGHT 99999999
+#define SEGREGATION_FORK_VICINITY 1500 /* blocks */
+
+#define FIRST_REFRESH_GRANULARITY     1024
+
+#define GAMMA_SHAPE 19.28
+#define GAMMA_SCALE (1/1.61)
+
+#define DEFAULT_MIN_OUTPUT_COUNT 5
+#define DEFAULT_MIN_OUTPUT_VALUE (2*COIN)
+
+#define DEFAULT_INACTIVITY_LOCK_TIMEOUT 90 // a minute and a half
+
+#define IGNORE_LONG_PAYMENT_ID_FROM_BLOCK_VERSION 12
+
   class ringdb;
   class wallet2;
   class Notify;
@@ -951,10 +999,7 @@ private:
     // all locked & unlocked balances of all subaddress accounts
     uint64_t balance_all(bool strict) const;
     uint64_t unlocked_balance_all(bool strict, uint64_t *blocks_to_unlock = NULL, uint64_t *time_to_unlock = NULL);
-    template<typename T>
-    void transfer_selected(const std::vector<cryptonote::tx_destination_entry>& dsts, const std::vector<size_t>& selected_transfers, size_t fake_outputs_count,
-      std::vector<std::vector<tools::wallet2::get_outs_entry>> &outs,
-      uint64_t unlock_time, uint64_t fee, const std::vector<uint8_t>& extra, T destination_split_strategy, const tx_dust_policy& dust_policy, cryptonote::transaction& tx, pending_tx &ptx);
+
     void transfer_selected_rct(std::vector<cryptonote::tx_destination_entry> dsts, const std::vector<size_t>& selected_transfers, size_t fake_outputs_count,
       std::vector<std::vector<tools::wallet2::get_outs_entry>> &outs,
       uint64_t unlock_time, uint64_t fee, const std::vector<uint8_t>& extra, cryptonote::transaction& tx, pending_tx &ptx, const rct::RCTConfig &rct_config);
@@ -1592,7 +1637,7 @@ private:
     void fast_refresh(uint64_t stop_height, uint64_t &blocks_start_height, std::list<crypto::hash> &short_chain_history, bool force = false);
     void pull_and_parse_next_blocks(uint64_t start_height, uint64_t &blocks_start_height, std::list<crypto::hash> &short_chain_history, const std::vector<cryptonote::block_complete_entry> &prev_blocks, const std::vector<parsed_block> &prev_parsed_blocks, std::vector<cryptonote::block_complete_entry> &blocks, std::vector<parsed_block> &parsed_blocks, bool &last, bool &error, std::exception_ptr &exception);
     void process_parsed_blocks(uint64_t start_height, const std::vector<cryptonote::block_complete_entry> &blocks, const std::vector<parsed_block> &parsed_blocks, uint64_t& blocks_added, std::map<std::pair<uint64_t, uint64_t>, size_t> *output_tracker_cache = NULL);
-    uint64_t select_transfers(uint64_t needed_money, std::vector<size_t> unused_transfers_indices, std::vector<size_t>& selected_transfers) const;
+
     bool prepare_file_names(const std::string& file_path);
     void process_unconfirmed(const crypto::hash &txid, const cryptonote::transaction& tx, uint64_t height);
     void process_outgoing(const crypto::hash &txid, const cryptonote::transaction& tx, uint64_t height, uint64_t ts, uint64_t spent, uint64_t received, uint32_t subaddr_account, const std::set<uint32_t>& subaddr_indices);
@@ -2357,6 +2402,75 @@ namespace tools
       LOG_PRINT_L0("amount=" << cryptonote::print_money(src.amount) << ", real_output=" <<src.real_output << ", real_output_in_tx_index=" << src.real_output_in_tx_index << ", indexes: " << indexes);
     }
     //----------------------------------------------------------------------------------------------------
+  }
+
+  inline std::string strjoin(const std::vector<size_t> &V, const char *sep)
+{
+  std::stringstream ss;
+  bool first = true;
+  for (const auto &v: V)
+  {
+    if (!first)
+      ss << sep;
+    ss << std::to_string(v);
+    first = false;
+  }
+  return ss.str();
+}
+inline std::ostream & operator<<(std::ostream & os, const std::vector<uint8_t> & v){
+  for(auto e:v){
+    os<<e<<",";
+  }
+  os<<std::endl;
+  return os;
+}
+
+template<typename T>
+  inline T pop_index(std::vector<T>& vec, size_t idx)
+  {
+    CHECK_AND_ASSERT_MES(!vec.empty(), T(), "Vector must be non-empty");
+    CHECK_AND_ASSERT_MES(idx < vec.size(), T(), "idx out of bounds");
+
+    T res = vec[idx];
+    if (idx + 1 != vec.size())
+    {
+      vec[idx] = vec.back();
+    }
+    vec.resize(vec.size() - 1);
+
+    return res;
+  }
+
+  template<typename T>
+  inline T pop_random_value(std::vector<T>& vec)
+  {
+    CHECK_AND_ASSERT_MES(!vec.empty(), T(), "Vector must be non-empty");
+
+    size_t idx = crypto::rand_idx(vec.size());
+    return pop_index (vec, idx);
+  }
+
+  template<typename T>
+ inline T pop_back(std::vector<T>& vec)
+  {
+    CHECK_AND_ASSERT_MES(!vec.empty(), T(), "Vector must be non-empty");
+
+    T res = vec.back();
+    vec.pop_back();
+    return res;
+  }
+
+  template<typename T>
+  inline void pop_if_present(std::vector<T>& vec, T e)
+  {
+    for (size_t i = 0; i < vec.size(); ++i)
+    {
+      if (e == vec[i])
+      {
+        pop_index (vec, i);
+        return;
+      }
+    }
   }
   //----------------------------------------------------------------------------------------------------
 }

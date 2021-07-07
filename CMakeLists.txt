@@ -179,7 +179,7 @@ macro (monero_find_all_headers headers_found module_root_dir)
 endmacro()
 
 if(NOT CMAKE_BUILD_TYPE)
-  set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
+  set(CMAKE_BUILD_TYPE RelWithDebInfo CACHE STRING "Build type" FORCE)
   message(STATUS "Setting default build type: ${CMAKE_BUILD_TYPE}")
 endif()
 string(TOLOWER ${CMAKE_BUILD_TYPE} CMAKE_BUILD_TYPE_LOWER)
@@ -275,7 +275,6 @@ if(NOT MANUAL_SUBMODULES)
     check_submodule(external/miniupnp)
     check_submodule(external/unbound)
     check_submodule(external/rapidjson)
-    check_submodule(external/trezor-common)
     check_submodule(external/randomx)
     check_submodule(external/supercop)
   endif()
@@ -524,8 +523,7 @@ add_definition_if_function_found(strptime HAVE_STRPTIME)
 
 add_definitions(-DAUTO_INITIALIZE_EASYLOGGINGPP)
 
-set(MONERO_GENERATED_HEADERS_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated_include")
-include_directories(${MONERO_GENERATED_HEADERS_DIR})
+
 
 option(COVERAGE "Enable profiling for test coverage report" OFF)
 if(COVERAGE)
@@ -569,18 +567,6 @@ include_directories(${LMDB_INCLUDE})
 include_directories(${LIBUNWIND_INCLUDE})
 link_directories(${LIBUNWIND_LIBRARY_DIRS})
 
-# Final setup for hid
-if (HIDAPI_FOUND) 
-  message(STATUS "Using HIDAPI include dir at ${HIDAPI_INCLUDE_DIR}")
-  add_definitions(-DHAVE_HIDAPI)
-  include_directories(${HIDAPI_INCLUDE_DIR})
-  link_directories(${LIBHIDAPI_LIBRARY_DIRS})
-else (HIDAPI_FOUND)
-  message(STATUS "Could not find HIDAPI")
-endif()
-
-# Trezor support check
-include(CheckTrezor)
 
 # As of OpenBSD 6.8, -march=<anything> breaks the build
 function(set_default_arch)
@@ -1009,23 +995,6 @@ endif()
 
 list(APPEND EXTRA_LIBRARIES ${CMAKE_DL_LIBS})
 
-if (HIDAPI_FOUND OR LibUSB_COMPILE_TEST_PASSED)
-  if (APPLE)
-    if(DEPENDS)
-      list(APPEND EXTRA_LIBRARIES "-framework Foundation -framework AppKit -framework IOKit")
-    else()
-      find_library(COREFOUNDATION CoreFoundation)
-      find_library(APPKIT AppKit)
-      find_library(IOKIT IOKit)
-      list(APPEND EXTRA_LIBRARIES ${APPKIT})
-      list(APPEND EXTRA_LIBRARIES ${IOKIT})
-      list(APPEND EXTRA_LIBRARIES ${COREFOUNDATION})
-    endif()
-  endif()
-  if (WIN32)
-    list(APPEND EXTRA_LIBRARIES setupapi)
-  endif()
-endif()
 
 option(USE_READLINE "Build with GNU readline support." ON)
 if(USE_READLINE AND NOT DEPENDS)

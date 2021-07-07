@@ -49,7 +49,7 @@ void keccakf(uint64_t st[25], int rounds)
 {
     int i, j, round;
     uint64_t t, bc[5];
-
+   // printf("keccakf st[0]=%ld, r=%d \n",st[0],rounds);
     for (round = 0; round < rounds; round++) {
 
         // Theta

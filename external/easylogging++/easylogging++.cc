@@ -72,7 +72,7 @@ static const char* kMonths[12]                      =      { "January", "Februar
                                                              "September", "October", "November", "December"
                                                            };
 static const char* kMonthsAbbrev[12]                =      { "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
-static const char* kDefaultDateTimeFormat           =      "%Y-%M-%d %H:%m:%s,%g";
+static const char* kDefaultDateTimeFormat           =      "%M-%d %H:%m:%s,%g";
 static const char* kDefaultDateTimeFormatInFilename =      "%Y-%M-%d_%H-%m";
 static const int kYearBase                          =      1900;
 static const char* kAm                              =      "AM";
@@ -2454,7 +2454,7 @@ void DefaultLogDispatchCallback::handle(const LogDispatchData* data) {
 
   const auto &logmsg = m_data->logMessage();
   const auto msg = logmsg->message();
-  if (strchr(msg.c_str(), '\n'))
+ /* if (strchr(msg.c_str(), '\n'))
   {
     std::vector<std::string> v;
     const char *s = msg.c_str();
@@ -2479,12 +2479,12 @@ void DefaultLogDispatchCallback::handle(const LogDispatchData* data) {
                m_data->dispatchAction() == base::DispatchAction::NormalLog || m_data->dispatchAction() == base::DispatchAction::FileOnlyLog));
     }
   }
-  else
+  else*/
   {
-    dispatch(base::utils::DateTime::getDateTime(logFormat->dateTimeFormat().c_str(), &tc->subsecondPrecision(m_data->logMessage()->level()))
-        + "\t" + convertToChar(m_data->logMessage()->level()) + " ", m_data->logMessage()->message() + "\n",
-        m_data->logMessage()->logger()->logBuilder()->build(m_data->logMessage(),
-             m_data->dispatchAction() == base::DispatchAction::NormalLog || m_data->dispatchAction() == base::DispatchAction::FileOnlyLog));
+     auto s=m_data->logMessage()->logger()->logBuilder()->build(m_data->logMessage(),
+             m_data->dispatchAction() == base::DispatchAction::NormalLog || m_data->dispatchAction() == base::DispatchAction::FileOnlyLog);
+     auto t = base::utils::DateTime::getDateTime(logFormat->dateTimeFormat().c_str(), &tc->subsecondPrecision(m_data->logMessage()->level()));
+    dispatch(t+ " " + convertToChar(m_data->logMessage()->level()) + " ", m_data->logMessage()->message() + "\n", std::move(s)   );
   }
 }
 

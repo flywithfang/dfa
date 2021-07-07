@@ -158,10 +158,12 @@ namespace cryptonote
   template<class t_object>
   bool t_serializable_object_to_blob(const t_object& to, blobdata& b_blob)
   {
+    
     std::stringstream ss;
     binary_archive<true> ba(ss);
     bool r = ::serialization::serialize(ba, const_cast<t_object&>(to));
     b_blob = ss.str();
+   // std::cout<<"t_serializable_object_to_blob "<<b_blob.size()<<" "<<typeid(to).name()<<std::endl;
     return r;
   }
   //---------------------------------------------------------------

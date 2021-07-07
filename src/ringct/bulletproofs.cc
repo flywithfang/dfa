@@ -516,6 +516,7 @@ Bulletproof bulletproof_PROVE(const rct::keyV &sv, const rct::keyV &gamma)
   for (size_t i = 0; i < sv.size(); ++i)
   {
     rct::key gamma8, sv8;
+    //xG+bH
     sc_mul(gamma8.bytes, gamma[i].bytes, INV_EIGHT.bytes);
     sc_mul(sv8.bytes, sv[i].bytes, INV_EIGHT.bytes);
     rct::addKeys2(V[i], gamma8, sv8, rct::H);

@@ -44,6 +44,7 @@
 #include <boost/mpl/front.hpp>
 #include <boost/mpl/pop_front.hpp>
 #include "serialization.h"
+#include <iostream>
 
 /*! \struct variant_serialization_triats
  * 
@@ -72,6 +73,7 @@ struct variant_reader
   {
     if(variant_serialization_traits<Archive, current_type>::get_tag() == t) {
       current_type x;
+     // std::cout<<"read "<<typeid(x).name()<<std::endl;
       if(!::do_serialize(ar, x))
       {
         ar.stream().setstate(std::ios::failbit);
@@ -112,7 +114,8 @@ struct serializer<Archive<false>, boost::variant<BOOST_VARIANT_ENUM_PARAMS(T)>>
     variant_tag_type t;
     ar.begin_variant();
     ar.read_variant_tag(t);
-    if(!variant_reader<Archive<false>, variant_type,
+  //  std::cout<<"read tag"<<std::to_string(t)<<std::endl;
+    if(!variant_reader< Archive<false>, variant_type,
        typename boost::mpl::begin<types>::type,
        typename boost::mpl::end<types>::type>::read(ar, v, t))
     {

@@ -1,39 +1,10 @@
-// Copyright (c) 2014-2020, The Monero Project
-// 
-// All rights reserved.
-// 
-// Redistribution and use in source and binary forms, with or without modification, are
-// permitted provided that the following conditions are met:
-// 
-// 1. Redistributions of source code must retain the above copyright notice, this list of
-//    conditions and the following disclaimer.
-// 
-// 2. Redistributions in binary form must reproduce the above copyright notice, this list
-//    of conditions and the following disclaimer in the documentation and/or other
-//    materials provided with the distribution.
-// 
-// 3. Neither the name of the copyright holder nor the names of its contributors may be
-//    used to endorse or promote products derived from this software without specific
-//    prior written permission.
-// 
-// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY
-// EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
-// MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL
-// THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-// SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-// PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-// INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
-// STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
-// THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-// 
-// Parts of this file are originally copyright (c) 2012-2013 The Cryptonote developers
-
 #pragma once
 
 #include <functional>
 #include <vector>
 #include <iostream>
 #include <stdint.h>
+#include <tuple>
 
 #include <boost/program_options.hpp>
 #include <boost/optional.hpp>
@@ -174,7 +145,7 @@ public:
   bool check_tx_verification_context(const cryptonote::tx_verification_context& tvc, bool /*tx_added*/, size_t /*event_index*/, const cryptonote::transaction& /*tx*/);
   bool check_tx_verification_context_array(const std::vector<cryptonote::tx_verification_context>& tvcs, size_t /*tx_added*/, size_t /*event_index*/, const std::vector<cryptonote::transaction>& /*txs*/);
 
-private:
+protected:
   callbacks_map m_callbacks;
 };
 
@@ -461,6 +432,8 @@ bool trim_block_chain(std::vector<cryptonote::block>& blockchain, const crypto::
 bool trim_block_chain(std::vector<const cryptonote::block*>& blockchain, const crypto::hash& tail);
 bool find_block_chain(const std::vector<test_event_entry>& events, std::vector<cryptonote::block>& blockchain, map_hash2tx_t& mtx, const crypto::hash& head);
 bool find_block_chain(const std::vector<test_event_entry>& events, std::vector<const cryptonote::block*>& blockchain, map_hash2tx_t& mtx, const crypto::hash& head);
+
+std::tuple<bool, std::vector<cryptonote::block> , map_hash2tx_t > events_to_block_chain(const std::vector<test_event_entry>& events,const crypto::hash& head);
 
 void fill_tx_destinations(const var_addr_t& from, const cryptonote::account_public_address& to,
                           uint64_t amount, uint64_t fee,
@@ -867,6 +840,26 @@ inline bool do_replay_file(const std::string& filename)
   generator.construct_block(BLK_NAME, MINER_ACC, TS);                                 \
   VEC_EVENTS.push_back(BLK_NAME);
 
+
+inline cryptonote::block make_genesis_block( test_generator &generator,std::vector<test_event_entry>& events, cryptonote::account_base &acc){
+   std::cout<<"make_genesis_block"<<std::endl;
+  uint64_t ts = 1338224400;
+                                                   
+  cryptonote::block blk;                                                           
+  generator.construct_block(blk, acc, ts);                                 
+  events.push_back(blk);
+  return blk;
+}
+
+inline cryptonote::block make_block(test_generator &generator,std::vector<test_event_entry>& events, const cryptonote::block &pre_block, cryptonote::account_base &acc, const std::list<cryptonote::transaction>& tx_list = std::list<cryptonote::transaction>()){
+   std::cout<<"make block prev_id "<<pre_block.prev_id<<std::endl;
+  cryptonote::block blk;                                                           
+  generator.construct_block(blk, pre_block,acc,tx_list);                                 
+  events.push_back(blk);
+  return blk;
+}
+
+
 #define MAKE_NEXT_BLOCK(VEC_EVENTS, BLK_NAME, PREV_BLOCK, MINER_ACC)                  \
   cryptonote::block BLK_NAME;                                                           \
   generator.construct_block(BLK_NAME, PREV_BLOCK, MINER_ACC);                         \
@@ -925,7 +918,12 @@ inline bool do_replay_file(const std::string& filename)
   cryptonote::transaction TX_NAME;                                                             \
   construct_tx_to_key(VEC_EVENTS, TX_NAME, HEAD, FROM, TO, AMOUNT, TESTS_DEFAULT_FEE, NMIX); \
   VEC_EVENTS.push_back(TX_NAME);
-
+/*
+inline void make_tx_mix(const std::vector<test_event_entry>& events, tx_name,const cryptonote::account_base&from, const cryptonote::account_base&to, amount,mixin,head){
+ cryptonote::transaction tx_name;                                                             \
+  construct_tx_to_key(events, tx_name, head, from, to, amount, TESTS_DEFAULT_FEE, mixin); \
+  events.push_back(tx_name);
+}*/
 #define MAKE_TX_MIX_RCT(VEC_EVENTS, TX_NAME, FROM, TO, AMOUNT, NMIX, HEAD)                       \
   cryptonote::transaction TX_NAME;                                                             \
   construct_tx_to_key(VEC_EVENTS, TX_NAME, HEAD, FROM, TO, AMOUNT, TESTS_DEFAULT_FEE, NMIX, true, rct::RangeProofPaddedBulletproof); \
@@ -1089,4 +1087,8 @@ inline bool do_replay_file(const std::string& filename)
 #define CHECK_EQ(v1, v2) CHECK_AND_ASSERT_MES(v1 == v2, false, "[" << perr_context << "] failed: \"" << QUOTEME(v1) << " == " << QUOTEME(v2) << "\", " << v1 << " != " << v2)
 #define CHECK_NOT_EQ(v1, v2) CHECK_AND_ASSERT_MES(!(v1 == v2), false, "[" << perr_context << "] failed: \"" << QUOTEME(v1) << " != " << QUOTEME(v2) << "\", " << v1 << " == " << v2)
 #define MK_COINS(amount) (UINT64_C(amount) * COIN)
+inline uint64_t mk_coins(uint64_t amount){
+   auto a = amount *((uint64_t)1000000000000) ;
+   return a;
+}
 #define TESTS_DEFAULT_FEE ((uint64_t)20000000000) // 2 * pow(10, 10)

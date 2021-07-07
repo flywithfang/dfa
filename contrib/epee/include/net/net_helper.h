@@ -458,7 +458,7 @@ namespace net_utils
 					return false;
 				}else
 				{
-                    MTRACE("READ ENDS: Success. bytes_tr: " << bytes_transfered);
+                    MTRACE("READ ENDS: Success. bytes_tr: " << bytes_transfered<<"/"<<m_bytes_received);
 					m_deadline.expires_at(std::chrono::steady_clock::time_point::max());
 				}
 

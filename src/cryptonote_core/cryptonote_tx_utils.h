@@ -33,11 +33,21 @@
 #include <boost/serialization/vector.hpp>
 #include <boost/serialization/utility.hpp>
 #include "ringct/rctOps.h"
-
+#include <tuple>
 namespace cryptonote
 {
   //---------------------------------------------------------------
   bool construct_miner_tx(size_t height, size_t median_weight, uint64_t already_generated_coins, size_t current_block_weight, uint64_t fee, const account_public_address &miner_address, transaction& tx, const blobdata& extra_nonce = blobdata(), size_t max_outs = 999, uint8_t hard_fork_version = 1);
+
+    inline std::tuple<bool, transaction> construct_miner_tx_2(size_t height, size_t median_weight, uint64_t already_generated_coins, size_t current_block_weight, uint64_t fee, const account_public_address &miner_address,  const blobdata& extra_nonce = blobdata(), size_t max_outs = 999, uint8_t hard_fork_version = 1)
+    {
+      transaction tx;
+
+      auto r =construct_miner_tx(height,median_weight,already_generated_coins,current_block_weight,fee,miner_address,tx,extra_nonce,max_outs,hard_fork_version);
+
+      return std::make_tuple(r,tx);
+
+    }
 
   struct tx_source_entry
   {

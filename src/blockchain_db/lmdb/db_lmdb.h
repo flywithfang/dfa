@@ -356,7 +356,7 @@ public:
   static int compare_uint64(const MDB_val *a, const MDB_val *b);
   static int compare_hash32(const MDB_val *a, const MDB_val *b);
   static int compare_string(const MDB_val *a, const MDB_val *b);
-
+  void print_databases();
 private:
   void check_mmap_support();
   void do_resize(uint64_t size_increase=0);

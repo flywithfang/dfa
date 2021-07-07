@@ -187,6 +187,7 @@ namespace crypto {
     return true;
   }
 
+
   bool crypto_ops::generate_key_derivation(const public_key &key1, const secret_key &key2, key_derivation &derivation) {
     ge_p3 point;
     ge_p2 point2;
@@ -214,18 +215,20 @@ namespace crypto {
     hash_to_scalar(&buf, end - reinterpret_cast<char *>(&buf), res);
   }
 
+
   bool crypto_ops::derive_public_key(const key_derivation &derivation, size_t output_index,
-    const public_key &base, public_key &derived_key) {
+    const public_key &B, public_key &derived_key) {
     ec_scalar scalar;
     ge_p3 point1;
     ge_p3 point2;
     ge_cached point3;
     ge_p1p1 point4;
     ge_p2 point5;
-    if (ge_frombytes_vartime(&point1, &base) != 0) {
+    if (ge_frombytes_vartime(&point1, &B) != 0) {
       return false;
     }
     derivation_to_scalar(derivation, output_index, scalar);
+    // H(xA||i)G+B
     ge_scalarmult_base(&point2, &scalar);
     ge_p3_to_cached(&point3, &point2);
     ge_add(&point4, &point1, &point3);
@@ -235,11 +238,12 @@ namespace crypto {
   }
 
   void crypto_ops::derive_secret_key(const key_derivation &derivation, size_t output_index,
-    const secret_key &base, secret_key &derived_key) {
+    const secret_key &b, secret_key &derived_key) {
     ec_scalar scalar;
     assert(sc_check(&base) == 0);
     derivation_to_scalar(derivation, output_index, scalar);
-    sc_add(&unwrap(derived_key), &unwrap(base), &scalar);
+    //H(xA||i)+b
+    sc_add(&unwrap(derived_key), &unwrap(b), &scalar);
   }
 
   bool crypto_ops::derive_subaddress_public_key(const public_key &out_key, const key_derivation &derivation, std::size_t output_index, public_key &derived_key) {
@@ -291,31 +295,28 @@ namespace crypto {
     ge_p3 tmp3;
     ec_scalar k;
     s_comm buf;
-#if !defined(NDEBUG)
-    {
-      ge_p3 t;
-      public_key t2;
-      assert(sc_check(&sec) == 0);
-      ge_scalarmult_base(&t, &sec);
-      ge_p3_tobytes(&t2, &t);
-      assert(pub == t2);
-    }
-#endif
+
     buf.h = prefix_hash;
     buf.key = pub;
   try_again:
     random_scalar(k);
     ge_scalarmult_base(&tmp3, &k);
+    //kg
     ge_p3_tobytes(&buf.comm, &tmp3);
+    //c=H(m||kg)
     hash_to_scalar(&buf, sizeof(s_comm), sig.c);
     if (!sc_isnonzero((const unsigned char*)sig.c.data))
       goto try_again;
+    //r=k-sc
+    //r+sc=k-->  rg+Sc=kg---> 
+    //c
     sc_mulsub(&sig.r, &sig.c, &unwrap(sec), &k);
     if (!sc_isnonzero((const unsigned char*)sig.r.data))
       goto try_again;
     memwipe(&k, sizeof(k));
   }
 
+// H(m||(rg+Sc))=c
   bool crypto_ops::check_signature(const hash &prefix_hash, const public_key &pub, const signature &sig) {
     ge_p2 tmp2;
     ge_p3 tmp3;
@@ -330,6 +331,7 @@ namespace crypto {
     if (sc_check(&sig.c) != 0 || sc_check(&sig.r) != 0 || !sc_isnonzero(&sig.c)) {
       return false;
     }
+    //H(m||S||(c*S +r*g))=c
     ge_double_scalarmult_base_vartime(&tmp2, &sig.c, &tmp3, &sig.r);
     ge_tobytes(&buf.comm, &tmp2);
     static const ec_point infinity = {{ 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}};
@@ -508,7 +510,7 @@ namespace crypto {
   bool crypto_ops::check_tx_proof(const hash &prefix_hash, const public_key &R, const public_key &A, const boost::optional<public_key> &B, const public_key &D, const signature &sig, const int version) {
     // sanity check
     ge_p3 R_p3;
-    ge_p3 A_p3;
+    ge_p3 A_p3; 
     ge_p3 B_p3;
     ge_p3 D_p3;
     if (ge_frombytes_vartime(&R_p3, &R) != 0) return false;
@@ -623,6 +625,7 @@ namespace crypto {
     ge_p2 point2;
     assert(sc_check(&sec) == 0);
     hash_to_ec(pub, point);
+    //s*S
     ge_scalarmult(&point2, &unwrap(sec), &point);
     ge_tobytes(&image, &point2);
   }

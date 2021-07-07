@@ -657,7 +657,7 @@ namespace rct {
     bool is_rct_bulletproof(int type);
     bool is_rct_borromean(int type);
 
-    static inline const rct::key &pk2rct(const crypto::public_key &pk) { return (const rct::key&)pk; }
+  static inline const rct::key &pk2rct(const crypto::public_key &pk) { return (const rct::key&)pk; }
     static inline const rct::key &sk2rct(const crypto::secret_key &sk) { return (const rct::key&)sk; }
     static inline const rct::key &ki2rct(const crypto::key_image &ki) { return (const rct::key&)ki; }
     static inline const rct::key &hash2rct(const crypto::hash &h) { return (const rct::key&)h; }

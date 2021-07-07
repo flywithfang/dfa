@@ -484,6 +484,7 @@ namespace cryptonote
       if(check_hash(h, diffic))
       {
         bl.invalidate_hashes();
+        std::cout<<"find_nonce_for_given_block "<<h<<"/"<<diffic<<","<<bl.prev_id<<","<<get_block_hash(bl)<<","<<bl.nonce<<",h="<<height<<std::endl;
         return true;
       }
     }

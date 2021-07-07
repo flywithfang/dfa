@@ -234,22 +234,22 @@ void BlockchainDB::add_transaction(const crypto::hash& blk_hash, const std::pair
 
   // iterate tx.vout using indices instead of C++11 foreach syntax because
   // we need the index
-  for (uint64_t i = 0; i < tx.vout.size(); ++i)
+  for (uint64_t oi = 0; oi < tx.vout.size(); ++oi)
   {
     // miner v2 txes have their coinbase output in one single out to save space,
     // and we store them as rct outputs with an identity mask
     if (miner_tx && tx.version == 2)
     {
-      cryptonote::tx_out vout = tx.vout[i];
+      cryptonote::tx_out vout = tx.vout[oi];
       rct::key commitment = rct::zeroCommit(vout.amount);
       vout.amount = 0;
-      amount_output_indices[i] = add_output(tx_hash, vout, i, tx.unlock_time,
+      amount_output_indices[oi] = add_output(tx_hash, vout, oi, tx.unlock_time,
         &commitment);
     }
     else
     {
-      amount_output_indices[i] = add_output(tx_hash, tx.vout[i], i, tx.unlock_time,
-        tx.version > 1 ? &tx.rct_signatures.outPk[i].mask : NULL);
+      amount_output_indices[oi] = add_output(tx_hash, tx.vout[oi], oi, tx.unlock_time,
+        tx.version > 1 ? &tx.rct_signatures.outPk[oi].mask : NULL);
     }
   }
   add_tx_amount_output_indices(tx_id, amount_output_indices);

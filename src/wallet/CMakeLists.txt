@@ -38,6 +38,10 @@ set(wallet_sources
   message_store.cpp
   message_transporter.cpp
   wallet_rpc_payments.cpp
+  transaction_create.cpp
+  transaction_in.cpp
+  transaction_out.cpp
+  transaction_refresh.cpp
 )
 
 monero_find_all_headers(wallet_private_headers "${CMAKE_CURRENT_SOURCE_DIR}")
@@ -54,7 +58,6 @@ target_link_libraries(wallet
     common
     cryptonote_core
     mnemonics
-    device_trezor
     net
     ${LMDB_LIBRARY}
     ${Boost_CHRONO_LIBRARY}

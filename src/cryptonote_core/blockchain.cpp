@@ -3143,15 +3143,17 @@ bool Blockchain::expand_transaction_2(transaction &tx, const crypto::hash &tx_pr
   else if (rv.type == rct::RCTTypeSimple || rv.type == rct::RCTTypeBulletproof || rv.type == rct::RCTTypeBulletproof2 || rv.type == rct::RCTTypeCLSAG)
   {
     CHECK_AND_ASSERT_MES(!pubkeys.empty() && !pubkeys[0].empty(), false, "empty pubkeys");
-    rv.mixRing.resize(pubkeys.size());
-    for (size_t n = 0; n < pubkeys.size(); ++n)
+   // rv.mixRing.resize(pubkeys.size());
+    rv.mixRing=pubkeys;
+   /* for (size_t n = 0; n < pubkeys.size(); ++n)
     {
+      rv.mixRing[n]= pubkeys[n];
       rv.mixRing[n].clear();
       for (size_t m = 0; m < pubkeys[n].size(); ++m)
       {
         rv.mixRing[n].push_back(pubkeys[n][m]);
       }
-    }
+    }*/
   }
   else
   {

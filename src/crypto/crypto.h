@@ -36,6 +36,7 @@
 #include <type_traits>
 #include <vector>
 #include <random>
+#include <tuple>
 
 #include "common/pod-class.h"
 #include "memwipe.h"
@@ -223,12 +224,27 @@ namespace crypto {
     const public_key &base, public_key &derived_key) {
     return crypto_ops::derive_public_key(derivation, output_index, base, derived_key);
   }
+
+   inline std::tuple<bool,public_key> derive_public_key(const key_derivation &derivation, size_t output_index,
+    const public_key &A ) {
+      public_key derived_key;
+
+     auto r=  derive_public_key(derivation,output_index,A,derived_key);
+     return std::make_tuple(r,derived_key);
+   }
   inline void derivation_to_scalar(const key_derivation &derivation, size_t output_index, ec_scalar &res) {
     return crypto_ops::derivation_to_scalar(derivation, output_index, res);
   }
-  inline void derive_secret_key(const key_derivation &derivation, std::size_t output_index,
+ 
+   inline void derive_secret_key(const key_derivation &derivation, std::size_t output_index,
     const secret_key &base, secret_key &derived_key) {
     crypto_ops::derive_secret_key(derivation, output_index, base, derived_key);
+  }
+   inline  secret_key derive_secret_key(const key_derivation &derivation, std::size_t output_index,
+    const secret_key &b) {
+      secret_key derived_key;
+      derive_secret_key(derivation, output_index, b, derived_key);
+    return derived_key;
   }
   inline bool derive_subaddress_public_key(const public_key &out_key, const key_derivation &derivation, std::size_t output_index, public_key &result) {
     return crypto_ops::derive_subaddress_public_key(out_key, derivation, output_index, result);
@@ -307,7 +323,19 @@ namespace crypto {
   inline std::ostream &operator <<(std::ostream &o, const crypto::signature &v) {
     epee::to_hex::formatted(o, epee::as_byte_span(v)); return o;
   }
-
+   inline std::ostream &operator <<(std::ostream &o, const crypto::ec_scalar &v) {
+    epee::to_hex::formatted(o, epee::as_byte_span(v)); return o;
+  }
+  inline std::ostream &operator <<(std::ostream &o, const std::vector<signature> &v) {
+    int index=0;
+    for(auto s:v){
+      o<<std::to_string(index)<<":";
+      epee::to_hex::formatted(o, epee::as_byte_span(s)); 
+      o<<std::endl;
+      ++index;
+  }
+  return o;
+  }
   const extern crypto::public_key null_pkey;
   const extern crypto::secret_key null_skey;
 }

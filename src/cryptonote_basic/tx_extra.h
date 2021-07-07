@@ -106,10 +106,53 @@ namespace cryptonote
   {
     std::string nonce;
 
-    BEGIN_SERIALIZE()
-      FIELD(nonce)
+   // BEGIN_SERIALIZE()
+     template < template <bool> class Archive>     
+  bool do_serialize(Archive<true> &ar) {
+     // FIELD(nonce)
+     do {             
+    ar.tag("nonce");      
+   bool r = ::do_serialize(ar, nonce);     
+  
+    if (!r || !ar.stream().good()) return false;  
+  } while(0);
+
       if(TX_EXTRA_NONCE_MAX_COUNT < nonce.size()) return false;
-    END_SERIALIZE()
+    //END_SERIALIZE()
+    return ar.stream().good();     
+  }
+  template < template <bool> class Archive>     
+  bool do_serialize(Archive<false> &ar) {
+     // FIELD(nonce)
+     do {             
+    ar.tag("nonce");      
+   bool r =true;// ::do_serialize(ar, nonce);     
+   std::string & str = nonce;
+     {
+        size_t size = 0;
+
+        ar.serialize_varint(size);
+      //  std::cout<<"string size "<<str.size()<<"/"<<size<<","<<ar.remaining_bytes()<<std::endl;
+        if (ar.remaining_bytes() < size)
+        {
+          ar.stream().setstate(std::ios::failbit);
+          return false;
+        }
+
+        std::unique_ptr<std::string::value_type[]> buf(new std::string::value_type[size]);
+        ar.serialize_blob(buf.get(), size);
+        str.erase();
+        str.append(buf.get(), size);
+
+     }
+    if (!r || !ar.stream().good()) return false;  
+  } while(0);
+  
+      if(TX_EXTRA_NONCE_MAX_COUNT < nonce.size()) return false;
+    //END_SERIALIZE()
+    return ar.stream().good();     
+  }
+
   };
 
   struct tx_extra_merge_mining_tag
@@ -187,8 +230,21 @@ namespace cryptonote
 }
 
 VARIANT_TAG(binary_archive, cryptonote::tx_extra_padding, TX_EXTRA_TAG_PADDING);
-VARIANT_TAG(binary_archive, cryptonote::tx_extra_pub_key, TX_EXTRA_TAG_PUBKEY);
+//VARIANT_TAG(binary_archive, cryptonote::tx_extra_pub_key, TX_EXTRA_TAG_PUBKEY);
+ template <bool W>              
+  struct variant_serialization_traits<binary_archive<W>, cryptonote::tx_extra_pub_key> {   
+    static inline typename binary_archive<W>::variant_tag_type get_tag() { 
+      return TX_EXTRA_TAG_PUBKEY;             
+    }                 
+  };
+
 VARIANT_TAG(binary_archive, cryptonote::tx_extra_nonce, TX_EXTRA_NONCE);
 VARIANT_TAG(binary_archive, cryptonote::tx_extra_merge_mining_tag, TX_EXTRA_MERGE_MINING_TAG);
-VARIANT_TAG(binary_archive, cryptonote::tx_extra_additional_pub_keys, TX_EXTRA_TAG_ADDITIONAL_PUBKEYS);
+//VARIANT_TAG(binary_archive, cryptonote::tx_extra_additional_pub_keys, TX_EXTRA_TAG_ADDITIONAL_PUBKEYS);
+ template <bool W>              
+  struct variant_serialization_traits<binary_archive<W>, cryptonote::tx_extra_additional_pub_keys> {   
+    static inline typename binary_archive<W>::variant_tag_type get_tag() { 
+      return TX_EXTRA_TAG_ADDITIONAL_PUBKEYS;             
+    }                 
+  };
 VARIANT_TAG(binary_archive, cryptonote::tx_extra_mysterious_minergate, TX_EXTRA_MYSTERIOUS_MINERGATE_TAG);

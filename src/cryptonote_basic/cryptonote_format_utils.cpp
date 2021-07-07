@@ -1,21 +1,21 @@
 // Copyright (c) 2014-2020, The Monero Project
-// 
+//
 // All rights reserved.
-// 
+//
 // Redistribution and use in source and binary forms, with or without modification, are
 // permitted provided that the following conditions are met:
-// 
+//
 // 1. Redistributions of source code must retain the above copyright notice, this list of
 //    conditions and the following disclaimer.
-// 
+//
 // 2. Redistributions in binary form must reproduce the above copyright notice, this list
 //    of conditions and the following disclaimer in the documentation and/or other
 //    materials provided with the distribution.
-// 
+//
 // 3. Neither the name of the copyright holder nor the names of its contributors may be
 //    used to endorse or promote products derived from this software without specific
 //    prior written permission.
-// 
+//
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY
 // EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
 // MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL
@@ -25,7 +25,7 @@
 // INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
 // STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-// 
+//
 // Parts of this file are originally copyright (c) 2012-2013 The Cryptonote developers
 
 #include <atomic>
@@ -128,18 +128,18 @@ namespace cryptonote
   //---------------------------------------------------------------
   void get_transaction_prefix_hash(const transaction_prefix& tx, crypto::hash& h, hw::device &hwdev)
   {
-    hwdev.get_transaction_prefix_hash(tx,h);    
+    hwdev.get_transaction_prefix_hash(tx,h);
   }
 
-  //---------------------------------------------------------------  
+  //---------------------------------------------------------------
   crypto::hash get_transaction_prefix_hash(const transaction_prefix& tx, hw::device &hwdev)
   {
     crypto::hash h = null_hash;
     get_transaction_prefix_hash(tx, h, hwdev);
     return h;
   }
-  
-  //---------------------------------------------------------------  
+
+  //---------------------------------------------------------------
   void get_transaction_prefix_hash(const transaction_prefix& tx, crypto::hash& h)
   {
     std::ostringstream s;
@@ -285,6 +285,8 @@ namespace cryptonote
   bool generate_key_image_helper(const account_keys& ack, const std::unordered_map<crypto::public_key, subaddress_index>& subaddresses, const crypto::public_key& out_key, const crypto::public_key& tx_public_key, const std::vector<crypto::public_key>& additional_tx_public_keys, size_t real_output_index, keypair& in_ephemeral, crypto::key_image& ki, hw::device &hwdev)
   {
     crypto::key_derivation recv_derivation = AUTO_VAL_INIT(recv_derivation);
+    //rGa=rA
+    //H(rA)+b
     bool r = hwdev.generate_key_derivation(tx_public_key, ack.m_view_secret_key, recv_derivation);
     if (!r)
     {
@@ -309,7 +311,7 @@ namespace cryptonote
 
     boost::optional<subaddress_receive_info> subaddr_recv_info = is_out_to_acc_precomp(subaddresses, out_key, recv_derivation, additional_recv_derivations, real_output_index,hwdev);
     CHECK_AND_ASSERT_MES(subaddr_recv_info, false, "key image helper: given output pubkey doesn't seem to belong to this address");
-
+    //H(rA)G+B
     return generate_key_image_helper_precomp(ack, out_key, subaddr_recv_info->derivation, real_output_index, subaddr_recv_info->index, in_ephemeral, ki, hwdev);
   }
   //---------------------------------------------------------------
@@ -567,6 +569,41 @@ namespace cryptonote
     }
     return true;
   }
+
+  class print_extra_visitor : public boost::static_visitor<void>
+{
+public:
+
+    void operator()(const tx_extra_nonce & e) const
+    {
+        std::cout<<"extra nonce "<<e.nonce.size()<<","<<e.nonce<<std::endl;
+    }
+     void operator()(const tx_extra_pub_key & e) const
+    {
+        std::cout<<"extra pub_key "<<e.pub_key<<std::endl;
+    }
+       void operator()(const tx_extra_padding & e) const
+    {
+        std::cout<<"extra tx_extra_padding "<<std::endl;
+    }
+       void operator()(const tx_extra_merge_mining_tag & e) const
+    {
+        std::cout<<"extra tx_extra_merge_mining_tag "<<std::endl;
+    }
+       void operator()(const tx_extra_additional_pub_keys & e) const
+    {
+        std::cout<<"extra tx_extra_additional_pub_keys "<<std::endl;
+    }
+     void operator()(const tx_extra_mysterious_minergate & e) const
+    {
+        std::cout<<"extra tx_extra_additional_pub_keys "<<std::endl;
+    }
+};
+  void print_extra(const tx_extra_field& extra){
+     boost::apply_visitor( print_extra_visitor(), extra);
+  }
+
+
   //---------------------------------------------------------------
   bool sort_tx_extra(const std::vector<uint8_t>& tx_extra, std::vector<uint8_t> &sorted_tx_extra, bool allow_partial)
   {
@@ -587,7 +624,8 @@ namespace cryptonote
     while (!eof)
     {
       tx_extra_field field;
-      bool r = ::do_serialize(ar, field);
+      //bool r = ::do_serialize(ar, field);
+      bool r = ::serializer<binary_archive<false>,tx_extra_field>::serialize(ar,field);
       if (!r)
       {
         MWARNING("failed to deserialize extra field. extra = " << string_tools::buff_to_hex_nodelimer(std::string(reinterpret_cast<const char*>(tx_extra.data()), tx_extra.size())));
@@ -595,6 +633,7 @@ namespace cryptonote
           return false;
         break;
       }
+      print_extra(field);
       tx_extra_fields.push_back(field);
       processed = iss.tellg();
 

@@ -256,6 +256,7 @@ const std::string lmdb_error(const std::string& error_string, int mdb_res)
 
 inline void lmdb_db_open(MDB_txn* txn, const char* name, int flags, MDB_dbi& dbi, const std::string& error_string)
 {
+  printf("lmdb_db_open %s\n",name);
   if (auto res = mdb_dbi_open(txn, name, flags, &dbi))
     throw0(cryptonote::DB_OPEN_FAILURE((lmdb_error(error_string + " : ", res) + std::string(" - you may want to start with --db-salvage")).c_str()));
 }
@@ -1229,7 +1230,12 @@ void BlockchainLMDB::add_spent_key(const crypto::key_image& k_image)
   check_open();
   mdb_txn_cursors *m_cursors = &m_wcursors;
 
-  CURSOR(spent_keys)
+ // CURSOR(spent_keys)
+    if (!m_cur_spent_keys) { 
+    int result = mdb_cursor_open(*m_write_txn, m_spent_keys, &m_cur_spent_keys); 
+    if (result) 
+        throw0(DB_ERROR(lmdb_error("Failed to open cursor: ", result).c_str())); 
+  }
 
   MDB_val k = {sizeof(k_image), (void *)&k_image};
   if (auto result = mdb_cursor_put(m_cur_spent_keys, (MDB_val *)&zerokval, &k, MDB_NODUPDATA)) {
@@ -2469,7 +2475,7 @@ block_header BlockchainLMDB::get_block_header(const crypto::hash& h) const
 
 cryptonote::blobdata BlockchainLMDB::get_block_blob_from_height(const uint64_t& height) const
 {
-  LOG_PRINT_L3("BlockchainLMDB::" << __func__);
+  LOG_PRINT_L3("BlockchainLMDB::" << __func__<<height);
   check_open();
 
   TXN_PREFIX_RDONLY();
@@ -3337,7 +3343,16 @@ uint64_t BlockchainLMDB::get_tx_count() const
   LOG_PRINT_L3("BlockchainLMDB::" << __func__);
   check_open();
 
-  TXN_PREFIX_RDONLY();
+  //TXN_PREFIX_RDONLY();
+
+    MDB_txn *m_txn; 
+  mdb_txn_cursors *m_cursors; 
+  mdb_txn_safe auto_txn; 
+  bool my_rtxn = block_rtxn_start(&m_txn, &m_cursors); 
+  if (my_rtxn)
+   auto_txn.m_tinfo = m_tinfo.get(); 
+  else auto_txn.uncheck();
+
   int result;
 
   MDB_stat db_stats;
@@ -3530,8 +3545,30 @@ bool BlockchainLMDB::has_key_image(const crypto::key_image& img) const
 
   bool ret;
 
-  TXN_PREFIX_RDONLY();
-  RCURSOR(spent_keys);
+  //TXN_PREFIX_RDONLY();
+
+   MDB_txn *m_txn; 
+  mdb_txn_cursors *m_cursors; 
+  mdb_txn_safe auto_txn; 
+  bool my_rtxn = block_rtxn_start(&m_txn, &m_cursors); 
+  if (my_rtxn) auto_txn.m_tinfo = m_tinfo.get(); 
+  else auto_txn.uncheck();
+
+
+  //RCURSOR(spent_keys);
+    if (!m_cur_spent_keys) { 
+    int result = mdb_cursor_open(m_txn, m_spent_keys, (MDB_cursor **)&m_cur_spent_keys); 
+    if (result) 
+        throw0(DB_ERROR(lmdb_error("Failed to open cursor: ", result).c_str())); 
+    if (m_cursors != &m_wcursors) 
+      m_tinfo->m_ti_rflags.m_rf_spent_keys = true; 
+  } else if (m_cursors != &m_wcursors && !m_tinfo->m_ti_rflags.m_rf_spent_keys) { 
+    int result = mdb_cursor_renew(m_txn, m_cur_spent_keys); 
+      if (result) 
+        throw0(DB_ERROR(lmdb_error("Failed to renew cursor: ", result).c_str())); 
+    m_tinfo->m_ti_rflags.m_rf_spent_keys = true; 
+  }
+
 
   MDB_val k = {sizeof(img), (void *)&img};
   ret = (mdb_cursor_get(m_cur_spent_keys, (MDB_val *)&zerokval, &k, MDB_GET_BOTH) == 0);
@@ -5673,5 +5710,46 @@ void BlockchainLMDB::migrate(const uint32_t oldversion)
   if (oldversion < 5)
     migrate_4_5();
 }
-
+void BlockchainLMDB::print_databases(){
+  using namespace std;
+  int r;
+ MDB_txn *txn;
+ r =mdb_txn_begin(m_env,nullptr,MDB_RDONLY,&txn);
+ if(r){
+  throw new runtime_error("fail begin tx");
+ }
+ MDB_dbi db;
+ r = mdb_dbi_open(txn,nullptr,0,&db);
+ if(r){
+  throw new runtime_error("fail to open db " + std::to_string(r));
+}
+  MDB_cursor * cursor;
+  r = mdb_cursor_open(txn, db,&cursor);
+  if(r){
+    throw new runtime_error("fail to open cursor " + std::to_string(r));
+  }
+  MDB_cursor_op op=MDB_NEXT;
+  MDB_val key,val;
+  while(r==0){
+    r = mdb_cursor_get(cursor,&key,&val,op);
+    if(r==0){
+      const char * name =(const char*) key.mv_data;
+      cout<<name<<","<<key.mv_size<<"/"<<val.mv_size<<endl;
+   }
+  }
+  std::vector<MDB_dbi> ids={m_blocks,m_block_heights,m_block_info,m_txs_pruned,m_txs_prunable,m_txs_prunable_hash,m_txs_prunable_tip,m_tx_indices,m_tx_outputs,m_output_txs,m_output_amounts,m_txs,m_spent_keys,m_txpool_meta,m_txpool_blob,m_alt_blocks,m_hf_starting_heights,m_hf_versions,m_properties};
+  std::vector<string> names={"blocks","block_heights","block_info","txs_pruned","txs_prunable","txs_prunable_hash","txs_prunable_tip","tx_indices","tx_outputs","output_txs","output_amounts","txs","spent_keys","txpool_meta","txpool_blob","alt_blocks","hf_starting_heights","hf_versions","properties"};
+  auto i=0;
+  for(auto db : ids){
+         MDB_stat st;
+    if ((r = mdb_stat(txn, db, &st))){
+      throw0(DB_ERROR(lmdb_error("Failed to query m_blocks: ", r).c_str()));
+      }
+      cout<<names[i++]<<","<<st.ms_entries<<",depth:"<<st.ms_depth<<"/"<<st.ms_branch_pages<<"/"<<st.ms_leaf_pages<<endl;
+  }
+  cout<<"r="<<r<<endl;
+  mdb_cursor_close(cursor);
+  mdb_txn_abort(txn);
+  mdb_dbi_close(m_env,db);
+}
 }  // namespace cryptonote

@@ -31,12 +31,15 @@
 #pragma once
 #include <memory>
 #include "serialization.h"
-
+#include <iostream>
 template <template <bool> class Archive>
-inline bool do_serialize(Archive<false>& ar, std::string& str)
+bool do_serialize(Archive<false>& ar, std::string& str)
 {
+  
   size_t size = 0;
+
   ar.serialize_varint(size);
+  //std::cout<<"string size "<<std::to_string(str.size())<<"/"<<std::to_string(size)<<","<<std::to_string(ar.remaining_bytes()) <<std::endl;
   if (ar.remaining_bytes() < size)
   {
     ar.stream().setstate(std::ios::failbit);

@@ -91,50 +91,106 @@ bool one_block::verify_1(cryptonote::core& c, size_t ev_index, const std::vector
     return true;
 }
 
+typedef cryptonote::account_base Account;
 
 ////////
 // class gen_simple_chain_001;
 
 gen_simple_chain_001::gen_simple_chain_001()
 {
-  REGISTER_CALLBACK("verify_callback_1", gen_simple_chain_001::verify_callback_1);
-  REGISTER_CALLBACK("verify_callback_2", gen_simple_chain_001::verify_callback_2);
+ // REGISTER_CALLBACK("verify_callback_1", gen_simple_chain_001::verify_callback_1);
+
+   m_callbacks["verify_callback_1"]= std::bind(&gen_simple_chain_001::verify_callback_1, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
+    m_callbacks["verify_callback_2"]=std::bind(&gen_simple_chain_001::verify_callback_2, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
+
+ // REGISTER_CALLBACK("verify_callback_2", gen_simple_chain_001::verify_callback_2);
+}
+
+transaction make_tx(std::vector<test_event_entry> &events,const cryptonote::block &blk, const Account & from, const var_addr_t & to,uint64_t n,uint64_t nmix=0)
+{
+      cryptonote::transaction t;                                                           
+    construct_tx_to_key(events, t, blk, from, to, n, TESTS_DEFAULT_FEE, nmix); 
+    events.push_back(t);    
+    return t;
+}
+cryptonote::block rewind_block(test_generator & generator,std::vector<test_event_entry> &events, cryptonote::block blk_last, cryptonote::account_base & miner)
+{
+    for (size_t i = 0; i < CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW; ++i)                                                
+    {                                                                                 
+       cryptonote::block blk;                                                         
+      generator.construct_block(blk, blk_last, miner, std::list<cryptonote::transaction>(),  boost::none);                     
+      events.push_back(blk);
+      blk_last = blk;                                                                 
+    }                                                                                 
+    return blk_last;                                                            
 }
 
 bool gen_simple_chain_001::generate(std::vector<test_event_entry> &events)
 {
-    uint64_t ts_start = 1338224400;
+    cryptonote::account_base miner; 
+    miner.generate();
 
-    GENERATE_ACCOUNT(miner);
-    GENERATE_ACCOUNT(alice);
+    cryptonote::account_base alice; 
+    alice.generate();
 
-    MAKE_GENESIS_BLOCK(events, blk_0, miner, ts_start);
-    MAKE_NEXT_BLOCK(events, blk_1, blk_0, miner);
-    MAKE_NEXT_BLOCK(events, blk_1_side, blk_0, miner);
-    MAKE_NEXT_BLOCK(events, blk_2, blk_1, miner);
-    //MAKE_TX(events, tx_0, first_miner_account, alice, 151, blk_2);
+   cout<<"gen_simple_chain_001::generate"<<endl;
+   test_generator generator;          
+    ///MAKE_GENESIS_BLOCK(events, blk_0, miner, ts_start);
+    auto blk_0=make_genesis_block(generator,events,miner);
+    auto blk_1=make_block(generator,events,blk_0,miner);
+    auto blk_1_side=make_block(generator,events,blk_0,miner);
+    auto blk_2=make_block(generator,events,blk_1,miner);
+    
+    //MAKE_NEXT_BLOCK(events, blk_1, blk_0, miner);
+    //MAKE_NEXT_BLOCK(events, blk_1_side, blk_0, miner);
+   // MAKE_NEXT_BLOCK(events, blk_2, blk_1, miner);
 
-    std::vector<cryptonote::block> chain;
-    map_hash2tx_t mtx;
-    /*bool r = */find_block_chain(events, chain, mtx, get_block_hash(boost::get<cryptonote::block>(events[3])));
+   // MAKE_TX(events, tx_0, first_miner_account, alice, 151, blk_2);
+
+    crypto::hash head_hash = get_block_hash(boost::get<cryptonote::block>(events[3]));
+    cout<<"blk hash "<<head_hash;
+    /*bool r = */
+    auto [r, chain, mtx] = events_to_block_chain(events,  head_hash);
     std::cout << "BALANCE = " << get_balance(miner, chain, mtx) << std::endl;
+#if 1
+   // REWIND_BLOCKS(events, blk_2r, blk_2, miner);
+      cryptonote::block blk_2r= rewind_block(generator, events,blk_2,miner) ;                                                     
+   // MAKE_TX_LIST_START(events, txlist_0, miner, alice, MK_COINS(1), blk_2);
+    std::list<cryptonote::transaction> txlist_0; 
+    {
+        auto t1 = make_tx(events,blk_2,miner,alice,mk_coins(1));                                                                                                            
+        txlist_0.push_back(t1);
+       auto t2=make_tx(events,blk_2,miner,alice,mk_coins(2));    
+        txlist_0.push_back(t2);                                                                                                            
+        auto t3=make_tx(events,blk_2,miner,alice,mk_coins(4));                                                    
+        txlist_0.push_back(t3);    
+  }
+   
+    auto blk_3= make_block(generator,events,blk_2r,miner,txlist_0);
+    auto blk_3r=rewind_block(generator,events,blk_3,miner);
+    //MAKE_TX(events, tx_1, miner, alice, MK_COINS(50), blk_3);
+    auto tx_1=make_tx(events,blk_3,miner,alice,mk_coins(50));
+   // MAKE_NEXT_BLOCK_TX1(events, blk_4, blk_3r, miner, tx_1);
 
-    REWIND_BLOCKS(events, blk_2r, blk_2, miner);
-    MAKE_TX_LIST_START(events, txlist_0, miner, alice, MK_COINS(1), blk_2);
-    MAKE_TX_LIST(events, txlist_0, miner, alice, MK_COINS(2), blk_2);
-    MAKE_TX_LIST(events, txlist_0, miner, alice, MK_COINS(4), blk_2);
-    MAKE_NEXT_BLOCK_TX_LIST(events, blk_3, blk_2r, miner, txlist_0);
-    REWIND_BLOCKS(events, blk_3r, blk_3, miner);
-    MAKE_TX(events, tx_1, miner, alice, MK_COINS(50), blk_3);
-    MAKE_NEXT_BLOCK_TX1(events, blk_4, blk_3r, miner, tx_1);
-    REWIND_BLOCKS(events, blk_4r, blk_4, miner);
-    MAKE_TX(events, tx_2, miner, alice, MK_COINS(50), blk_4);
-    MAKE_NEXT_BLOCK_TX1(events, blk_5, blk_4r, miner, tx_2);
-    REWIND_BLOCKS(events, blk_5r, blk_5, miner);
-    MAKE_TX(events, tx_3, miner, alice, MK_COINS(50), blk_5);
-    MAKE_NEXT_BLOCK_TX1(events, blk_6, blk_5r, miner, tx_3);
+  auto blk_4 = make_block(generator, events,blk_3r,miner,{tx_1});
+   // REWIND_BLOCKS(events, blk_4r, blk_4, miner);
+    auto blk_4r=rewind_block(generator,events,blk_4,miner);
+    //MAKE_TX(events, tx_2, miner, alice, MK_COINS(50), blk_4);
+    auto tx_2=make_tx(events,blk_4,miner,alice,mk_coins(50));
+    //MAKE_NEXT_BLOCK_TX1(events, blk_5, blk_4r, miner, tx_2);
+    auto blk_5=make_block(generator,events,blk_4r,miner,{tx_2});
+  //  REWIND_BLOCKS(events, blk_5r, blk_5, miner);
+    auto blk_5r=rewind_block(generator,events,blk_5,miner);
+  //  MAKE_TX(events, tx_3, miner, alice, MK_COINS(50), blk_5);
+    auto tx_3=make_tx(events,blk_5,miner,alice,mk_coins(50));
+    //MAKE_NEXT_BLOCK_TX1(events, blk_6, blk_5r, miner, tx_3);
+    auto blk_6=make_block(generator,events,blk_5r,miner,{tx_3});
 
-    DO_CALLBACK(events, "verify_callback_1");
+    //DO_CALLBACK(events, "verify_callback_1");
+      callback_entry CALLBACK_ENTRY; 
+      CALLBACK_ENTRY.callback_name = "verify_callback_1"; 
+      events.push_back(CALLBACK_ENTRY); 
+#endif
     //e.t.c.
     //MAKE_BLOCK_TX1(events, blk_3, 3, get_block_hash(blk_0), get_test_target(), first_miner_account, ts_start + 10, tx_0);
     //MAKE_BLOCK_TX1(events, blk_3, 3, get_block_hash(blk_0), get_test_target(), first_miner_account, ts_start + 10, tx_0);
@@ -152,6 +208,7 @@ bool gen_simple_chain_001::generate(std::vector<test_event_entry> &events)
 
 bool gen_simple_chain_001::verify_callback_1(cryptonote::core& c, size_t ev_index, const std::vector<test_event_entry> &events)
 {
+    std::cout<<"gen_simple_chain_001 verify_callback_1"<<std::endl;
   return true;
 }
 

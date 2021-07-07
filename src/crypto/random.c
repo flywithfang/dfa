@@ -110,7 +110,9 @@ FINALIZER(deinit_random) {
 }
 
 INITIALIZER(init_random) {
+
   generate_system_random_bytes(32, &state);
+  printf("init_random %ld\n", state.w[0]);
   REGISTER_FINALIZER(deinit_random);
 #if !defined(NDEBUG)
   assert(curstate == 0);

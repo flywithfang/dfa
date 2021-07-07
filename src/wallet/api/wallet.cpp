@@ -2342,6 +2342,7 @@ bool WalletImpl::doInit(const string &daemon_address, const std::string &proxy_a
         this->setTrustedDaemon(false);
         m_refreshIntervalMillis = DEFAULT_REMOTE_NODE_REFRESH_INTERVAL_MILLIS;
     }
+    std::cout<<"light wallet "<<light_wallet()<<std::endl;
     return true;
 }
 

@@ -513,11 +513,13 @@ namespace rct {
         key64 CiH;
         int i = 0;
         for (i = 0; i < ATOMS; i++) {
-            skGen(ai[i]);
+            skGen(ai[i]);//x
             if (b[i] == 0) {
+                //+xG
                 scalarmultBase(sig.Ci[i], ai[i]);
             }
             if (b[i] == 1) {
+                //+ xG+bH
                 addKeys1(sig.Ci[i], ai[i], H2[i]);
             }
             subKeys(CiH[i], sig.Ci[i], H2[i]);
