@@ -44,6 +44,7 @@ set(wallet_sources
   transaction_refresh.cpp
   transaction_proof.cpp
   transaction_history.cpp
+  wallet_load.cpp
 )
 
 monero_find_all_headers(wallet_private_headers "${CMAKE_CURRENT_SOURCE_DIR}")

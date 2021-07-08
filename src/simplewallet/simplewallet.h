@@ -100,8 +100,7 @@ namespace cryptonote
         bool recover, bool two_random, const std::string &old_language);
     boost::optional<epee::wipeable_string> new_wallet(const boost::program_options::variables_map& vm, const cryptonote::account_public_address& address,
         const boost::optional<crypto::secret_key>& spendkey, const crypto::secret_key& viewkey);
-    boost::optional<epee::wipeable_string> new_wallet(const boost::program_options::variables_map& vm,
-        const epee::wipeable_string &multisig_keys, const std::string &old_language);
+
     boost::optional<epee::wipeable_string> new_wallet(const boost::program_options::variables_map& vm);
     boost::optional<epee::wipeable_string> open_wallet(const boost::program_options::variables_map& vm);
     bool close_wallet();
@@ -229,7 +228,6 @@ namespace cryptonote
     bool change_password(const std::vector<std::string>& args);
     bool payment_id(const std::vector<std::string> &args);
     bool print_fee_info(const std::vector<std::string> &args);
-    bool accept_loaded_tx(const tools::wallet2::multisig_tx_set &txs);
     bool print_ring(const std::vector<std::string>& args);
     bool set_ring(const std::vector<std::string>& args);
     bool unset_ring(const std::vector<std::string>& args);

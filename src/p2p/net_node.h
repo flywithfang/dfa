@@ -312,14 +312,33 @@ namespace nodetool
     bool islimitup=false;
     bool islimitdown=false;
 
-    CHAIN_LEVIN_INVOKE_MAP2(p2p_connection_context); //move levin_commands_handler interface invoke(...) callbacks into invoke map
-    CHAIN_LEVIN_NOTIFY_MAP2(p2p_connection_context); //move levin_commands_handler interface notify(...) callbacks into nothing
+    //CHAIN_LEVIN_INVOKE_MAP2(p2p_connection_context); //move levin_commands_handler interface invoke(...) callbacks into invoke map
+  int invoke(int command, const epee::span<const uint8_t> in_buff, epee::byte_stream& buff_out, p2p_connection_context& context) 
+  { 
+  bool handled = false; 
+  return handle_invoke_map(false, command, in_buff, buff_out, context, handled); 
+  } 
+ //   CHAIN_LEVIN_NOTIFY_MAP2(p2p_connection_context); //move levin_commands_handler interface notify(...) callbacks into nothing
+    int notify(int command, const epee::span<const uint8_t> in_buff, p2p_connection_context& context) 
+  { 
+    bool handled = false;
+    epee::byte_stream fake_str; 
+    return handle_invoke_map(true, command, in_buff, fake_str, context, handled); 
+  } 
+
 
     BEGIN_INVOKE_MAP2(node_server)
       if (is_filtered_command(context.m_remote_address, command))
         return LEVIN_ERROR_CONNECTION_HANDLER_NOT_DEFINED;
 
-      HANDLE_INVOKE_T2(COMMAND_HANDSHAKE, &node_server::handle_handshake)
+    if(!is_notify && COMMAND_HANDSHAKE::ID == command) 
+    {
+        handled=true;
+        const auto func=&node_server::handle_handshake;
+      return epee::net_utils::buff_to_t_adapter<internal_owner_type_name, typename COMMAND_HANDSHAKE::request, typename COMMAND_HANDSHAKE::response>(command, in_buff, buff_out, std::bind(func, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4), context);
+    }
+
+     // HANDLE_INVOKE_T2(COMMAND_HANDSHAKE, &node_server::handle_handshake)
       HANDLE_INVOKE_T2(COMMAND_TIMED_SYNC, &node_server::handle_timed_sync)
       HANDLE_INVOKE_T2(COMMAND_PING, &node_server::handle_ping)
       HANDLE_INVOKE_T2(COMMAND_REQUEST_SUPPORT_FLAGS, &node_server::handle_get_support_flags)

@@ -1148,31 +1148,7 @@ namespace tools
         er.message = "failed to parse unsigned transfers: " + std::string(e.what());
         return false;
       }
-    } else if (!req.multisig_txset.empty()) {
-      try {
-        tools::wallet2::multisig_tx_set exported_txs;
-        cryptonote::blobdata blob;
-        if (!epee::string_tools::parse_hexstr_to_binbuff(req.multisig_txset, blob)) {
-          er.code = WALLET_RPC_ERROR_CODE_BAD_HEX;
-          er.message = "Failed to parse hex.";
-          return false;
-        }
-        if (!m_wallet->parse_multisig_tx_from_str(blob, exported_txs)) {
-          er.code = WALLET_RPC_ERROR_CODE_BAD_MULTISIG_TX_DATA;
-          er.message = "cannot load multisig_txset";
-          return false;
-        }
-
-        for (size_t n = 0; n < exported_txs.m_ptx.size(); ++n) {
-          tx_constructions.push_back(exported_txs.m_ptx[n].construction_data);
-        }
-      }
-      catch (const std::exception &e) {
-        er.code = WALLET_RPC_ERROR_CODE_BAD_MULTISIG_TX_DATA;
-        er.message = "failed to parse multisig transfers: " + std::string(e.what());
-        return false;
-      }
-    }
+    } 
 
     try
     {
@@ -1892,22 +1868,6 @@ namespace tools
       {
         epee::wipeable_string seed;
         bool ready;
-        if (m_wallet->multisig(&ready))
-        {
-          if (!ready)
-          {
-            er.code = WALLET_RPC_ERROR_CODE_NOT_MULTISIG;
-            er.message = "This wallet is multisig, but not yet finalized";
-            return false;
-          }
-          if (!m_wallet->get_multisig_seed(seed))
-          {
-            er.code = WALLET_RPC_ERROR_CODE_UNKNOWN_ERROR;
-            er.message = "Failed to get multisig seed.";
-            return false;
-          }
-        }
-        else
         {
           if (m_wallet->watch_only())
           {

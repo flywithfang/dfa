@@ -194,6 +194,8 @@ namespace
  * block_heights    block hash   block height
  * block_info       block ID     {block metadata}
  *
+ * alt_blocks       block hash   {block data, block blob}
+
  * txs_pruned       txn ID       pruned txn blob
  * txs_prunable     txn ID       prunable txn blob
  * txs_prunable_hash txn ID      prunable txn hash
@@ -209,7 +211,7 @@ namespace
  * txpool_meta      txn hash     txn metadata
  * txpool_blob      txn hash     txn blob
  *
- * alt_blocks       block hash   {block data, block blob}
+ 
  *
  * Note: where the data items are of uniform size, DUPFIXED tables have
  * been used to save space. In most of these cases, a dummy "zerokval"
@@ -867,7 +869,13 @@ uint64_t BlockchainLMDB::add_transaction_data(const crypto::hash& blk_hash, cons
   int result;
   uint64_t tx_id = get_tx_count();
 
-  CURSOR(txs_pruned)
+ // CURSOR(txs_pruned)
+    if (!m_cur_txs_pruned) { \
+    int result = mdb_cursor_open(*m_write_txn, m_txs_pruned, &m_cur_txs_pruned); \
+    if (result) \
+        throw0(DB_ERROR(lmdb_error("Failed to open cursor: ", result).c_str())); \
+  }
+
   CURSOR(txs_prunable)
   CURSOR(txs_prunable_hash)
   CURSOR(txs_prunable_tip)
@@ -2872,7 +2880,8 @@ crypto::hash BlockchainLMDB::get_block_hash_from_height(const uint64_t& height) 
   TXN_PREFIX_RDONLY();
   RCURSOR(block_info);
 
-  MDB_val_set(result, height);
+  //MDB_val_set(result, height);
+  MDB_val result{sizeof(height), (void *)&height};
   auto get_result = mdb_cursor_get(m_cur_block_info, (MDB_val *)&zerokval, &result, MDB_GET_BOTH);
   if (get_result == MDB_NOTFOUND)
   {

@@ -1429,10 +1429,6 @@ void wallet2::commit_tx(pending_tx& ptx)
     set_spent(idx, 0);
   }
 
-  // tx generated, get rid of used k values
-  for (size_t idx: ptx.selected_transfers)
-    memwipe(m_transfers[idx].m_multisig_k.data(), m_transfers[idx].m_multisig_k.size() * sizeof(m_transfers[idx].m_multisig_k[0]));
-
   //fee includes dust if dust policy specified it.
   LOG_PRINT_L1("Transaction successfully sent. <" << txid << ">" << ENDL
             << "Commission: " << print_money(ptx.fee) << " (dust sent to dust addr: " << print_money((ptx.dust_added_to_fee ? 0 : ptx.dust)) << ")" << ENDL

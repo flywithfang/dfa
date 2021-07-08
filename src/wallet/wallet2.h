@@ -101,7 +101,6 @@ namespace tools
 
 #define UNSIGNED_TX_PREFIX "Monero unsigned tx set\005"
 #define SIGNED_TX_PREFIX "Monero signed tx set\005"
-#define MULTISIG_UNSIGNED_TX_PREFIX "Monero multisig unsigned tx set\001"
 
 #define RECENT_OUTPUT_RATIO (0.5) // 50% of outputs are from the recent zone
 #define RECENT_OUTPUT_DAYS (1.8) // last 1.8 day makes up the recent zone (taken from monerolink.pdf, Miller et al)
@@ -117,7 +116,6 @@ namespace tools
 
 #define KEY_IMAGE_EXPORT_FILE_MAGIC "Monero key image export\003"
 
-#define MULTISIG_EXPORT_FILE_MAGIC "Monero multisig export\001"
 
 #define OUTPUT_EXPORT_FILE_MAGIC "Monero output export\004"
 
@@ -241,10 +239,15 @@ private:
     size_t size() const { return m_blockchain.size() + m_offset; }
     size_t offset() const { return m_offset; }
     const crypto::hash &genesis() const { return m_genesis; }
-    void push_back(const crypto::hash &hash) { if (m_offset == 0 && m_blockchain.empty()) m_genesis = hash; m_blockchain.push_back(hash); }
+    void push_back(const crypto::hash &hash) {
+     if (m_offset == 0 && m_blockchain.empty()) m_genesis = hash; 
+     m_blockchain.push_back(hash); }
     bool is_in_bounds(size_t idx) const { return idx >= m_offset && idx < size(); }
     const crypto::hash &operator[](size_t idx) const { return m_blockchain[idx - m_offset]; }
-    crypto::hash &operator[](size_t idx) { return m_blockchain[idx - m_offset]; }
+    crypto::hash &operator[](size_t idx) {
+      if(!is_in_bounds(idx)) throw std::runtime_error("bad block index "+std::to_string(idx));
+     return m_blockchain[idx - m_offset]; 
+   }
     void crop(size_t height) { m_blockchain.resize(height - m_offset); }
     void clear() { m_offset = 0; m_blockchain.clear(); }
     bool empty() const { return m_blockchain.empty() && m_offset == 0; }
@@ -263,7 +266,12 @@ private:
       VERSION_FIELD(0)
       VARINT_FIELD(m_offset)
       FIELD(m_genesis)
-      FIELD(m_blockchain)
+  //    FIELD(m_blockchain)
+        do {              
+          ar.tag("m_blockchain");           
+          bool r = ::do_serialize(ar, m_blockchain);     
+          if (!r || !ar.stream().good()) return false;  
+        } while(0);
     END_SERIALIZE()
 
   private:
@@ -333,29 +341,7 @@ private:
     wallet2(cryptonote::network_type nettype = cryptonote::MAINNET, uint64_t kdf_rounds = 1, bool unattended = false, std::unique_ptr<epee::net_utils::http::http_client_factory> http_client_factory = std::unique_ptr<epee::net_utils::http::http_client_factory>(new net::http::client_factory()));
     ~wallet2();
 
-    struct multisig_info
-    {
-      struct LR
-      {
-        rct::key m_L;
-        rct::key m_R;
 
-        BEGIN_SERIALIZE_OBJECT()
-          FIELD(m_L)
-          FIELD(m_R)
-        END_SERIALIZE()
-      };
-
-      crypto::public_key m_signer;
-      std::vector<LR> m_LR;
-      std::vector<crypto::key_image> m_partial_key_images; // one per key the participant has
-
-      BEGIN_SERIALIZE_OBJECT()
-        FIELD(m_signer)
-        FIELD(m_LR)
-        FIELD(m_partial_key_images)
-      END_SERIALIZE()
-    };
 
     struct tx_scan_info_t
     {
@@ -389,21 +375,56 @@ private:
       uint64_t m_pk_index;
       cryptonote::subaddress_index m_subaddr_index;
       bool m_key_image_partial;
-      std::vector<rct::key> m_multisig_k;
-      std::vector<multisig_info> m_multisig_info; // one per other participant
       std::vector<std::pair<uint64_t, crypto::hash>> m_uses;
 
       bool is_rct() const { return m_rct; }
       uint64_t amount() const { return m_amount; }
       const crypto::public_key &get_public_key() const { return boost::get<const cryptonote::txout_to_key>(m_tx.vout[m_internal_output_index].target).key; }
 
-      BEGIN_SERIALIZE_OBJECT()
-        FIELD(m_block_height)
-        FIELD(m_tx)
-        FIELD(m_txid)
-        FIELD(m_internal_output_index)
-        FIELD(m_global_output_index)
-        FIELD(m_spent)
+ //     BEGIN_SERIALIZE_OBJECT()
+  template <bool W, template <bool> class Archive>      
+  bool do_serialize(Archive<W> &ar) {         
+    ar.begin_object();              
+    bool r = do_serialize_object(ar);         
+    ar.end_object();              
+    return r;               
+  }                 
+  template <bool W, template <bool> class Archive>      
+  bool do_serialize_object(Archive<W> &ar){
+        //FIELD(m_block_height)
+         do {             
+            ar.tag("m_block_height");           
+            bool r = ::do_serialize(ar, m_block_height);    
+
+            MDEBUG("read wallet block height "<<m_block_height) ;
+            if (!r || !ar.stream().good()) return false;  
+        } while(0);
+         do {             
+            ar.tag("m_tx");           
+            bool r = ::do_serialize(ar, m_tx);     
+            if (!r || !ar.stream().good()) return false;  
+        } while(0);
+         do {             
+            ar.tag("m_txid");           
+            bool r = ::do_serialize(ar, m_txid);     
+            if (!r || !ar.stream().good()) return false;  
+        } while(0);
+         do {             
+            ar.tag("m_internal_output_index");           
+            bool r = ::do_serialize(ar, m_internal_output_index);     
+            if (!r || !ar.stream().good()) return false;  
+        } while(0);
+         do {             
+            ar.tag("m_global_output_index");           
+            bool r = ::do_serialize(ar, m_global_output_index);     
+            if (!r || !ar.stream().good()) return false;  
+        } while(0);
+         do {             
+            ar.tag("m_spent");           
+            bool r = ::do_serialize(ar, m_spent);     
+            if (!r || !ar.stream().good()) return false;  
+        } while(0);
+
         FIELD(m_frozen)
         FIELD(m_spent_height)
         FIELD(m_key_image)
@@ -415,10 +436,9 @@ private:
         FIELD(m_pk_index)
         FIELD(m_subaddr_index)
         FIELD(m_key_image_partial)
-        FIELD(m_multisig_k)
-        FIELD(m_multisig_info)
         FIELD(m_uses)
-      END_SERIALIZE()
+        return ar.stream().good();      
+  }
     };
 
     typedef std::vector<uint64_t> amounts_container;
@@ -565,23 +585,6 @@ private:
     typedef std::vector<transfer_details> transfer_container;
     typedef serializable_unordered_multimap<crypto::hash, payment_details> payment_container;
 
-    struct multisig_sig
-    {
-      rct::rctSig sigs;
-      std::unordered_set<crypto::public_key> ignore;
-      std::unordered_set<rct::key> used_L;
-      std::unordered_set<crypto::public_key> signing_keys;
-      rct::multisig_out msout;
-
-      BEGIN_SERIALIZE_OBJECT()
-        VERSION_FIELD(0)
-        FIELD(sigs)
-        FIELD(ignore)
-        FIELD(used_L)
-        FIELD(signing_keys)
-        FIELD(msout)
-      END_SERIALIZE()
-    };
 
     // The convention for destinations is:
     // dests does not include change
@@ -597,7 +600,6 @@ private:
       crypto::secret_key tx_key;
       std::vector<crypto::secret_key> additional_tx_keys;
       std::vector<cryptonote::tx_destination_entry> dests;
-      std::vector<multisig_sig> multisig_sigs;
 
       tx_construction_data construction_data;
 
@@ -613,7 +615,6 @@ private:
         FIELD(additional_tx_keys)
         FIELD(dests)
         FIELD(construction_data)
-        FIELD(multisig_sigs)
       END_SERIALIZE()
     };
 
@@ -645,16 +646,7 @@ private:
       END_SERIALIZE()
     };
 
-    struct multisig_tx_set
-    {
-      std::vector<pending_tx> m_ptx;
-      std::unordered_set<crypto::public_key> m_signers;
-
-      BEGIN_SERIALIZE_OBJECT()
-        FIELD(m_ptx)
-        FIELD(m_signers)
-      END_SERIALIZE()
-    };
+   
 
     struct keys_file_data
     {
@@ -744,15 +736,6 @@ private:
       bool empty() const { return tx_extra_fields.empty() && primary.empty() && additional.empty(); }
     };
 
-    /*!
-     * \brief  Generates a wallet or restores one.
-     * \param  wallet_              Name of wallet file
-     * \param  password             Password of wallet file
-     * \param  multisig_data        The multisig restore info and keys
-     * \param  create_address_file  Whether to create an address file
-     */
-    void generate(const std::string& wallet_, const epee::wipeable_string& password,
-      const epee::wipeable_string& multisig_data, bool create_address_file = false);
 
     /*!
      * \brief Generates a wallet or restores one.
@@ -799,61 +782,8 @@ private:
      */
     void restore(const std::string& wallet_, const epee::wipeable_string& password, const std::string &device_name, bool create_address_file = false);
 
-    /*!
-     * \brief Creates a multisig wallet
-     * \return empty if done, non empty if we need to send another string
-     * to other participants
-     */
-    std::string make_multisig(const epee::wipeable_string &password,
-      const std::vector<std::string> &info,
-      uint32_t threshold);
-    /*!
-     * \brief Creates a multisig wallet
-     * \return empty if done, non empty if we need to send another string
-     * to other participants
-     */
-    std::string make_multisig(const epee::wipeable_string &password,
-      const std::vector<crypto::secret_key> &view_keys,
-      const std::vector<crypto::public_key> &spend_keys,
-      uint32_t threshold);
-    std::string exchange_multisig_keys(const epee::wipeable_string &password,
-      const std::vector<std::string> &info);
-    /*!
-     * \brief Any but first round of keys exchange
-     */
-    std::string exchange_multisig_keys(const epee::wipeable_string &password,
-      std::unordered_set<crypto::public_key> pkeys,
-      std::vector<crypto::public_key> signers);
-    /*!
-     * \brief Finalizes creation of a multisig wallet
-     */
-    bool finalize_multisig(const epee::wipeable_string &password, const std::vector<std::string> &info);
-    /*!
-     * \brief Finalizes creation of a multisig wallet
-     */
-    bool finalize_multisig(const epee::wipeable_string &password, const std::unordered_set<crypto::public_key> &pkeys, std::vector<crypto::public_key> signers);
-    /*!
-     * Get a packaged multisig information string
-     */
-    std::string get_multisig_info() const;
-    /*!
-     * Verifies and extracts keys from a packaged multisig information string
-     */
-    static bool verify_multisig_info(const std::string &data, crypto::secret_key &skey, crypto::public_key &pkey);
-    /*!
-     * Verifies and extracts keys from a packaged multisig information string
-     */
-    static bool verify_extra_multisig_info(const std::string &data, std::unordered_set<crypto::public_key> &pkeys, crypto::public_key &signer);
-    /*!
-     * Export multisig info
-     * This will generate and remember new k values
-     */
-    cryptonote::blobdata export_multisig();
-    /*!
-     * Import a set of multisig info from multisig partners
-     * \return the number of inputs which were imported
-     */
-    size_t import_multisig(std::vector<cryptonote::blobdata> info);
+    
+
     /*!
      * \brief Rewrites to the wallet file for wallet upgrade (doesn't generate key, assumes it's already there)
      * \param wallet_name Name of wallet file (should exist)
@@ -982,10 +912,7 @@ private:
 
     cryptonote::network_type nettype() const { return m_nettype; }
     bool watch_only() const { return m_watch_only; }
-    bool multisig(bool *ready = NULL, uint32_t *threshold = NULL, uint32_t *total = NULL) const;
-    bool has_multisig_partial_key_images() const;
     bool has_unknown_key_images() const;
-    bool get_multisig_seed(epee::wipeable_string& seed, const epee::wipeable_string &passphrase = std::string(), bool raw = true) const;
     bool key_on_device() const { return get_device_type() != hw::device::device_type::SOFTWARE; }
     hw::device::device_type get_device_type() const { return m_key_device_type; }
     bool reconnect_device();
@@ -1008,11 +935,6 @@ private:
     void commit_tx(std::vector<pending_tx>& ptx_vector);
     bool save_tx(const std::vector<pending_tx>& ptx_vector, const std::string &filename) const;
     std::string dump_tx_to_str(const std::vector<pending_tx> &ptx_vector) const;
-    std::string save_multisig_tx(multisig_tx_set txs);
-    bool save_multisig_tx(const multisig_tx_set &txs, const std::string &filename);
-    std::string save_multisig_tx(const std::vector<pending_tx>& ptx_vector);
-    bool save_multisig_tx(const std::vector<pending_tx>& ptx_vector, const std::string &filename);
-    multisig_tx_set make_multisig_tx_set(const std::vector<pending_tx>& ptx_vector) const;
     // load unsigned tx from file and sign it. Takes confirmation callback as argument. Used by the cli wallet
     bool sign_tx(const std::string &unsigned_filename, const std::string &signed_filename, std::vector<wallet2::pending_tx> &ptx, std::function<bool(const unsigned_tx_set&)> accept_func = NULL, bool export_raw = false);
     // sign unsigned tx. Takes unsigned_tx_set as argument. Used by GUI
@@ -1033,12 +955,6 @@ private:
     void cold_sign_tx(const std::vector<pending_tx>& ptx_vector, signed_tx_set &exported_txs, std::vector<cryptonote::address_parse_info> &dsts_info, std::vector<std::string> & tx_device_aux);
     uint64_t cold_key_image_sync(uint64_t &spent, uint64_t &unspent);
     void device_show_address(uint32_t account_index, uint32_t address_index, const boost::optional<crypto::hash8> &payment_id);
-    bool parse_multisig_tx_from_str(std::string multisig_tx_st, multisig_tx_set &exported_txs) const;
-    bool load_multisig_tx(cryptonote::blobdata blob, multisig_tx_set &exported_txs, std::function<bool(const multisig_tx_set&)> accept_func = NULL);
-    bool load_multisig_tx_from_file(const std::string &filename, multisig_tx_set &exported_txs, std::function<bool(const multisig_tx_set&)> accept_func = NULL);
-    bool sign_multisig_tx_from_file(const std::string &filename, std::vector<crypto::hash> &txids, std::function<bool(const multisig_tx_set&)> accept_func);
-    bool sign_multisig_tx(multisig_tx_set &exported_txs, std::vector<crypto::hash> &txids);
-    bool sign_multisig_tx_to_file(multisig_tx_set &exported_txs, const std::string &filename, std::vector<crypto::hash> &txids);
     std::vector<pending_tx> create_unmixable_sweep_transactions();
     void discard_unmixable_outputs();
     bool check_connection(uint32_t *version = NULL, bool *ssl = NULL, uint32_t timeout = 200000);
@@ -1184,9 +1100,32 @@ private:
     }
 
     BEGIN_SERIALIZE_OBJECT()
-      MAGIC_FIELD("monero wallet cache")
-      VERSION_FIELD(0)
-      FIELD(m_blockchain)
+    MDEBUG("serialize wallet2");
+       std::string magic = "monero wallet cache";     
+      do {            
+        ar.tag("magic");        
+        ar.serialize_blob((void*)magic.data(), magic.size()); 
+        if (!ar.stream().good()) return false;  
+        if (magic != "monero wallet cache") return false;   
+      } while(0);
+
+       uint32_t version = 0;        
+      do {            
+        ar.tag("version");        
+        ar.serialize_varint(version);   
+        if (!ar.stream().good()) return false;  
+      } while(0);
+
+       do {             
+          ar.tag("m_blockchain");           
+          bool r = ::do_serialize(ar, m_blockchain);     
+          if (!r || !ar.stream().good()) return false;  
+        } while(0);
+        do {             
+          ar.tag("m_transfers");           
+          bool r = ::do_serialize(ar, m_transfers);     
+          if (!r || !ar.stream().good()) return false;  
+        } while(0);
       FIELD(m_transfers)
       FIELD(m_account_public_address)
       FIELD(m_key_images)
@@ -1400,13 +1339,7 @@ private:
     struct message_signature_result_t { bool valid; unsigned version; bool old; message_signature_type_t type; };
     message_signature_result_t verify(const std::string &data, const cryptonote::account_public_address &address, const std::string &signature) const;
 
-    /*!
-     * \brief sign_multisig_participant signs given message with the multisig public signer key
-     * \param data                      message to sign
-     * \throws                          if wallet is not multisig
-     * \return                          signature
-     */
-    std::string sign_multisig_participant(const std::string& data) const;
+   
     /*!
      * \brief verify_with_public_key verifies message was signed with given public key
      * \param data                   message
@@ -1504,10 +1437,7 @@ private:
     void set_attribute(const std::string &key, const std::string &value);
     bool get_attribute(const std::string &key, std::string &value) const;
 
-    crypto::public_key get_multisig_signer_public_key(const crypto::secret_key &spend_skey) const;
-    crypto::public_key get_multisig_signer_public_key() const;
-    crypto::public_key get_multisig_signing_public_key(size_t idx) const;
-    crypto::public_key get_multisig_signing_public_key(const crypto::secret_key &skey) const;
+  
 
     template<class t_request, class t_response>
     inline bool invoke_http_json(const boost::string_ref uri, const t_request& req, t_response& res, std::chrono::milliseconds timeout = std::chrono::seconds(15), const boost::string_ref http_method = "POST")
@@ -1562,7 +1492,6 @@ private:
     // MMS -------------------------------------------------------------------------------------------------
     mms::message_store& get_message_store() { return m_message_store; };
     const mms::message_store& get_message_store() const { return m_message_store; };
-    mms::multisig_wallet_state get_multisig_wallet_state() const;
 
     bool lock_keys_file();
     bool unlock_keys_file();
@@ -1649,11 +1578,6 @@ private:
     std::vector<size_t> get_only_rct(const std::vector<size_t> &unused_dust_indices, const std::vector<size_t> &unused_transfers_indices) const;
     void scan_output(const cryptonote::transaction &tx, bool miner_tx, const crypto::public_key &tx_pub_key, size_t i, tx_scan_info_t &tx_scan_info, int &num_vouts_received, std::unordered_map<cryptonote::subaddress_index, uint64_t> &tx_money_got_in_outs, std::vector<size_t> &outs, bool pool);
     void trim_hashchain();
-    crypto::key_image get_multisig_composite_key_image(size_t n) const;
-    rct::multisig_kLRki get_multisig_composite_kLRki(size_t n,  const std::unordered_set<crypto::public_key> &ignore_set, std::unordered_set<rct::key> &used_L, std::unordered_set<rct::key> &new_used_L) const;
-    rct::multisig_kLRki get_multisig_kLRki(size_t n, const rct::key &k) const;
-    rct::key get_multisig_k(size_t idx, const std::unordered_set<rct::key> &used_L) const;
-    void update_multisig_rescan_info(const std::vector<std::vector<rct::key>> &multisig_k, const std::vector<std::vector<tools::wallet2::multisig_info>> &info, size_t n);
     bool add_rings(const crypto::chacha_key &key, const cryptonote::transaction_prefix &tx);
     bool add_rings(const cryptonote::transaction_prefix &tx);
     bool remove_rings(const cryptonote::transaction_prefix &tx);
@@ -1668,12 +1592,7 @@ private:
     bool get_rct_distribution(uint64_t &start_height, std::vector<uint64_t> &distribution);
 
     uint64_t get_segregation_fork_height() const;
-    void unpack_multisig_info(const std::vector<std::string>& info,
-      std::vector<crypto::public_key> &public_keys,
-      std::vector<crypto::secret_key> &secret_keys) const;
-    bool unpack_extra_multisig_info(const std::vector<std::string>& info,
-      std::vector<crypto::public_key> &signers,
-      std::unordered_set<crypto::public_key> &pkeys) const;
+   
 
     void cache_tx_data(const cryptonote::transaction& tx, const crypto::hash &txid, tx_cache_data &tx_cache_data) const;
     std::shared_ptr<std::map<std::pair<uint64_t, uint64_t>, size_t>> create_output_tracker_cache() const;
@@ -1725,8 +1644,6 @@ private:
     std::vector<tools::wallet2::address_book_row> m_address_book;
     std::pair<serializable_map<std::string, std::string>, std::vector<std::string>> m_account_tags;
     uint64_t m_upper_transaction_weight_limit; //TODO: auto-calc this value or request from daemon, now use some fixed value
-    const std::vector<std::vector<tools::wallet2::multisig_info>> *m_multisig_rescan_info;
-    const std::vector<std::vector<rct::key>> *m_multisig_rescan_k;
     serializable_unordered_map<crypto::public_key, crypto::key_image> m_cold_key_images;
 
     std::atomic<bool> m_run;
@@ -1741,12 +1658,6 @@ private:
     std::string seed_language; /*!< Language of the mnemonics (seed). */
     bool is_old_file_format; /*!< Whether the wallet file is of an old file format */
     bool m_watch_only; /*!< no spend key */
-    bool m_multisig; /*!< if > 1 spend secret key will not match spend public key */
-    uint32_t m_multisig_threshold;
-    std::vector<crypto::public_key> m_multisig_signers;
-    //in case of general M/N multisig wallet we should perform N - M + 1 key exchange rounds and remember how many rounds are passed.
-    uint32_t m_multisig_rounds_passed;
-    std::vector<crypto::public_key> m_multisig_derivations;
     bool m_always_confirm_transfers;
     bool m_print_ring_members;
     bool m_store_tx_info; /*!< request txkey to be returned in RPC, and store in the wallet cache file */
@@ -1844,9 +1755,6 @@ private:
 }
 BOOST_CLASS_VERSION(tools::wallet2, 29)
 BOOST_CLASS_VERSION(tools::wallet2::transfer_details, 12)
-BOOST_CLASS_VERSION(tools::wallet2::multisig_info, 1)
-BOOST_CLASS_VERSION(tools::wallet2::multisig_info::LR, 0)
-BOOST_CLASS_VERSION(tools::wallet2::multisig_tx_set, 1)
 BOOST_CLASS_VERSION(tools::wallet2::payment_details, 5)
 BOOST_CLASS_VERSION(tools::wallet2::pool_payment_details, 1)
 BOOST_CLASS_VERSION(tools::wallet2::unconfirmed_transfer_details, 8)
@@ -1857,7 +1765,6 @@ BOOST_CLASS_VERSION(tools::wallet2::unsigned_tx_set, 0)
 BOOST_CLASS_VERSION(tools::wallet2::signed_tx_set, 1)
 BOOST_CLASS_VERSION(tools::wallet2::tx_construction_data, 4)
 BOOST_CLASS_VERSION(tools::wallet2::pending_tx, 3)
-BOOST_CLASS_VERSION(tools::wallet2::multisig_sig, 0)
 
 namespace boost
 {
@@ -1898,8 +1805,6 @@ namespace boost
         if (ver < 9)
         {
           x.m_key_image_partial = false;
-          x.m_multisig_k.clear();
-          x.m_multisig_info.clear();
         }
         if (ver < 10)
         {
@@ -1987,8 +1892,6 @@ namespace boost
         initialize_transfer_details(a, x, ver);
         return;
       }
-      a & x.m_multisig_info;
-      a & x.m_multisig_k;
       a & x.m_key_image_partial;
       if (ver < 10)
       {
@@ -2010,28 +1913,7 @@ namespace boost
       a & x.m_frozen;
     }
 
-    template <class Archive>
-    inline void serialize(Archive &a, tools::wallet2::multisig_info::LR &x, const boost::serialization::version_type ver)
-    {
-      a & x.m_L;
-      a & x.m_R;
-    }
-
-    template <class Archive>
-    inline void serialize(Archive &a, tools::wallet2::multisig_info &x, const boost::serialization::version_type ver)
-    {
-      a & x.m_signer;
-      a & x.m_LR;
-      a & x.m_partial_key_images;
-    }
-
-    template <class Archive>
-    inline void serialize(Archive &a, tools::wallet2::multisig_tx_set &x, const boost::serialization::version_type ver)
-    {
-      a & x.m_ptx;
-      a & x.m_signers;
-    }
-
+   
     template <class Archive>
     inline void serialize(Archive &a, tools::wallet2::unconfirmed_transfer_details &x, const boost::serialization::version_type ver)
     {
@@ -2288,16 +2170,6 @@ namespace boost
     }
 
     template <class Archive>
-    inline void serialize(Archive &a, tools::wallet2::multisig_sig &x, const boost::serialization::version_type ver)
-    {
-      a & x.sigs;
-      a & x.ignore;
-      a & x.used_L;
-      a & x.signing_keys;
-      a & x.msout;
-    }
-
-    template <class Archive>
     inline void serialize(Archive &a, tools::wallet2::pending_tx &x, const boost::serialization::version_type ver)
     {
       a & x.tx;
@@ -2327,7 +2199,6 @@ namespace boost
       a & x.selected_transfers;
       if (ver < 3)
         return;
-      a & x.multisig_sigs;
     }
   }
 }

@@ -85,17 +85,45 @@ namespace cryptonote
 
     t_cryptonote_protocol_handler(t_core& rcore, nodetool::i_p2p_endpoint<connection_context>* p_net_layout, bool offline = false);
 
-    BEGIN_INVOKE_MAP2(cryptonote_protocol_handler)
-      HANDLE_NOTIFY_T2(NOTIFY_NEW_BLOCK, &cryptonote_protocol_handler::handle_notify_new_block)
-      HANDLE_NOTIFY_T2(NOTIFY_NEW_TRANSACTIONS, &cryptonote_protocol_handler::handle_notify_new_transactions)
-      HANDLE_NOTIFY_T2(NOTIFY_REQUEST_GET_OBJECTS, &cryptonote_protocol_handler::handle_request_get_objects)
-      HANDLE_NOTIFY_T2(NOTIFY_RESPONSE_GET_OBJECTS, &cryptonote_protocol_handler::handle_response_get_objects)
-      HANDLE_NOTIFY_T2(NOTIFY_REQUEST_CHAIN, &cryptonote_protocol_handler::handle_request_chain)
-      HANDLE_NOTIFY_T2(NOTIFY_RESPONSE_CHAIN_ENTRY, &cryptonote_protocol_handler::handle_response_chain_entry)
-      HANDLE_NOTIFY_T2(NOTIFY_NEW_FLUFFY_BLOCK, &cryptonote_protocol_handler::handle_notify_new_fluffy_block)			
-      HANDLE_NOTIFY_T2(NOTIFY_REQUEST_FLUFFY_MISSING_TX, &cryptonote_protocol_handler::handle_request_fluffy_missing_tx)						
-      HANDLE_NOTIFY_T2(NOTIFY_GET_TXPOOL_COMPLEMENT, &cryptonote_protocol_handler::handle_notify_get_txpool_complement)
-    END_INVOKE_MAP2()
+    //BEGIN_INVOKE_MAP2(cryptonote_protocol_handler)
+      template <class t_context>
+      int handle_invoke_map(bool is_notify, int command, const epee::span<const uint8_t> in_buff, epee::byte_stream& buff_out, t_context& context, bool& handled) 
+  { 
+        try { 
+            typedef cryptonote_protocol_handler internal_owner_type_name;
+           // HANDLE_NOTIFY_T2(NOTIFY_NEW_BLOCK, &cryptonote_protocol_handler::handle_notify_new_block)
+            if(is_notify && NOTIFY_NEW_BLOCK::ID == command) 
+            {
+              handled=true;
+              const auto func = &cryptonote_protocol_handler::handle_notify_new_block;
+              return epee::net_utils::buff_to_t_adapter<internal_owner_type_name, typename NOTIFY_NEW_BLOCK::request>(this, command, in_buff, std::bind(func, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3), context);
+            }
+              if(is_notify && NOTIFY_NEW_TRANSACTIONS::ID == command) 
+            {
+              handled=true;
+              const auto func = &cryptonote_protocol_handler::handle_notify_new_transactions;
+              return epee::net_utils::buff_to_t_adapter<internal_owner_type_name, typename NOTIFY_NEW_TRANSACTIONS::request>(this, command, in_buff, std::bind(func, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3), context);
+            }
+
+
+        //    HANDLE_NOTIFY_T2(NOTIFY_NEW_TRANSACTIONS, &cryptonote_protocol_handler::handle_notify_new_transactions)
+            HANDLE_NOTIFY_T2(NOTIFY_REQUEST_GET_OBJECTS, &cryptonote_protocol_handler::handle_request_get_objects)
+            HANDLE_NOTIFY_T2(NOTIFY_RESPONSE_GET_OBJECTS, &cryptonote_protocol_handler::handle_response_get_objects)
+            HANDLE_NOTIFY_T2(NOTIFY_REQUEST_CHAIN, &cryptonote_protocol_handler::handle_request_chain)
+            HANDLE_NOTIFY_T2(NOTIFY_RESPONSE_CHAIN_ENTRY, &cryptonote_protocol_handler::handle_response_chain_entry)
+            HANDLE_NOTIFY_T2(NOTIFY_NEW_FLUFFY_BLOCK, &cryptonote_protocol_handler::handle_notify_new_fluffy_block)			
+            HANDLE_NOTIFY_T2(NOTIFY_REQUEST_FLUFFY_MISSING_TX, &cryptonote_protocol_handler::handle_request_fluffy_missing_tx)						
+            HANDLE_NOTIFY_T2(NOTIFY_GET_TXPOOL_COMPLEMENT, &cryptonote_protocol_handler::handle_notify_get_txpool_complement)
+
+              LOG_ERROR("Unknown command:" << command); 
+              on_levin_traffic(context, false, false, true, in_buff.size(), "invalid-command"); 
+              return LEVIN_ERROR_CONNECTION_HANDLER_NOT_DEFINED; 
+            } 
+            catch (const std::exception &e) { 
+              MERROR("Error in handle_invoke_map: " << e.what()); 
+              return LEVIN_ERROR_CONNECTION_TIMEDOUT; /* seems kinda appropriate */ 
+            } 
+      }
 
     bool on_idle();
     bool init(const boost::program_options::variables_map& vm);

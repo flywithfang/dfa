@@ -27,7 +27,6 @@ using namespace epee;
 #include "rpc/rpc_payment_costs.h"
 #include "misc_language.h"
 #include "cryptonote_basic/cryptonote_basic_impl.h"
-#include "multisig/multisig.h"
 #include "common/boost_serialization_helper.h"
 #include "common/command_line.h"
 #include "common/threadpool.h"
@@ -92,60 +91,7 @@ void wallet2::transfer_selected_rct(std::vector<cryptonote::tx_destination_entry
   }
 
   // if this is a multisig wallet, create a list of multisig signers we can use
-  std::deque<crypto::public_key> multisig_signers;
-  size_t n_multisig_txes = 0;
   std::vector<std::unordered_set<crypto::public_key>> ignore_sets;
-  if (m_multisig && !m_transfers.empty())
-  {
-    const crypto::public_key local_signer = get_multisig_signer_public_key();
-    size_t n_available_signers = 1;
-
-    // At this step we need to define set of participants available for signature,
-    // i.e. those of them who exchanged with multisig info's
-    for (const crypto::public_key &signer: m_multisig_signers)
-    {
-      if (signer == local_signer)
-        continue;
-      for (const auto &i: m_transfers[0].m_multisig_info)
-      {
-        if (i.m_signer == signer)
-        {
-          multisig_signers.push_back(signer);
-          ++n_available_signers;
-          break;
-        }
-      }
-    }
-    // n_available_signers includes the transaction creator, but multisig_signers doesn't
-    MDEBUG("We can use " << n_available_signers << "/" << m_multisig_signers.size() <<  " other signers");
-    THROW_WALLET_EXCEPTION_IF(n_available_signers < m_multisig_threshold, error::multisig_import_needed);
-    if (n_available_signers > m_multisig_threshold)
-    {
-      // If there more potential signers (those who exchanged with multisig info)
-      // than threshold needed some of them should be skipped since we don't know
-      // who will sign tx and who won't. Hence we don't contribute their LR pairs to the signature.
-
-      // We create as many transactions as many combinations of excluded signers may be.
-      // For example, if we have 2/4 wallet and wallets are: A, B, C and D. Let A be
-      // transaction creator, so we need just 1 signature from set of B, C, D.
-      // Using "excluding" logic here we have to exclude 2-of-3 wallets. Combinations go as follows:
-      // BC, BD, and CD. We save these sets to use later and counting the number of required txs.
-      tools::Combinator<crypto::public_key> c(std::vector<crypto::public_key>(multisig_signers.begin(), multisig_signers.end()));
-      auto ignore_combinations = c.combine(multisig_signers.size() + 1 - m_multisig_threshold);
-      for (const auto& combination: ignore_combinations)
-      {
-        ignore_sets.push_back(std::unordered_set<crypto::public_key>(combination.begin(), combination.end()));
-      }
-
-      n_multisig_txes = ignore_sets.size();
-    }
-    else
-    {
-      // If we have exact count of signers just to fit in threshold we don't exclude anyone and create 1 transaction
-      n_multisig_txes = 1;
-    }
-    MDEBUG("We will create " << n_multisig_txes << " txes");
-  }
 
   bool all_rct = true;
   uint64_t found_money = 0;
@@ -251,7 +197,7 @@ void wallet2::transfer_selected_rct(std::vector<cryptonote::tx_destination_entry
   rct::multisig_out msout;
   LOG_PRINT_L2("constructing tx");
   auto sources_copy = sources;
-  bool r = cryptonote::construct_tx_and_get_tx_key(m_account.get_keys(), m_subaddresses, sources, splitted_dsts, change_dts.addr, extra, tx, unlock_time, tx_key, additional_tx_keys, true, rct_config, m_multisig ? &msout : NULL);
+  bool r = cryptonote::construct_tx_and_get_tx_key(m_account.get_keys(), m_subaddresses, sources, splitted_dsts, change_dts.addr, extra, tx, unlock_time, tx_key, additional_tx_keys, true, rct_config,  NULL);
   LOG_PRINT_L2("constructed tx, r="<<r);
   THROW_WALLET_EXCEPTION_IF(!r, error::tx_not_constructed, sources, dsts, unlock_time, m_nettype);
   THROW_WALLET_EXCEPTION_IF(upper_transaction_weight_limit <= get_transaction_weight(tx), error::tx_too_big, tx, upper_transaction_weight_limit);
@@ -269,46 +215,6 @@ void wallet2::transfer_selected_rct(std::vector<cryptonote::tx_destination_entry
     }
   }
   THROW_WALLET_EXCEPTION_IF(ins_order.size() != sources.size(), error::wallet_internal_error, "Failed to work out sources permutation");
-
-  std::vector<tools::wallet2::multisig_sig> multisig_sigs;
-  cout<<"m_multisig"<<m_multisig<<endl;
-  if (m_multisig)
-  {
-    auto ignore = ignore_sets.empty() ? std::unordered_set<crypto::public_key>() : ignore_sets.front();
-    multisig_sigs.push_back({tx.rct_signatures, ignore, used_L, std::unordered_set<crypto::public_key>(), msout});
-
-    if (m_multisig_threshold < m_multisig_signers.size())
-    {
-      const crypto::hash prefix_hash = cryptonote::get_transaction_prefix_hash(tx);
-
-      // create the other versions, one for every other participant (the first one's already done above)
-      for (size_t ignore_index = 1; ignore_index < ignore_sets.size(); ++ignore_index)
-      {
-        std::unordered_set<rct::key> new_used_L;
-        size_t src_idx = 0;
-        THROW_WALLET_EXCEPTION_IF(selected_transfers.size() != sources.size(), error::wallet_internal_error, "mismatched selected_transfers and sources sixes");
-        for(size_t idx: selected_transfers)
-        {
-          cryptonote::tx_source_entry& src = sources_copy[src_idx];
-          src.multisig_kLRki = get_multisig_composite_kLRki(idx, ignore_sets[ignore_index], used_L, new_used_L);
-          ++src_idx;
-        }
-
-        LOG_PRINT_L2("Creating supplementary multisig transaction");
-        cryptonote::transaction ms_tx;
-        auto sources_copy_copy = sources_copy;
-        bool r = cryptonote::construct_tx_with_tx_key(m_account.get_keys(), m_subaddresses, sources_copy_copy, splitted_dsts, change_dts.addr, extra, ms_tx, unlock_time,tx_key, additional_tx_keys, true, rct_config, &msout, false);
-        LOG_PRINT_L2("constructed tx, r="<<r);
-        THROW_WALLET_EXCEPTION_IF(!r, error::tx_not_constructed, sources, splitted_dsts, unlock_time, m_nettype);
-        THROW_WALLET_EXCEPTION_IF(upper_transaction_weight_limit <= get_transaction_weight(tx), error::tx_too_big, tx, upper_transaction_weight_limit);
-        THROW_WALLET_EXCEPTION_IF(cryptonote::get_transaction_prefix_hash(ms_tx) != prefix_hash, error::wallet_internal_error, "Multisig txes do not share prefix");
-        multisig_sigs.push_back({ms_tx.rct_signatures, ignore_sets[ignore_index], new_used_L, std::unordered_set<crypto::public_key>(), msout});
-
-        ms_tx.rct_signatures = tx.rct_signatures;
-        THROW_WALLET_EXCEPTION_IF(cryptonote::get_transaction_hash(ms_tx) != cryptonote::get_transaction_hash(tx), error::wallet_internal_error, "Multisig txes differ by more than the signatures");
-      }
-    }
-  }
 
   LOG_PRINT_L2("gathering key images");
   std::string key_images;
@@ -332,7 +238,6 @@ void wallet2::transfer_selected_rct(std::vector<cryptonote::tx_destination_entry
   ptx.tx_key = tx_key;
   ptx.additional_tx_keys = additional_tx_keys;
   ptx.dests = dsts;
-  ptx.multisig_sigs = multisig_sigs;
   ptx.construction_data.sources = sources_copy;
   ptx.construction_data.change_dts = change_dts;
   ptx.construction_data.splitted_dsts = splitted_dsts;

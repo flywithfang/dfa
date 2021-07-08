@@ -112,10 +112,48 @@ namespace cryptonote
       a & m_creation_timestamp;
     }
 
-    BEGIN_KV_SERIALIZE_MAP()
-      KV_SERIALIZE(m_keys)
-      KV_SERIALIZE(m_creation_timestamp)
-    END_KV_SERIALIZE_MAP()
+//    BEGIN_KV_SERIALIZE_MAP()
+
+public: 
+  template<class t_storage> 
+  bool store( t_storage& st, typename t_storage::hsection hparent_section = nullptr) const
+  {
+    using type = typename std::remove_const<typename std::remove_reference<decltype(*this)>::type>::type; 
+    auto &self = const_cast<type&>(*this); 
+    return self.template serialize_map<true>(st, hparent_section); 
+  }
+  template<class t_storage> 
+  bool _load( t_storage& stg, typename t_storage::hsection hparent_section = nullptr)
+  {
+    return serialize_map<false>(stg, hparent_section);
+  }
+  template<class t_storage> 
+  bool load( t_storage& stg, typename t_storage::hsection hparent_section = nullptr)
+  {
+    try{
+    return serialize_map<false>(stg, hparent_section);
+    }
+    catch(const std::exception& err) 
+    { 
+      (void)(err); 
+      LOG_ERROR("Exception on unserializing: " << err.what());
+      return false; 
+    }
+  }
+  /*template<typename T> T& this_type_resolver() { return *this; }*/ 
+  /*using this_type = std::result_of<decltype(this_type_resolver)>::type;*/ 
+  template<bool is_store, class t_storage> 
+  bool serialize_map(t_storage& stg, typename t_storage::hsection hparent_section) 
+  { 
+    decltype(*this) &this_ref = *this; 
+    (void) this_ref; // Suppress unused var warnings. Sometimes this var is used, sometimes not.
+
+      epee::serialization::selector<is_store>::serialize(this_ref.m_keys, stg, hparent_section, "m_keys");
+    //  KV_SERIALIZE(m_creation_timestamp)
+      epee::serialization::selector<is_store>::serialize(this_ref.m_creation_timestamp, stg, hparent_section, "m_creation_timestamp");
+    
+    return true;
+}
 
   private:
     void set_null();

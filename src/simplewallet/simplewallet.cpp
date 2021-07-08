@@ -760,7 +760,7 @@ bool simple_wallet::print_seed(bool encrypted)
 
   SCOPED_WALLET_UNLOCK();
 
-  if (!multisig && !m_wallet->is_deterministic())
+  if ( !m_wallet->is_deterministic())
   {
     fail_msg_writer() << tr("wallet is non-deterministic and has no seed");
     return true;
@@ -3236,7 +3236,7 @@ void simple_wallet::print_seed(const epee::wipeable_string &seed)
 {
   success_msg_writer(true) << "\n" << boost::format(tr("NOTE: the following %s can be used to recover access to your wallet. "
     "Write them down and store them somewhere safe and secure. Please do not store them in "
-    "your email or on file storage services outside of your immediate control.\n")) % (m_wallet->multisig() ? tr("string") : tr("25 words"));
+    "your email or on file storage services outside of your immediate control.\n")) %  tr("25 words");
   // don't log
   int space_index = 0;
   size_t len  = seed.size();
@@ -7282,7 +7282,7 @@ bool simple_wallet::get_reserve_proof(const std::vector<std::string> &args)
     return true;
   }
 
-  if (m_wallet->watch_only() || m_wallet->multisig())
+  if (m_wallet->watch_only() )
   {
     fail_msg_writer() << tr("The reserve proof can be generated only by a full wallet");
     return true;
@@ -8826,11 +8826,6 @@ bool simple_wallet::sign(const std::vector<std::string> &args)
   if (m_wallet->watch_only())
   {
     fail_msg_writer() << tr("wallet is watch-only and cannot sign");
-    return true;
-  }
-  if (m_wallet->multisig())
-  {
-    fail_msg_writer() << tr("This wallet is multisig and cannot sign");
     return true;
   }
 

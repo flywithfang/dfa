@@ -95,11 +95,69 @@ namespace cryptonote
       );
     network_type nettype() const { return m_core.get_nettype(); }
 
-    CHAIN_HTTP_TO_MAP2(connection_context); //forward http requests to uri map
+    //CHAIN_HTTP_TO_MAP2(connection_context); //forward http requests to uri map
+    bool handle_http_request(const epee::net_utils::http::http_request_info& query_info, 
+              epee::net_utils::http::http_response_info& response, connection_context& m_conn_context) 
+      {
+        MINFO("HTTP [" << m_conn_context.m_remote_address.host_str() << "] " << query_info.m_http_method_str << " " << query_info.m_URI); 
+        response.m_response_code = 200; 
+        response.m_response_comment = "Ok"; 
+        try 
+        { 
+          if(!handle_http_request_map(query_info, response, m_conn_context)) 
+          {response.m_response_code = 404;response.m_response_comment = "Not found";} 
+        } 
+        catch (const std::exception &e) 
+        { 
+          MERROR(m_conn_context << "Exception in handle_http_request_map: " << e.what()); 
+          response.m_response_code = 500; 
+          response.m_response_comment = "Internal Server Error"; 
+        } 
+        return true; 
+      }
 
-    BEGIN_URI_MAP2()
-      MAP_URI_AUTO_JON2("/get_height", on_get_height, COMMAND_RPC_GET_HEIGHT)
-      MAP_URI_AUTO_JON2("/getheight", on_get_height, COMMAND_RPC_GET_HEIGHT)
+  //  BEGIN_URI_MAP2()
+     template<class t_context> bool handle_http_request_map(const epee::net_utils::http::http_request_info& query_info,   epee::net_utils::http::http_response_info& response_info, t_context& m_conn_context) { 
+      bool handled = false; 
+      const auto  s_pattern= "/getheight";
+      const auto callback_f=on_get_height;
+      using command_type=COMMAND_RPC_GET_HEIGHT;
+      if(false) return true; //just a stub to have "else if"
+
+ else if((query_info.m_URI == s_pattern) && (true)) 
+    { 
+      handled = true; 
+      uint64_t ticks = misc_utils::get_tick_count(); 
+      boost::value_initialized<command_type::request> req; 
+      bool parse_res = epee::serialization::load_t_from_json(static_cast<command_type::request&>(req), query_info.m_body); 
+      if (!parse_res) 
+      { 
+         MERROR("Failed to parse json: \r\n" << query_info.m_body); 
+         response_info.m_response_code = 400; 
+         response_info.m_response_comment = "Bad request"; 
+         return true; 
+      } 
+      uint64_t ticks1 = epee::misc_utils::get_tick_count(); 
+      boost::value_initialized<command_type::response> resp;
+      MINFO(m_conn_context << "calling " << s_pattern); 
+      bool res = false; 
+      try { res = callback_f(static_cast<command_type::request&>(req), static_cast<command_type::response&>(resp), &m_conn_context); } 
+      catch (const std::exception &e) { MERROR(m_conn_context << "Failed to " << s_pattern << "(): " << e.what()); } 
+      if (!res) 
+      { 
+        response_info.m_response_code = 500; 
+        response_info.m_response_comment = "Internal Server Error"; 
+        return true; 
+      } 
+      uint64_t ticks2 = epee::misc_utils::get_tick_count(); 
+      epee::serialization::store_t_to_json(static_cast<command_type::response&>(resp), response_info.m_body); 
+      uint64_t ticks3 = epee::misc_utils::get_tick_count(); 
+      response_info.m_mime_tipe = "application/json"; 
+      response_info.m_header_info.m_content_type = " application/json"; 
+      MDEBUG( s_pattern << " processed with " << ticks1-ticks << "/"<< ticks2-ticks1 << "/" << ticks3-ticks2 << "ms"); 
+    }
+    //  MAP_URI_AUTO_JON2("/get_height", on_get_height, COMMAND_RPC_GET_HEIGHT)
+    //  MAP_URI_AUTO_JON2("/getheight", on_get_height, COMMAND_RPC_GET_HEIGHT)
       MAP_URI_AUTO_BIN2("/get_blocks.bin", on_get_blocks, COMMAND_RPC_GET_BLOCKS_FAST)
       MAP_URI_AUTO_BIN2("/getblocks.bin", on_get_blocks, COMMAND_RPC_GET_BLOCKS_FAST)
       MAP_URI_AUTO_BIN2("/get_blocks_by_height.bin", on_get_blocks_by_height, COMMAND_RPC_GET_BLOCKS_BY_HEIGHT)
@@ -186,7 +244,9 @@ namespace cryptonote
         MAP_JON_RPC_WE_IF("rpc_access_data",     on_rpc_access_data,            COMMAND_RPC_ACCESS_DATA, !m_restricted)
         MAP_JON_RPC_WE_IF("rpc_access_account",  on_rpc_access_account,         COMMAND_RPC_ACCESS_ACCOUNT, !m_restricted)
       END_JSON_RPC_MAP()
-    END_URI_MAP2()
+   // END_URI_MAP2()
+      return handled;
+    }
 
     bool on_get_height(const COMMAND_RPC_GET_HEIGHT::request& req, COMMAND_RPC_GET_HEIGHT::response& res, const connection_context *ctx = NULL);
     bool on_get_blocks(const COMMAND_RPC_GET_BLOCKS_FAST::request& req, COMMAND_RPC_GET_BLOCKS_FAST::response& res, const connection_context *ctx = NULL);
