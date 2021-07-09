@@ -1,5 +1,4 @@
 SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17")
-set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
 set(checker_sources
   checker.cpp)
 

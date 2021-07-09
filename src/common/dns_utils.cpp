@@ -252,6 +252,7 @@ static void add_anchors(ub_ctx *ctx)
 
 DNSResolver::DNSResolver() : m_data(new DNSResolverData())
 {
+  MINFO("new  DNSResolver");
   int use_dns_public = 0;
   std::vector<std::string> dns_public_addr;
   const char *DNS_PUBLIC = getenv("DNS_PUBLIC");
@@ -352,7 +353,7 @@ std::vector<std::string> DNSResolver::get_record(const std::string& url, int rec
         if (res)
         {
           // do not dump dns record directly from dns into log
-          MINFO("Found " << get_record_name(record_type) << " record for " << url);
+          MINFO("Found " << get_record_name(record_type) <<","<< *res<<" record for " << url);
           addresses.push_back(std::move(*res));
         }
       }

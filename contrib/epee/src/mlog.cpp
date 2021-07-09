@@ -225,12 +225,12 @@ void mlog_configure(const std::string &filename_base, bool console, const std::s
     }
   });
   mlog_set_common_prefix();
-  const char *monero_log = getenv("MONERO_LOGS");
-  if (!monero_log)
+  const char *dfa_log = getenv("DFA_LOGS");
+  if (!dfa_log)
   {
-    monero_log = get_default_categories(0);
+    dfa_log = get_default_categories(0);
   }
-  mlog_set_log(monero_log);
+  mlog_set_log(dfa_log);
 #ifdef WIN32
   EnableVTMode();
 #endif
@@ -238,6 +238,7 @@ void mlog_configure(const std::string &filename_base, bool console, const std::s
 
 void mlog_set_categories(const char *categories)
 {
+  std::cout<< "mlog_set_categories "<<categories<<std::endl;
   std::string new_categories;
   if (*categories)
   {
@@ -271,7 +272,7 @@ void mlog_set_categories(const char *categories)
     }
   }
   el::Loggers::setCategories(new_categories.c_str(), true);
-  MLOG_LOG("New log categories: " << el::Loggers::getCategories());
+  std::cout<<"New log categories: " << el::Loggers::getCategories()<<std::endl;;
 }
 
 std::string mlog_get_categories()
@@ -291,6 +292,7 @@ void mlog_set_log(const char *log)
   long level;
   char *ptr = NULL;
 
+  std::cout<<"mlog_set_log "<<log<<std::endl;
   if (!*log)
   {
     mlog_set_categories(log);

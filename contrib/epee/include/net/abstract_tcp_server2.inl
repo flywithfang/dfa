@@ -52,6 +52,7 @@
 #include <algorithm>
 #include <functional>
 #include <random>
+#include "common/stack_trace.h"
 
 #undef MONERO_DEFAULT_LOG_CATEGORY
 #define MONERO_DEFAULT_LOG_CATEGORY "net"
@@ -1020,7 +1021,7 @@ PRAGMA_WARNING_DISABLE_VS(4355)
       acceptor_.listen();
       boost::asio::ip::tcp::endpoint binded_endpoint = acceptor_.local_endpoint();
       m_port = binded_endpoint.port();
-      MDEBUG("start accept (IPv4)");
+      MINFO("start accept (IPv4) "<<address<<":"<<port);
       new_connection_.reset(new connection<t_protocol_handler>(io_service_, m_state, m_connection_type, m_state->ssl_options().support));
       acceptor_.async_accept(new_connection_->socket(),
 	boost::bind(&boosted_tcp_server<t_protocol_handler>::handle_accept_ipv4, this,
@@ -1178,24 +1179,25 @@ POP_WARNINGS
       {
         boost::shared_ptr<boost::thread> thread(new boost::thread(
           attrs, boost::bind(&boosted_tcp_server<t_protocol_handler>::worker_thread, this)));
-          _note("Run server thread name: " << m_thread_name_prefix);
+
+        MINFO("Run server thread name: " << m_thread_name_prefix <<" "<<i);
         m_threads.push_back(thread);
       }
       CRITICAL_REGION_END();
       // Wait for all threads in the pool to exit.
       if (wait)
       {
-		_fact("JOINING all threads");
+		    MINFO("JOINING all threads");
         for (std::size_t i = 0; i < m_threads.size(); ++i) {
-			m_threads[i]->join();
+			   m_threads[i]->join();
          }
-         _fact("JOINING all threads - almost");
+         MINFO("JOINING all threads - almost");
         m_threads.clear();
-        _fact("JOINING all threads - DONE");
+        MINFO("JOINING all threads - DONE");
 
       } 
       else {
-		_dbg1("Reiniting OK.");
+		    MINFO("Reiniting OK.");
         return true;
       }
 
@@ -1283,7 +1285,7 @@ POP_WARNINGS
   template<class t_protocol_handler>
   void boosted_tcp_server<t_protocol_handler>::handle_accept(const boost::system::error_code& e, bool ipv6)
   {
-    MDEBUG("handle_accept");
+    MINFO("handle_accept");
 
     boost::asio::ip::tcp::acceptor* current_acceptor = &acceptor_;
     connection_ptr* current_new_connection = &new_connection_;
@@ -1443,7 +1445,7 @@ POP_WARNINGS
     }
 
     _dbg3("Connected success to " << adr << ':' << port);
-
+    tools::log_stack_trace("conn");
     const ssl_support_t ssl_support = new_connection_l->get_ssl_support();
     if (ssl_support == epee::net_utils::ssl_support_t::e_ssl_support_enabled || ssl_support == epee::net_utils::ssl_support_t::e_ssl_support_autodetect)
     {

@@ -82,13 +82,7 @@ namespace cryptonote
 
   //-----------------------------------------------------------------------------------------------------------------------
   template<class t_core>
-    t_cryptonote_protocol_handler<t_core>::t_cryptonote_protocol_handler(t_core& rcore, nodetool::i_p2p_endpoint<connection_context>* p_net_layout, bool offline):m_core(rcore),
-                                                                                                              m_p2p(p_net_layout),
-                                                                                                              m_syncronized_connections_count(0),
-                                                                                                              m_synchronized(offline),
-                                                                                                              m_ask_for_txpool_complement(true),
-                                                                                                              m_stopping(false),
-                                                                                                              m_no_sync(false)
+    t_cryptonote_protocol_handler<t_core>::t_cryptonote_protocol_handler(t_core& rcore, nodetool::i_p2p_endpoint<connection_context>* p_net_layout, bool offline):m_core(rcore),m_p2p(p_net_layout),m_syncronized_connections_count(0),m_synchronized(offline),m_ask_for_txpool_complement(true),m_stopping(false),m_no_sync(false)
 
   {
     if(!m_p2p)

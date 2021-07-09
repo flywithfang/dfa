@@ -58,6 +58,7 @@ namespace cryptonote
   /************************************************************************/
   class core_rpc_server: public epee::http_server_impl_base<core_rpc_server>
   {
+
   public:
 
     static const command_line::arg_descriptor<bool> arg_public_node;
@@ -79,7 +80,7 @@ namespace cryptonote
     static const command_line::arg_descriptor<bool> arg_rpc_payment_allow_free_loopback;
 
     typedef epee::net_utils::connection_context_base connection_context;
-
+    typedef  epee::http_server_impl_base<core_rpc_server> super_type;
     core_rpc_server(
         core& cr
       , nodetool::node_server<cryptonote::t_cryptonote_protocol_handler<cryptonote::core> >& p2p
@@ -120,7 +121,7 @@ namespace cryptonote
      template<class t_context> bool handle_http_request_map(const epee::net_utils::http::http_request_info& query_info,   epee::net_utils::http::http_response_info& response_info, t_context& m_conn_context) { 
       bool handled = false; 
       const auto  s_pattern= "/getheight";
-      const auto callback_f=on_get_height;
+       auto callback_f=&core_rpc_server::on_get_height;
       using command_type=COMMAND_RPC_GET_HEIGHT;
       if(false) return true; //just a stub to have "else if"
 
@@ -141,7 +142,7 @@ namespace cryptonote
       boost::value_initialized<command_type::response> resp;
       MINFO(m_conn_context << "calling " << s_pattern); 
       bool res = false; 
-      try { res = callback_f(static_cast<command_type::request&>(req), static_cast<command_type::response&>(resp), &m_conn_context); } 
+      try { res = (this->*callback_f)(static_cast<command_type::request&>(req), static_cast<command_type::response&>(resp), &m_conn_context); } 
       catch (const std::exception &e) { MERROR(m_conn_context << "Failed to " << s_pattern << "(): " << e.what()); } 
       if (!res) 
       { 

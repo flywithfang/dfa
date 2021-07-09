@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2020, The Monero Project
+// Copyright (c) 2014-2020, The Dfa Project
 //
 // All rights reserved.
 //
@@ -153,23 +153,15 @@ int main(int argc, char const * argv[])
       command_line::add_arg(core_settings, daemon_args::arg_max_log_files);
       command_line::add_arg(core_settings, daemon_args::arg_max_concurrency);
       command_line::add_arg(core_settings, daemon_args::arg_public_node);
-      command_line::add_arg(core_settings, daemon_args::arg_zmq_rpc_bind_ip);
-      command_line::add_arg(core_settings, daemon_args::arg_zmq_rpc_bind_port);
-      command_line::add_arg(core_settings, daemon_args::arg_zmq_pub);
-      command_line::add_arg(core_settings, daemon_args::arg_zmq_rpc_disabled);
 
       daemonizer::init_options(hidden_options, visible_options);
       daemonize::t_executor::init_options(core_settings);
 
-      // Hidden options
-      command_line::add_arg(hidden_options, daemon_args::arg_command);
 
       visible_options.add(core_settings);
       all_options.add(visible_options);
       all_options.add(hidden_options);
 
-      // Positional
-      positional_options.add(daemon_args::arg_command.name, -1); // -1 for unlimited arguments
     }
 
     // Do command line parsing
@@ -188,16 +180,16 @@ int main(int argc, char const * argv[])
 
     if (command_line::get_arg(vm, command_line::arg_help))
     {
-      std::cout << "Monero '" << MONERO_RELEASE_NAME << "' (v" << MONERO_VERSION_FULL << ")" << ENDL << ENDL;
+      std::cout << "Dfa '" << MONERO_RELEASE_NAME << "' (v" << MONERO_VERSION_FULL << ")" << ENDL << ENDL;
       std::cout << "Usage: " + std::string{argv[0]} + " [options|settings] [daemon_command...]" << std::endl << std::endl;
       std::cout << visible_options << std::endl;
       return 0;
     }
 
-    // Monero Version
+    // Dfa Version
     if (command_line::get_arg(vm, command_line::arg_version))
     {
-      std::cout << "Monero '" << MONERO_RELEASE_NAME << "' (v" << MONERO_VERSION_FULL << ")" << ENDL;
+      std::cout << "Dfa '" << MONERO_RELEASE_NAME << "' (v" << MONERO_VERSION_FULL << ")" << ENDL;
       return 0;
     }
 
@@ -274,10 +266,12 @@ int main(int argc, char const * argv[])
       log_file_path = bf::absolute(log_file_path, relative_path_base);
     mlog_configure(log_file_path.string(), true, command_line::get_arg(vm, daemon_args::arg_max_log_file_size), command_line::get_arg(vm, daemon_args::arg_max_log_files));
 
+    const auto ll = command_line::get_arg(vm, daemon_args::arg_log_level);
+    std::cout<<"ll "<<ll<<std::endl;
     // Set log level
     if (!command_line::is_arg_defaulted(vm, daemon_args::arg_log_level))
     {
-      mlog_set_log(command_line::get_arg(vm, daemon_args::arg_log_level).c_str());
+      mlog_set_log(ll.c_str());
     }
 
     // after logs initialized
@@ -291,67 +285,8 @@ int main(int argc, char const * argv[])
       tools::set_max_concurrency(command_line::get_arg(vm, daemon_args::arg_max_concurrency));
 
     // logging is now set up
-    MGINFO("Monero '" << MONERO_RELEASE_NAME << "' (v" << MONERO_VERSION_FULL << ")");
+    MGINFO("Dfa '" << MONERO_RELEASE_NAME << "' (v" << MONERO_VERSION_FULL << ")");
 
-    // If there are positional options, we're running a daemon command
-    {
-      auto command = command_line::get_arg(vm, daemon_args::arg_command);
-
-      if (command.size())
-      {
-        const cryptonote::rpc_args::descriptors arg{};
-        auto rpc_ip_str = command_line::get_arg(vm, arg.rpc_bind_ip);
-        auto rpc_port_str = command_line::get_arg(vm, cryptonote::core_rpc_server::arg_rpc_bind_port);
-
-        uint32_t rpc_ip;
-        uint16_t rpc_port;
-        if (!epee::string_tools::get_ip_int32_from_string(rpc_ip, rpc_ip_str))
-        {
-          std::cerr << "Invalid IP: " << rpc_ip_str << std::endl;
-          return 1;
-        }
-        if (!epee::string_tools::get_xtype_from_string(rpc_port, rpc_port_str))
-        {
-          std::cerr << "Invalid port: " << rpc_port_str << std::endl;
-          return 1;
-        }
-
-        const char *env_rpc_login = nullptr;
-        const bool has_rpc_arg = command_line::has_arg(vm, arg.rpc_login);
-        const bool use_rpc_env = !has_rpc_arg && (env_rpc_login = getenv("RPC_LOGIN")) != nullptr && strlen(env_rpc_login) > 0;
-        boost::optional<tools::login> login{};
-        if (has_rpc_arg || use_rpc_env)
-        {
-          login = tools::login::parse(
-            has_rpc_arg ? command_line::get_arg(vm, arg.rpc_login) : std::string(env_rpc_login), false, [](bool verify) {
-              PAUSE_READLINE();
-              return tools::password_container::prompt(verify, "Daemon client password");
-            }
-          );
-          if (!login)
-          {
-            std::cerr << "Failed to obtain password" << std::endl;
-            return 1;
-          }
-        }
-
-        auto ssl_options = cryptonote::rpc_args::process_ssl(vm, true);
-        if (!ssl_options)
-          return 1;
-
-        daemonize::t_command_server rpc_commands{rpc_ip, rpc_port, std::move(login), std::move(*ssl_options)};
-        if (rpc_commands.process_command_vec(command))
-        {
-          return 0;
-        }
-        else
-        {
-          PAUSE_READLINE();
-          std::cerr << "Unknown command: " << command.front() << std::endl;
-          return 1;
-        }
-      }
-    }
 
     MINFO("Moving from main() into the daemonize now.");
 

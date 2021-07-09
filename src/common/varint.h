@@ -100,7 +100,6 @@ namespace tools {
 	return read; 
       }
       unsigned char byte = *first;
-      std::cout<<uint32_t(byte)<<",";
       ++first;
       ++read;
       if (shift + 7 >= bits && byte >= 1 << (bits - shift)) {

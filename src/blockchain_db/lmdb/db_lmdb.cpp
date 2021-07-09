@@ -258,7 +258,7 @@ const std::string lmdb_error(const std::string& error_string, int mdb_res)
 
 inline void lmdb_db_open(MDB_txn* txn, const char* name, int flags, MDB_dbi& dbi, const std::string& error_string)
 {
-  printf("lmdb_db_open %s\n",name);
+  MINFO("lmdb_db_open " <<name);
   if (auto res = mdb_dbi_open(txn, name, flags, &dbi))
     throw0(cryptonote::DB_OPEN_FAILURE((lmdb_error(error_string + " : ", res) + std::string(" - you may want to start with --db-salvage")).c_str()));
 }
@@ -2483,7 +2483,7 @@ block_header BlockchainLMDB::get_block_header(const crypto::hash& h) const
 
 cryptonote::blobdata BlockchainLMDB::get_block_blob_from_height(const uint64_t& height) const
 {
-  LOG_PRINT_L3("BlockchainLMDB::" << __func__<<height);
+  LOG_PRINT_L3("BlockchainLMDB::" << __func__<<" "<<height);
   check_open();
 
   TXN_PREFIX_RDONLY();
@@ -2956,7 +2956,7 @@ block BlockchainLMDB::get_top_block() const
 
 uint64_t BlockchainLMDB::height() const
 {
-  LOG_PRINT_L3("BlockchainLMDB::" << __func__);
+  LOG_PRINT_L3("BlockchainLMDB::" << __func__<<"()");
   check_open();
   TXN_PREFIX_RDONLY();
   int result;

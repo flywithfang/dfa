@@ -167,10 +167,11 @@ void log_stack_trace(const char *msg)
   ss << el::base::debug::StackTrace();
   std::vector<std::string> lines;
   std::string s = ss.str();
-  boost::split(lines, s, boost::is_any_of("\n"));
-  for (const auto &line: lines)
+  ST_LOG(s);
+  //boost::split(lines, s, boost::is_any_of("\n"));
+ // for (const auto &line: lines)
    // ST_LOG(line);
-    std::cout<<line<<std::endl;
+  //  std::cout<<line<<std::endl;
 #endif
 }
 

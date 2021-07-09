@@ -34,8 +34,6 @@
 #include "misc_log_ex.h"
 #include "daemon/daemon.h"
 #include "rpc/daemon_handler.h"
-#include "rpc/zmq_pub.h"
-#include "rpc/zmq_server.h"
 
 #include "common/password.h"
 #include "common/util.h"
@@ -58,16 +56,7 @@ using namespace epee;
 
 namespace daemonize {
 
-struct zmq_internals
-{
-  explicit zmq_internals(t_core& core, t_p2p& p2p)
-    : rpc_handler{core.get(), p2p.get()}
-    , server{rpc_handler}
-  {}
 
-  cryptonote::rpc::DaemonHandler rpc_handler;
-  cryptonote::rpc::ZmqServer server;
-};
 
 struct t_internals {
 private:
@@ -76,7 +65,6 @@ public:
   t_core core;
   t_p2p p2p;
   std::vector<std::unique_ptr<t_rpc>> rpcs;
-  std::unique_ptr<zmq_internals> zmq;
 
   t_internals(
       boost::program_options::variables_map const & vm
@@ -84,7 +72,6 @@ public:
     : core{vm}
     , protocol{vm, core, command_line::get_arg(vm, cryptonote::arg_offline)}
     , p2p{vm, protocol}
-    , zmq{nullptr}
   {
     // Handle circular dependencies
     protocol.set_p2p_endpoint(p2p.get());
@@ -102,27 +89,7 @@ public:
       rpcs.emplace_back(new t_rpc{vm, core, p2p, true, restricted_rpc_port, "restricted", true});
     }
 
-    if (!command_line::get_arg(vm, daemon_args::arg_zmq_rpc_disabled))
-    {
-      zmq.reset(new zmq_internals{core, p2p});
-
-      const std::string zmq_port = command_line::get_arg(vm, daemon_args::arg_zmq_rpc_bind_port);
-      const std::string zmq_address = command_line::get_arg(vm, daemon_args::arg_zmq_rpc_bind_ip);
-
-      if (!zmq->server.init_rpc(zmq_address, zmq_port))
-        throw std::runtime_error{"Failed to add TCP socket(" + zmq_address + ":" + zmq_port + ") to ZMQ RPC Server"};
-
-      std::shared_ptr<cryptonote::listener::zmq_pub> shared;
-      const std::vector<std::string> zmq_pub = command_line::get_arg(vm, daemon_args::arg_zmq_pub);
-      if (!zmq_pub.empty() && !(shared = zmq->server.init_pub(epee::to_span(zmq_pub))))
-        throw std::runtime_error{"Failed to initialize zmq_pub"};
-
-      if (shared)
-      {
-        core.get().get_blockchain_storage().add_block_notify(cryptonote::listener::zmq_pub::chain_main{shared});
-        core.get().set_txpool_listener(cryptonote::listener::zmq_pub::txpool_add{shared});
-      }
-    }
+  
   }
 };
 
@@ -181,6 +148,7 @@ bool t_daemon::run(bool interactive)
     if (shutdown)
       this->stop_p2p();
   });
+
   epee::misc_utils::auto_scope_leave_caller scope_exit_handler = epee::misc_utils::create_scope_leave_handler([&](){
     stop = true;
     stop_thread.join();
@@ -203,11 +171,6 @@ bool t_daemon::run(bool interactive)
       rpc_commands->start_handling(std::bind(&daemonize::t_daemon::stop_p2p, this));
     }
 
-    if (mp_internals->zmq)
-      mp_internals->zmq->server.run();
-    else
-      MINFO("ZMQ server disabled");
-
     if (public_rpc_port > 0)
     {
       MGINFO("Public RPC port " << public_rpc_port << " will be advertised to other peers over P2P");
@@ -218,9 +181,6 @@ bool t_daemon::run(bool interactive)
 
     if (rpc_commands)
       rpc_commands->stop_handling();
-
-    if (mp_internals->zmq)
-      mp_internals->zmq->server.stop();
 
     for(auto& rpc : mp_internals->rpcs)
       rpc->stop();

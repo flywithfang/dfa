@@ -116,6 +116,7 @@ struct serializer{
   }
 };
 
+
 /*! \fn do_serialize(Archive &ar, T &v)
  *
  * \brief just calls the serialize function defined for ar and v...

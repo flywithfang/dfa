@@ -689,12 +689,7 @@ namespace cryptonote
     if (block_sync_size > BLOCKS_SYNCHRONIZING_MAX_COUNT)
       MERROR("Error --block-sync-size cannot be greater than " << BLOCKS_SYNCHRONIZING_MAX_COUNT);
 
-    MGINFO("Loading checkpoints");
-
-    // load json & DNS checkpoints, and verify them
-    // with respect to what blocks we already have
-    const bool skip_dns_checkpoints = !command_line::get_arg(vm, arg_dns_checkpoints);
-    CHECK_AND_ASSERT_MES(update_checkpoints(skip_dns_checkpoints), false, "One or more checkpoints loaded from json or dns conflicted with existing checkpoints.");
+  
 
    // DNS versions checking
     if (check_updates_string == "disabled")
