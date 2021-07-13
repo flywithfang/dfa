@@ -223,7 +223,7 @@ namespace net_utils
 	{
 		struct interface
 		{
-                        virtual ~interface() {};
+            virtual ~interface() {};
 
 			virtual bool equal(const interface&) const = 0;
 			virtual bool less(const interface&) const = 0;

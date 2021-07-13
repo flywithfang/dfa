@@ -42,17 +42,18 @@ namespace tools
     std::vector<std::string> records;
     bool found = false;
 
-    MDEBUG("Checking updates for " << buildtag << " " << software);
+    MINFO("Checking updates for " << buildtag << " " << software);
 
     // All four MoneroPulse domains have DNSSEC on and valid
     static const std::vector<std::string> dns_urls = {
-        "updates.moneropulse.org",
+     /*   "updates.moneropulse.org",
         "updates.moneropulse.net",
         "updates.moneropulse.fr",
         "updates.moneropulse.de",
         "updates.moneropulse.no",
         "updates.moneropulse.ch",
         "updates.moneropulse.se"
+       */ 
     };
 
     if (!tools::dns_utils::load_txt_records_from_dns(records, dns_urls))
@@ -61,6 +62,7 @@ namespace tools
     for (const auto& record : records)
     {
       std::vector<std::string> fields;
+      MINFO("update dns record "<< record);
       boost::split(fields, record, boost::is_any_of(":"));
       if (fields.size() != 4)
       {

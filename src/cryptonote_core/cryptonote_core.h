@@ -1073,11 +1073,13 @@ namespace cryptonote
 
      cryptonote_protocol_stub m_protocol_stub; //!< cryptonote protocol stub instance
 
+    epee::math_helper::once_a_time_seconds<90, false> m_block_rate_interval; //!< interval for checking block rate
+    
      epee::math_helper::once_a_time_seconds<60*60*12, false> m_store_blockchain_interval; //!< interval for manual storing of Blockchain, if enabled
      epee::math_helper::once_a_time_seconds<60*60*2, true> m_fork_moaner; //!< interval for checking HardFork status
      epee::math_helper::once_a_time_seconds<60*60*12, true> m_check_updates_interval; //!< interval for checking for new versions
      epee::math_helper::once_a_time_seconds<60*10, true> m_check_disk_space_interval; //!< interval for checking for disk space
-     epee::math_helper::once_a_time_seconds<90, false> m_block_rate_interval; //!< interval for checking block rate
+ 
      epee::math_helper::once_a_time_seconds<60*60*5, true> m_blockchain_pruning_interval; //!< interval for incremental blockchain pruning
      epee::math_helper::once_a_time_seconds<60*60*24*7, false> m_diff_recalc_interval; //!< interval for recalculating difficulties
 

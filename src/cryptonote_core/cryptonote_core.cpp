@@ -1569,7 +1569,7 @@ namespace cryptonote
 
     // load json & DNS checkpoints every 10min/hour respectively,
     // and verify them with respect to what blocks we already have
-    CHECK_AND_ASSERT_MES(update_checkpoints(), false, "One or more checkpoints loaded from json or dns conflicted with existing checkpoints.");
+//    CHECK_AND_ASSERT_MES(update_checkpoints(), false, "One or more checkpoints loaded from json or dns conflicted with existing checkpoints.");
 
     block lb;
     if (!b)
@@ -1710,38 +1710,7 @@ namespace cryptonote
     m_miner.on_block_chain_update();
     return true;
   }
-  //-----------------------------------------------------------------------------------------------
-  bool core::on_idle()
-  {
-    if(!m_starter_message_showed)
-    {
-      std::string main_message;
-      if (m_offline)
-        main_message = "The daemon is running offline and will not attempt to sync to the Monero network.";
-      else
-        main_message = "The daemon will start synchronizing with the network. This may take a long time to complete.";
-      MGINFO_YELLOW(ENDL << "**********************************************************************" << ENDL
-        << main_message << ENDL
-        << ENDL
-        << "You can set the level of process detailization through \"set_log <level|categories>\" command," << ENDL
-        << "where <level> is between 0 (no details) and 4 (very verbose), or custom category based levels (eg, *:WARNING)." << ENDL
-        << ENDL
-        << "Use the \"help\" command to see the list of available commands." << ENDL
-        << "Use \"help <command>\" to see a command's documentation." << ENDL
-        << "**********************************************************************" << ENDL);
-      m_starter_message_showed = true;
-    }
-
-    relay_txpool_transactions(); // txpool handles periodic DB checking
-    m_check_updates_interval.do_call(boost::bind(&core::check_updates, this));
-    m_check_disk_space_interval.do_call(boost::bind(&core::check_disk_space, this));
-    m_block_rate_interval.do_call(boost::bind(&core::check_block_rate, this));
-    m_blockchain_pruning_interval.do_call(boost::bind(&core::update_blockchain_pruning, this));
-    m_diff_recalc_interval.do_call(boost::bind(&core::recalculate_difficulties, this));
-    m_miner.on_idle();
-    m_mempool.on_idle();
-    return true;
-  }
+  #include "cryptonote_idle.inl"
   //-----------------------------------------------------------------------------------------------
   uint8_t core::get_ideal_hard_fork_version() const
   {

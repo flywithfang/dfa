@@ -93,7 +93,7 @@ namespace serialization
         return false;
       }
       storage_block_header* pbuff = (storage_block_header*)source.data();
-      MDEBUG("load_from_binary"<<pbuff->m_signature_a<<"/"<<pbuff->m_signature_b<<"/"<<pbuff->m_ver);
+      MDEBUG("load_from_binary "<<pbuff->m_signature_a<<"/"<<pbuff->m_signature_b<<"/"<<std::to_string(pbuff->m_ver));
       if(pbuff->m_signature_a != SWAP32LE(PORTABLE_STORAGE_SIGNATUREA) ||
         pbuff->m_signature_b != SWAP32LE(PORTABLE_STORAGE_SIGNATUREB)
         )

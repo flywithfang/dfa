@@ -143,9 +143,11 @@ namespace nodetool
     const command_line::arg_descriptor<std::vector<std::string> > arg_p2p_add_priority_node   = {"add-priority-node", "Specify list of peers to connect to and attempt to keep the connection open"};
     const command_line::arg_descriptor<std::vector<std::string> > arg_p2p_add_exclusive_node   = {"add-exclusive-node", "Specify list of peers to connect to only."
                                                                                                   " If this option is given the options add-priority-node and seed-node are ignored"};
-    const command_line::arg_descriptor<std::vector<std::string> > arg_p2p_seed_node   = {"seed-node", "Connect to a node to retrieve peer addresses, and disconnect"};
-    const command_line::arg_descriptor<std::vector<std::string> > arg_tx_proxy = {"tx-proxy", "Send local txes through proxy: <network-type>,<socks-ip:port>[,max_connections][,disable_noise] i.e. \"tor,127.0.0.1:9050,100,disable_noise\""};
-    const command_line::arg_descriptor<std::vector<std::string> > arg_anonymous_inbound = {"anonymous-inbound", "<hidden-service-address>,<[bind-ip:]port>[,max_connections] i.e. \"x.onion,127.0.0.1:18083,100\""};
+    const command_line::arg_descriptor<std::vector<std::string> > arg_p2p_seed_node   = {
+        "seed-node", "Connect to a node to retrieve peer addresses, and disconnect"
+    };
+    const command_line::arg_descriptor<std::vector<std::string> > arg_tx_proxy = {
+        "tx-proxy", "Send local txes through proxy: <network-type>,<socks-ip:port>[,max_connections][,disable_noise] i.e. \"tor,127.0.0.1:9050,100,disable_noise\""};
     const command_line::arg_descriptor<std::string> arg_ban_list = {"ban-list", "Specify ban list file, one IP address per line"};
     const command_line::arg_descriptor<bool> arg_p2p_hide_my_port   =    {"hide-my-port", "Do not announce yourself as peerlist candidate", false, true};
     const command_line::arg_descriptor<bool> arg_no_sync = {"no-sync", "Don't synchronize the blockchain with other peers", false};
@@ -235,73 +237,6 @@ namespace nodetool
         }
 
         return proxies;
-    }
-
-    boost::optional<std::vector<anonymous_inbound>> get_anonymous_inbounds(boost::program_options::variables_map const& vm)
-    {
-        std::vector<anonymous_inbound> inbounds{};
-
-        const std::vector<std::string> args = command_line::get_arg(vm, arg_anonymous_inbound);
-        inbounds.reserve(args.size());
-
-        for (const boost::string_ref arg : args)
-        {
-            inbounds.emplace_back();
-
-            auto next = boost::algorithm::make_split_iterator(arg, boost::algorithm::first_finder(","));
-            CHECK_AND_ASSERT_MES(!next.eof() && !next->empty(), boost::none, "No inbound address for --" << arg_anonymous_inbound.name);
-            const boost::string_ref address{next->begin(), next->size()};
-
-            ++next;
-            CHECK_AND_ASSERT_MES(!next.eof() && !next->empty(), boost::none, "No local ipv4:port given for --" << arg_anonymous_inbound.name);
-            const boost::string_ref bind{next->begin(), next->size()};
-
-            const std::size_t colon = bind.find_first_of(':');
-            CHECK_AND_ASSERT_MES(colon < bind.size(), boost::none, "No local port given for --" << arg_anonymous_inbound.name);
-
-            ++next;
-            if (!next.eof())
-            {
-                inbounds.back().max_connections = get_max_connections(*next);
-                if (inbounds.back().max_connections == 0)
-                {
-                    MERROR("Invalid max connections given to --" << arg_tx_proxy.name);
-                    return boost::none;
-                }
-            }
-
-            expect<epee::net_utils::network_address> our_address = net::get_network_address(address, 0);
-            switch (our_address ? our_address->get_type_id() : epee::net_utils::address_type::invalid)
-            {
-            case net::tor_address::get_type_id():
-                inbounds.back().our_address = std::move(*our_address);
-                inbounds.back().default_remote = net::tor_address::unknown();
-                break;
-            case net::i2p_address::get_type_id():
-                inbounds.back().our_address = std::move(*our_address);
-                inbounds.back().default_remote = net::i2p_address::unknown();
-                break;
-            default:
-                MERROR("Invalid inbound address (" << address << ") for --" << arg_anonymous_inbound.name << ": " << (our_address ? "invalid type" : our_address.error().message()));
-                return boost::none;
-            }
-
-            // get_address returns default constructed address on error
-            if (inbounds.back().our_address == epee::net_utils::network_address{})
-                return boost::none;
-
-            std::uint32_t ip = 0;
-            std::uint16_t port = 0;
-            if (!epee::string_tools::parse_peer_from_string(ip, port, std::string{bind}))
-            {
-                MERROR("Invalid ipv4:port given for --" << arg_anonymous_inbound.name);
-                return boost::none;
-            }
-            inbounds.back().local_ip = std::string{bind.substr(0, colon)};
-            inbounds.back().local_port = std::string{bind.substr(colon + 1)};
-        }
-
-        return inbounds;
     }
 
     bool is_filtered_command(const epee::net_utils::network_address& address, int command)

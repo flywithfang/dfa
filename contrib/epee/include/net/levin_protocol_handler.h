@@ -24,8 +24,6 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 // 
 
-
-
 #ifndef _LEVIN_PROTOCOL_HANDLER_H_
 #define _LEVIN_PROTOCOL_HANDLER_H_
 
@@ -87,14 +85,14 @@ namespace levin
 	{}
 
   template<class t_connection_context>
-	bool protocol_handler<t_connection_context>::handle_recv(const void* ptr, size_t cb)
+	bool protocol_handler<t_connection_context>::handle_recv(const void* ptr, size_t len)
 	{
 		if(!m_config.m_pcommands_handler)
 		{
 			LOG_ERROR_CC(m_conn_context, "Command handler not set!");
 			return false;
 		}
-		m_cach_in_buffer.append((const char*)ptr, cb);
+		m_cach_in_buffer.append((const char*)ptr, len);
 
 		bool is_continue = true;
 		while(is_continue)

@@ -336,7 +336,7 @@ std::vector<std::string> DNSResolver::get_record(const std::string& url, int rec
   // destructor takes care of cleanup
   ub_result_ptr result;
 
-  MDEBUG("Performing DNSSEC " << get_record_name(record_type) << " record query for " << url);
+  MINFO("Performing DNSSEC " << get_record_name(record_type) << " record query for " << url);
 
   // call DNS resolver, blocking.  if return value not zero, something went wrong
   if (!ub_resolve(m_data->m_ub_context, string_copy(url.c_str()), record_type, DNS_CLASS_IN, &result))
@@ -587,7 +587,7 @@ bool load_txt_records_from_dns(std::vector<std::string> &good_records, const std
       good_record = i;
   }
 
-  MDEBUG("Found " << (good_record == record_count.end() ? 0 : good_record->second) << "/" << dns_urls.size() << " matching records from " << num_valid_records << " valid records");
+  MINFO("Found " << (good_record == record_count.end() ? 0 : good_record->second) << "/" << dns_urls.size() << " matching records from " << num_valid_records << " valid records");
   if (good_record == record_count.end() || good_record->second < dns_urls.size() / 2 + 1)
   {
     LOG_PRINT_L0("WARNING: no majority of DNS TXT records matched (only " << good_record->second << "/" << dns_urls.size() << ")");

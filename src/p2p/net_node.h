@@ -62,6 +62,7 @@
 PUSH_WARNINGS
 DISABLE_VS_WARNINGS(4355)
 
+
 namespace nodetool
 {
   struct proxy
@@ -97,7 +98,6 @@ namespace nodetool
   };
 
   boost::optional<std::vector<proxy>> get_proxies(const boost::program_options::variables_map& vm);
-  boost::optional<std::vector<anonymous_inbound>> get_anonymous_inbounds(const boost::program_options::variables_map& vm);
 
   //! \return True if `commnd` is filtered (ignored/dropped) for `address`
   bool is_filtered_command(epee::net_utils::network_address const& address, int command);
@@ -126,6 +126,8 @@ namespace nodetool
     std::set<epee::net_utils::network_address> sent_addresses;
   };
 
+
+
   template<class t_payload_net_handler>
   class node_server: public epee::levin::levin_commands_handler<p2p_connection_context_t<typename t_payload_net_handler::connection_context> >,
                      public i_p2p_endpoint<typename t_payload_net_handler::connection_context>,
@@ -137,11 +139,13 @@ namespace nodetool
 
     typedef p2p_connection_context_t<typename t_payload_net_handler::connection_context> p2p_connection_context;
 
+    typedef epee::levin::async_protocol_handler<p2p_connection_context> P2PProtocolHandler;
+    typedef node_server<t_payload_net_handler> MyType;
     typedef COMMAND_HANDSHAKE_T<typename t_payload_net_handler::payload_type> COMMAND_HANDSHAKE;
     typedef COMMAND_TIMED_SYNC_T<typename t_payload_net_handler::payload_type> COMMAND_TIMED_SYNC;
     static_assert(p2p_connection_context::handshake_command() == COMMAND_HANDSHAKE::ID, "invalid handshake command id");
 
-    typedef epee::net_utils::boosted_tcp_server<epee::levin::async_protocol_handler<p2p_connection_context>> net_server;
+    typedef epee::net_utils::boosted_tcp_server<P2PProtocolHandler> net_server;
 
     struct network_zone;
     using connect_func = boost::optional<p2p_connection_context>(network_zone&, epee::net_utils::network_address const&, epee::net_utils::ssl_support_t);
@@ -257,7 +261,7 @@ namespace nodetool
         m_hide_my_port(false),
         m_igd(no_igd),
         m_offline(false),
-        is_closing(false),
+        m_is_closing(false),
         m_network_id(),
         max_connections(1)
     {}
@@ -312,22 +316,23 @@ namespace nodetool
     bool islimitup=false;
     bool islimitdown=false;
 
-    //CHAIN_LEVIN_INVOKE_MAP2(p2p_connection_context); //move levin_commands_handler interface invoke(...) callbacks into invoke map
   int invoke(int command, const epee::span<const uint8_t> in_buff, epee::byte_stream& buff_out, p2p_connection_context& context) 
   { 
   bool handled = false; 
   return handle_invoke_map(false, command, in_buff, buff_out, context, handled); 
   } 
- //   CHAIN_LEVIN_NOTIFY_MAP2(p2p_connection_context); //move levin_commands_handler interface notify(...) callbacks into nothing
-    int notify(int command, const epee::span<const uint8_t> in_buff, p2p_connection_context& context) 
+  int notify(int command, const epee::span<const uint8_t> in_buff, p2p_connection_context& context) 
   { 
     bool handled = false;
     epee::byte_stream fake_str; 
     return handle_invoke_map(true, command, in_buff, fake_str, context, handled); 
   } 
 
+  template <class t_context> int handle_invoke_map(bool is_notify, int command, const epee::span<const uint8_t> in_buff, epee::byte_stream& buff_out, t_context& context, bool& handled) 
+  { 
+  try { 
+  typedef node_server internal_owner_type_name;
 
-    BEGIN_INVOKE_MAP2(node_server)
       if (is_filtered_command(context.m_remote_address, command))
         return LEVIN_ERROR_CONNECTION_HANDLER_NOT_DEFINED;
 
@@ -341,9 +346,21 @@ namespace nodetool
      // HANDLE_INVOKE_T2(COMMAND_HANDSHAKE, &node_server::handle_handshake)
       HANDLE_INVOKE_T2(COMMAND_TIMED_SYNC, &node_server::handle_timed_sync)
       HANDLE_INVOKE_T2(COMMAND_PING, &node_server::handle_ping)
-      HANDLE_INVOKE_T2(COMMAND_REQUEST_SUPPORT_FLAGS, &node_server::handle_get_support_flags)
-      CHAIN_INVOKE_MAP_TO_OBJ_FORCE_CONTEXT(m_payload_handler, typename t_payload_net_handler::connection_context&)
-    END_INVOKE_MAP2()
+
+        { 
+      int res = m_payload_handler.handle_invoke_map(is_notify, command, in_buff, buff_out, static_cast<typename t_payload_net_handler::connection_context&>(context), handled); 
+      if(handled) return res; 
+      }
+
+    LOG_ERROR("Unknown command:" << command); 
+    on_levin_traffic(context, false, false, true, in_buff.size(), "invalid-command"); 
+    return LEVIN_ERROR_CONNECTION_HANDLER_NOT_DEFINED; 
+    } 
+    catch (const std::exception &e) { 
+      MERROR("Error in handle_invoke_map: " << e.what()); 
+      return LEVIN_ERROR_CONNECTION_TIMEDOUT; /* seems kinda appropriate */ 
+    } 
+    }
 
     enum PeerType { anchor = 0, white, gray };
 
@@ -351,7 +368,7 @@ namespace nodetool
     int handle_handshake(int command, typename COMMAND_HANDSHAKE::request& arg, typename COMMAND_HANDSHAKE::response& rsp, p2p_connection_context& context);
     int handle_timed_sync(int command, typename COMMAND_TIMED_SYNC::request& arg, typename COMMAND_TIMED_SYNC::response& rsp, p2p_connection_context& context);
     int handle_ping(int command, COMMAND_PING::request& arg, COMMAND_PING::response& rsp, p2p_connection_context& context);
-    int handle_get_support_flags(int command, COMMAND_REQUEST_SUPPORT_FLAGS::request& arg, COMMAND_REQUEST_SUPPORT_FLAGS::response& rsp, p2p_connection_context& context);
+
     bool init_config();
     bool make_default_peer_id();
     bool make_default_config();
@@ -389,7 +406,6 @@ namespace nodetool
     bool peer_sync_idle_maker();
     bool do_handshake_with_peer(peerid_type& pi, p2p_connection_context& context, bool just_take_peerlist = false);
     bool do_peer_timed_sync(const epee::net_utils::connection_context_base& context, peerid_type peer_id);
-    bool update_dns_blocklist();
 
     bool make_new_connection_from_anchor_peerlist(const std::vector<anchor_peerlist_entry>& anchor_peerlist);
     bool make_new_connection_from_peerlist(network_zone& zone, bool use_white_list);
@@ -408,8 +424,7 @@ namespace nodetool
     void delete_upnp_port_mapping(uint32_t port);
     template<class t_callback>
     bool try_ping(basic_node_data& node_data, p2p_connection_context& context, const t_callback &cb);
-    bool try_get_support_flags(const p2p_connection_context& context, std::function<void(p2p_connection_context&, const uint32_t&)> f);
-    bool make_expected_connections_count(network_zone& zone, PeerType peer_type, size_t expected_connections);
+    bool make_expected_connection(network_zone& zone, PeerType peer_type, size_t expected_connections);
     void record_addr_failed(const epee::net_utils::network_address& addr);
     bool is_addr_recently_failed(const epee::net_utils::network_address& addr);
     bool is_priority_node(const epee::net_utils::network_address& na);
@@ -444,7 +459,7 @@ namespace nodetool
 
     void kill() { ///< will be called e.g. from deinit()
       _info("Killing the net_node");
-      is_closing = true;
+      m_is_closing = true;
       if(mPeersLoggerThread != nullptr)
         mPeersLoggerThread->join(); // make sure the thread finishes
       _info("Joined extra background net_node threads");
@@ -482,7 +497,7 @@ namespace nodetool
     bool m_offline;
     bool m_use_ipv6;
     bool m_require_ipv4;
-    std::atomic<bool> is_closing;
+    std::atomic<bool> m_is_closing;
     std::unique_ptr<boost::thread> mPeersLoggerThread;
     //critical_section m_connections_lock;
     //connections_indexed_container m_connections;
@@ -490,12 +505,12 @@ namespace nodetool
     t_payload_net_handler& m_payload_handler;
     peerlist_storage m_peerlist_storage;
 
-    epee::math_helper::once_a_time_seconds<P2P_DEFAULT_HANDSHAKE_INTERVAL> m_peer_handshake_idle_maker_interval;
     epee::math_helper::once_a_time_seconds<1> m_connections_maker_interval;
-    epee::math_helper::once_a_time_seconds<60*30, false> m_peerlist_store_interval;
+    epee::math_helper::once_a_time_seconds<P2P_DEFAULT_HANDSHAKE_INTERVAL> m_peer_handshake_idle_maker_interval;
     epee::math_helper::once_a_time_seconds<60> m_gray_peerlist_housekeeping_interval;
+    epee::math_helper::once_a_time_seconds<60*30, false> m_peerlist_store_interval;
+    
     epee::math_helper::once_a_time_seconds<3600, false> m_incoming_connections_interval;
-    epee::math_helper::once_a_time_seconds<7000> m_dns_blocklist_interval;
 
     std::list<epee::net_utils::network_address>   m_priority_peers;
     std::vector<epee::net_utils::network_address> m_exclusive_peers;
@@ -555,7 +570,6 @@ namespace nodetool
     extern const command_line::arg_descriptor<std::vector<std::string> > arg_p2p_add_exclusive_node;
     extern const command_line::arg_descriptor<std::vector<std::string> > arg_p2p_seed_node;
     extern const command_line::arg_descriptor<std::vector<std::string> > arg_tx_proxy;
-    extern const command_line::arg_descriptor<std::vector<std::string> > arg_anonymous_inbound;
     extern const command_line::arg_descriptor<std::string> arg_ban_list;
     extern const command_line::arg_descriptor<bool> arg_p2p_hide_my_port;
     extern const command_line::arg_descriptor<bool> arg_no_sync;

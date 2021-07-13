@@ -117,7 +117,6 @@ namespace nodetool
     command_line::add_arg(desc, arg_p2p_add_exclusive_node);
     command_line::add_arg(desc, arg_p2p_seed_node);
     command_line::add_arg(desc, arg_tx_proxy);
-    command_line::add_arg(desc, arg_anonymous_inbound);
     command_line::add_arg(desc, arg_ban_list);
     command_line::add_arg(desc, arg_p2p_hide_my_port);
     command_line::add_arg(desc, arg_no_sync);
@@ -140,7 +139,9 @@ namespace nodetool
     TRY_ENTRY();
     auto storage = peerlist_storage::open(m_config_folder + "/" + P2P_NET_DATA_FILENAME);
     if (storage)
+     {
       m_peerlist_storage = std::move(*storage);
+    }
 
     network_zone& public_zone = m_network_zones[epee::net_utils::zone::public_];
     public_zone.m_config.m_support_flags = P2P_SUPPORT_FLAGS;
@@ -421,6 +422,7 @@ namespace nodetool
     m_offline = command_line::get_arg(vm, cryptonote::arg_offline);
     m_use_ipv6 = command_line::get_arg(vm, arg_p2p_use_ipv6);
     m_require_ipv4 = !command_line::get_arg(vm, arg_p2p_ignore_ipv4);
+
     public_zone.m_notifier = cryptonote::levin::notify{
       public_zone.m_net_server.get_io_service(), public_zone.m_net_server.get_config_shared(), nullptr, epee::net_utils::zone::public_, pad_txs, m_payload_handler.get_core()
     };
@@ -586,36 +588,7 @@ namespace nodetool
       }
     }
 
-    auto inbounds = get_anonymous_inbounds(vm);
-    if (!inbounds)
-      return false;
-
-    const std::size_t tx_relay_zones = m_network_zones.size();
-    for (auto& inbound : *inbounds)
-    {
-      network_zone& zone = add_zone(inbound.our_address.get_zone());
-
-      if (!zone.m_bind_ip.empty())
-      {
-        MERROR("Listed --" << arg_anonymous_inbound.name << " twice with " << epee::net_utils::zone_to_string(inbound.our_address.get_zone()) << " network");
-        return false;
-      }
-
-      if (zone.m_connect == nullptr && tx_relay_zones <= 1)
-      {
-        MERROR("Listed --" << arg_anonymous_inbound.name << " without listing any --" << arg_tx_proxy.name << ". The latter is necessary for sending local txes over anonymity networks");
-        return false;
-      }
-
-      zone.m_bind_ip = std::move(inbound.local_ip);
-      zone.m_port = std::move(inbound.local_port);
-      zone.m_net_server.set_default_remote(std::move(inbound.default_remote));
-      zone.m_our_address = std::move(inbound.our_address);
-
-      if (!set_max_in_peers(zone, inbound.max_connections))
-        return false;
-    }
-
+  
     max_connections = command_line::get_arg(vm, arg_max_connections_per_ip);
 
     return true;
@@ -811,6 +784,7 @@ namespace nodetool
 
       for (const auto &peer: get_ip_seed_nodes())
         full_addrs.insert(peer);
+
       m_fallback_seed_nodes_added.test_and_set();
     }
 
@@ -891,10 +865,16 @@ namespace nodetool
     res = init_config();
     CHECK_AND_ASSERT_MES(res, false, "Failed to init config.");
 
+    MINFO("node_server init()");
     for (auto& zone : m_network_zones)
     {
       res = zone.second.m_peerlist.init(m_peerlist_storage.take_zone(zone.first), m_allow_local_ip);
       CHECK_AND_ASSERT_MES(res, false, "Failed to init peerlist.");
+
+      zone.second.m_peerlist.foreach(true,[](const peerlist_entry & e){
+
+        MINFO("peerlist_entry id"<<e.id<<", adr "<<e.adr.str()); return true;
+      });
     }
 
     for(const auto& p: m_command_line_peers)
@@ -970,9 +950,9 @@ namespace nodetool
     // creating thread to log number of connections
     mPeersLoggerThread.reset(new boost::thread([&]()
     {
-      _note("Thread monitor number of peers - start");
+      MINFO("Thread monitor number of peers - start");
       const network_zone& public_zone = m_network_zones.at(epee::net_utils::zone::public_);
-      while (!is_closing && !public_zone.m_net_server.is_stop_signal_sent())
+      while (!m_is_closing && !public_zone.m_net_server.is_stop_signal_sent())
       { // main loop of thread
         //number_of_peers = m_net_server.get_config_object().get_connections_count();
         for (auto& zone : m_network_zones)
@@ -996,11 +976,11 @@ namespace nodetool
         }
         boost::this_thread::sleep_for(boost::chrono::seconds(1));
       } // main loop of thread
-      _note("Thread monitor number of peers - done");
+      MINFO("Thread monitor number of peers - done");
     })); // lambda
 
     network_zone& public_zone = m_network_zones.at(epee::net_utils::zone::public_);
-    public_zone.m_net_server.add_idle_handler(boost::bind(&node_server<t_payload_net_handler>::idle_worker, this), 1000);
+    public_zone.m_net_server.add_idle_handler(boost::bind(&MyType::idle_worker, this), 1000);
     public_zone.m_net_server.add_idle_handler(boost::bind(&t_payload_net_handler::on_idle, &m_payload_handler), 1000);
 
     //here you can set worker threads count
@@ -1008,7 +988,7 @@ namespace nodetool
     boost::thread::attributes attrs;
     attrs.set_stack_size(THREAD_STACK_SIZE);
     //go to loop
-    MINFO("Run net_service loop( " << thrds_count << " threads)... staack size "<<THREAD_STACK_SIZE);
+    MINFO("Run p2p net_service loop( " << thrds_count << " threads)... staack size "<<THREAD_STACK_SIZE);
     if(!public_zone.m_net_server.run_server(thrds_count, true, attrs))
     {
       LOG_ERROR("Failed to run net tcp server!");
@@ -1064,6 +1044,10 @@ namespace nodetool
       MWARNING("Failed to save config to file " << state_file_path);
       return false;
     }
+    MINFO( "save peerlist to file " << state_file_path);
+    m_network_zones[epee::net_utils::zone::public_].m_peerlist.foreach(true,[](const peerlist_entry & e){
+        MDEBUG("peerlist_entry id"<<e); return true;
+      }); 
     CATCH_ENTRY_L0("node_server::store", false);
     return true;
   }
@@ -1089,141 +1073,8 @@ namespace nodetool
     m_payload_handler.stop();
     return true;
   }
-  //-----------------------------------------------------------------------------------
-  template<class t_payload_net_handler>
-  bool node_server<t_payload_net_handler>::do_handshake_with_peer(peerid_type& pi, p2p_connection_context& context_, bool just_take_peerlist)
-  {
-    network_zone& zone = m_network_zones.at(context_.m_remote_address.get_zone());
 
-    typename COMMAND_HANDSHAKE::request arg;
-    typename COMMAND_HANDSHAKE::response rsp;
-    get_local_node_data(arg.node_data, zone);
-    m_payload_handler.get_payload_sync_data(arg.payload_data);
-
-    epee::simple_event ev;
-    std::atomic<bool> hsh_result(false);
-    bool timeout = false;
-
-    bool r = epee::net_utils::async_invoke_remote_command2<typename COMMAND_HANDSHAKE::response>(context_, COMMAND_HANDSHAKE::ID, arg, zone.m_net_server.get_config_object(),
-      [this, &pi, &ev, &hsh_result, &just_take_peerlist, &context_, &timeout](int code, const typename COMMAND_HANDSHAKE::response& rsp, p2p_connection_context& context)
-    {
-      epee::misc_utils::auto_scope_leave_caller scope_exit_handler = epee::misc_utils::create_scope_leave_handler([&](){ev.raise();});
-
-      if(code < 0)
-      {
-        LOG_WARNING_CC(context, "COMMAND_HANDSHAKE invoke failed. (" << code <<  ", " << epee::levin::get_err_descr(code) << ")");
-        if (code == LEVIN_ERROR_CONNECTION_TIMEDOUT || code == LEVIN_ERROR_CONNECTION_DESTROYED)
-          timeout = true;
-        return;
-      }
-
-      if(rsp.node_data.network_id != m_network_id)
-      {
-        LOG_WARNING_CC(context, "COMMAND_HANDSHAKE Failed, wrong network!  (" << rsp.node_data.network_id << "), closing connection.");
-        return;
-      }
-
-      if(!handle_remote_peerlist(rsp.local_peerlist_new, context))
-      {
-        LOG_WARNING_CC(context, "COMMAND_HANDSHAKE: failed to handle_remote_peerlist(...), closing connection.");
-        add_host_fail(context.m_remote_address);
-        return;
-      }
-      hsh_result = true;
-      if(!just_take_peerlist)
-      {
-        if(!m_payload_handler.process_payload_sync_data(rsp.payload_data, context, true))
-        {
-          LOG_WARNING_CC(context, "COMMAND_HANDSHAKE invoked, but process_payload_sync_data returned false, dropping connection.");
-          hsh_result = false;
-          return;
-        }
-
-        pi = context.peer_id = rsp.node_data.peer_id;
-        context.m_rpc_port = rsp.node_data.rpc_port;
-        context.m_rpc_credits_per_hash = rsp.node_data.rpc_credits_per_hash;
-        context.support_flags = rsp.node_data.support_flags;
-        const auto azone = context.m_remote_address.get_zone();
-        network_zone& zone = m_network_zones.at(azone);
-        zone.m_peerlist.set_peer_just_seen(rsp.node_data.peer_id, context.m_remote_address, context.m_pruning_seed, context.m_rpc_port, context.m_rpc_credits_per_hash);
-
-        // move
-        if(azone == epee::net_utils::zone::public_ && rsp.node_data.peer_id == zone.m_config.m_peer_id)
-        {
-          LOG_DEBUG_CC(context, "Connection to self detected, dropping connection");
-          hsh_result = false;
-          return;
-        }
-        LOG_INFO_CC(context, "New connection handshaked, pruning seed " << epee::string_tools::to_string_hex(context.m_pruning_seed));
-        LOG_DEBUG_CC(context, " COMMAND_HANDSHAKE INVOKED OK");
-      }else
-      {
-        LOG_DEBUG_CC(context, " COMMAND_HANDSHAKE(AND CLOSE) INVOKED OK");
-      }
-      context_ = context;
-    }, P2P_DEFAULT_HANDSHAKE_INVOKE_TIMEOUT);
-
-    if(r)
-    {
-      ev.wait();
-    }
-
-    if(!hsh_result)
-    {
-      LOG_WARNING_CC(context_, "COMMAND_HANDSHAKE Failed");
-      if (!timeout)
-        zone.m_net_server.get_config_object().close(context_.m_connection_id);
-    }
-    else if (!just_take_peerlist)
-    {
-      if (context_.support_flags == 0)
-        try_get_support_flags(context_, [](p2p_connection_context& flags_context, const uint32_t& support_flags) 
-        {
-          flags_context.support_flags = support_flags;
-        });
-    }
-
-    return hsh_result;
-  }
-  //-----------------------------------------------------------------------------------
-  template<class t_payload_net_handler>
-  bool node_server<t_payload_net_handler>::do_peer_timed_sync(const epee::net_utils::connection_context_base& context_, peerid_type peer_id)
-  {
-    typename COMMAND_TIMED_SYNC::request arg = AUTO_VAL_INIT(arg);
-    m_payload_handler.get_payload_sync_data(arg.payload_data);
-
-    network_zone& zone = m_network_zones.at(context_.m_remote_address.get_zone());
-    bool r = epee::net_utils::async_invoke_remote_command2<typename COMMAND_TIMED_SYNC::response>(context_, COMMAND_TIMED_SYNC::ID, arg, zone.m_net_server.get_config_object(),
-      [this](int code, const typename COMMAND_TIMED_SYNC::response& rsp, p2p_connection_context& context)
-    {
-      context.m_in_timedsync = false;
-      if(code < 0)
-      {
-        LOG_WARNING_CC(context, "COMMAND_TIMED_SYNC invoke failed. (" << code <<  ", " << epee::levin::get_err_descr(code) << ")");
-        return;
-      }
-
-      if(!handle_remote_peerlist(rsp.local_peerlist_new, context))
-      {
-        LOG_WARNING_CC(context, "COMMAND_TIMED_SYNC: failed to handle_remote_peerlist(...), closing connection.");
-        m_network_zones.at(context.m_remote_address.get_zone()).m_net_server.get_config_object().close(context.m_connection_id );
-        add_host_fail(context.m_remote_address);
-      }
-      if(!context.m_is_income)
-        m_network_zones.at(context.m_remote_address.get_zone()).m_peerlist.set_peer_just_seen(context.peer_id, context.m_remote_address, context.m_pruning_seed, context.m_rpc_port, context.m_rpc_credits_per_hash);
-      if (!m_payload_handler.process_payload_sync_data(rsp.payload_data, context, false))
-      {
-        m_network_zones.at(context.m_remote_address.get_zone()).m_net_server.get_config_object().close(context.m_connection_id );
-      }
-    });
-
-    if(!r)
-    {
-      LOG_WARNING_CC(context_, "COMMAND_TIMED_SYNC Failed");
-      return false;
-    }
-    return true;
-  }
+  
   //-----------------------------------------------------------------------------------
   template<class t_payload_net_handler>
   size_t node_server<t_payload_net_handler>::get_random_index_with_fixed_probability(size_t max_index)
@@ -1318,87 +1169,7 @@ namespace nodetool
     } \
   } while(0)
 
-  template<class t_payload_net_handler>
-  bool node_server<t_payload_net_handler>::try_to_connect_and_handshake_with_new_peer(const epee::net_utils::network_address& na, bool just_take_peerlist, uint64_t last_seen_stamp, PeerType peer_type, uint64_t first_seen_stamp)
-  {
-    network_zone& zone = m_network_zones.at(na.get_zone());
-    if (zone.m_connect == nullptr) // outgoing connections in zone not possible
-      return false;
-
-    if (zone.m_our_address == na)
-      return false;
-
-    if (zone.m_current_number_of_out_peers == zone.m_config.m_net_config.max_out_connection_count) // out peers limit
-    {
-      return false;
-    }
-    else if (zone.m_current_number_of_out_peers > zone.m_config.m_net_config.max_out_connection_count)
-    {
-      zone.m_net_server.get_config_object().del_out_connections(1);
-      --(zone.m_current_number_of_out_peers); // atomic variable, update time = 1s
-      return false;
-    }
-
-
-    MDEBUG("Connecting to " << na.str() << "(peer_type=" << peer_type << ", last_seen: "
-        << (last_seen_stamp ? epee::misc_utils::get_time_interval_string(time(NULL) - last_seen_stamp):"never")
-        << ")...");
-
-    auto con = zone.m_connect(zone, na, m_ssl_support);
-    if(!con)
-    {
-      bool is_priority = is_priority_node(na);
-      LOG_PRINT_CC_PRIORITY_NODE(is_priority, bool(con), "Connect failed to " << na.str()
-        /*<< ", try " << try_count*/);
-      record_addr_failed(na);
-      return false;
-    }
-
-    con->m_anchor = peer_type == anchor;
-    peerid_type pi = AUTO_VAL_INIT(pi);
-    bool res = do_handshake_with_peer(pi, *con, just_take_peerlist);
-
-    if(!res)
-    {
-      bool is_priority = is_priority_node(na);
-      LOG_PRINT_CC_PRIORITY_NODE(is_priority, *con, "Failed to HANDSHAKE with peer "
-        << na.str()
-        /*<< ", try " << try_count*/);
-      record_addr_failed(na);
-      return false;
-    }
-
-    if(just_take_peerlist)
-    {
-      zone.m_net_server.get_config_object().close(con->m_connection_id);
-      LOG_DEBUG_CC(*con, "CONNECTION HANDSHAKED OK AND CLOSED.");
-      return true;
-    }
-
-    peerlist_entry pe_local = AUTO_VAL_INIT(pe_local);
-    pe_local.adr = na;
-    pe_local.id = pi;
-    time_t last_seen;
-    time(&last_seen);
-    pe_local.last_seen = static_cast<int64_t>(last_seen);
-    pe_local.pruning_seed = con->m_pruning_seed;
-    pe_local.rpc_port = con->m_rpc_port;
-    pe_local.rpc_credits_per_hash = con->m_rpc_credits_per_hash;
-    zone.m_peerlist.append_with_peer_white(pe_local);
-    //update last seen and push it to peerlist manager
-
-    anchor_peerlist_entry ape = AUTO_VAL_INIT(ape);
-    ape.adr = na;
-    ape.id = pi;
-    ape.first_seen = first_seen_stamp ? first_seen_stamp : time(nullptr);
-
-    zone.m_peerlist.append_with_peer_anchor(ape);
-    zone.m_notifier.new_out_connection();
-
-    LOG_DEBUG_CC(*con, "CONNECTION HANDSHAKED OK.");
-    return true;
-  }
-
+ 
   template<class t_payload_net_handler>
   bool node_server<t_payload_net_handler>::check_connection_and_handshake_with_peer(const epee::net_utils::network_address& na, uint64_t last_seen_stamp)
   {
@@ -1461,228 +1232,8 @@ namespace nodetool
     else
       return true;
   }
-  //-----------------------------------------------------------------------------------
-  template<class t_payload_net_handler>
-  bool node_server<t_payload_net_handler>::make_new_connection_from_anchor_peerlist(const std::vector<anchor_peerlist_entry>& anchor_peerlist)
-  {
-    for (const auto& pe: anchor_peerlist) {
-      _note("Considering connecting (out) to anchor peer: " << peerid_to_string(pe.id) << " " << pe.adr.str());
-
-      if(is_peer_used(pe)) {
-        _note("Peer is used");
-        continue;
-      }
-
-      if(!is_remote_host_allowed(pe.adr)) {
-        continue;
-      }
-
-      if(is_addr_recently_failed(pe.adr)) {
-        continue;
-      }
-
-      MDEBUG("Selected peer: " << peerid_to_string(pe.id) << " " << pe.adr.str()
-                               << "[peer_type=" << anchor
-                               << "] first_seen: " << epee::misc_utils::get_time_interval_string(time(NULL) - pe.first_seen));
-
-      if(!try_to_connect_and_handshake_with_new_peer(pe.adr, false, 0, anchor, pe.first_seen)) {
-        _note("Handshake failed");
-        continue;
-      }
-
-      return true;
-    }
-
-    return false;
-  }
-  //-----------------------------------------------------------------------------------
-  template<class t_payload_net_handler>
-  bool node_server<t_payload_net_handler>::make_new_connection_from_peerlist(network_zone& zone, bool use_white_list)
-  {
-    size_t max_random_index = 0;
-
-    std::set<size_t> tried_peers;
-
-    size_t try_count = 0;
-    size_t rand_count = 0;
-    while(rand_count < (max_random_index+1)*3 &&  try_count < 10 && !zone.m_net_server.is_stop_signal_sent())
-    {
-      ++rand_count;
-      size_t random_index;
-      const uint32_t next_needed_pruning_stripe = m_payload_handler.get_next_needed_pruning_stripe().second;
-
-      // build a set of all the /16 we're connected to, and prefer a peer that's not in that set
-      std::set<uint32_t> classB;
-      if (&zone == &m_network_zones.at(epee::net_utils::zone::public_)) // at returns reference, not copy
-      {
-        zone.m_net_server.get_config_object().foreach_connection([&](const p2p_connection_context& cntxt)
-        {
-          if (cntxt.m_remote_address.get_type_id() == epee::net_utils::ipv4_network_address::get_type_id())
-          {
-
-            const epee::net_utils::network_address na = cntxt.m_remote_address;
-            const uint32_t actual_ip = na.as<const epee::net_utils::ipv4_network_address>().ip();
-            classB.insert(actual_ip & 0x0000ffff);
-          }
-          else if (cntxt.m_remote_address.get_type_id() == epee::net_utils::ipv6_network_address::get_type_id())
-          {
-            const epee::net_utils::network_address na = cntxt.m_remote_address;
-            const boost::asio::ip::address_v6 &actual_ip = na.as<const epee::net_utils::ipv6_network_address>().ip();
-            if (actual_ip.is_v4_mapped())
-            {
-              boost::asio::ip::address_v4 v4ip = make_address_v4_from_v6(actual_ip);
-              uint32_t actual_ipv4;
-              memcpy(&actual_ipv4, v4ip.to_bytes().data(), sizeof(actual_ipv4));
-              classB.insert(actual_ipv4 & ntohl(0xffff0000));
-            }
-          }
-          return true;
-        });
-      }
-
-      auto get_host_string = [](const epee::net_utils::network_address &address) {
-        if (address.get_type_id() == epee::net_utils::ipv6_network_address::get_type_id())
-        {
-          boost::asio::ip::address_v6 actual_ip = address.as<const epee::net_utils::ipv6_network_address>().ip();
-          if (actual_ip.is_v4_mapped())
-          {
-            boost::asio::ip::address_v4 v4ip = make_address_v4_from_v6(actual_ip);
-            uint32_t actual_ipv4;
-            memcpy(&actual_ipv4, v4ip.to_bytes().data(), sizeof(actual_ipv4));
-            return epee::net_utils::ipv4_network_address(actual_ipv4, 0).host_str();
-          }
-        }
-        return address.host_str();
-      };
-      std::unordered_set<std::string> hosts_added;
-      std::deque<size_t> filtered;
-      const size_t limit = use_white_list ? 20 : std::numeric_limits<size_t>::max();
-      for (int step = 0; step < 2; ++step)
-      {
-        bool skip_duplicate_class_B = step == 0;
-        size_t idx = 0, skipped = 0;
-        zone.m_peerlist.foreach (use_white_list, [&classB, &filtered, &idx, &skipped, skip_duplicate_class_B, limit, next_needed_pruning_stripe, &hosts_added, &get_host_string](const peerlist_entry &pe){
-          if (filtered.size() >= limit)
-            return false;
-          bool skip = false;
-          if (skip_duplicate_class_B && pe.adr.get_type_id() == epee::net_utils::ipv4_network_address::get_type_id())
-          {
-            const epee::net_utils::network_address na = pe.adr;
-            uint32_t actual_ip = na.as<const epee::net_utils::ipv4_network_address>().ip();
-            skip = classB.find(actual_ip & 0x0000ffff) != classB.end();
-          }
-          else if (skip_duplicate_class_B && pe.adr.get_type_id() == epee::net_utils::ipv6_network_address::get_type_id())
-          {
-            const epee::net_utils::network_address na = pe.adr;
-            const boost::asio::ip::address_v6 &actual_ip = na.as<const epee::net_utils::ipv6_network_address>().ip();
-            if (actual_ip.is_v4_mapped())
-            {
-              boost::asio::ip::address_v4 v4ip = make_address_v4_from_v6(actual_ip);
-              uint32_t actual_ipv4;
-              memcpy(&actual_ipv4, v4ip.to_bytes().data(), sizeof(actual_ipv4));
-              skip = classB.find(actual_ipv4 & ntohl(0xffff0000)) != classB.end();
-            }
-          }
-
-          // consider each host once, to avoid giving undue inflence to hosts running several nodes
-          if (!skip)
-          {
-            const auto i = hosts_added.find(get_host_string(pe.adr));
-            if (i != hosts_added.end())
-              skip = true;
-          }
-
-          if (skip)
-            ++skipped;
-          else if (next_needed_pruning_stripe == 0 || pe.pruning_seed == 0)
-            filtered.push_back(idx);
-          else if (next_needed_pruning_stripe == tools::get_pruning_stripe(pe.pruning_seed))
-            filtered.push_front(idx);
-          ++idx;
-          hosts_added.insert(get_host_string(pe.adr));
-          return true;
-        });
-        if (skipped == 0 || !filtered.empty())
-          break;
-        if (skipped)
-          MDEBUG("Skipping " << skipped << " possible peers as they share a class B with existing peers");
-      }
-      if (filtered.empty())
-      {
-        MINFO("No available peer in " << (use_white_list ? "white" : "gray") << " list filtered by " << next_needed_pruning_stripe);
-        return false;
-      }
-      if (use_white_list)
-      {
-        // if using the white list, we first pick in the set of peers we've already been using earlier
-        random_index = get_random_index_with_fixed_probability(std::min<uint64_t>(filtered.size() - 1, 20));
-        CRITICAL_REGION_LOCAL(m_used_stripe_peers_mutex);
-        if (next_needed_pruning_stripe > 0 && next_needed_pruning_stripe <= (1ul << CRYPTONOTE_PRUNING_LOG_STRIPES) && !m_used_stripe_peers[next_needed_pruning_stripe-1].empty())
-        {
-          const epee::net_utils::network_address na = m_used_stripe_peers[next_needed_pruning_stripe-1].front();
-          m_used_stripe_peers[next_needed_pruning_stripe-1].pop_front();
-          for (size_t i = 0; i < filtered.size(); ++i)
-          {
-            peerlist_entry pe;
-            if (zone.m_peerlist.get_white_peer_by_index(pe, filtered[i]) && pe.adr == na)
-            {
-              MDEBUG("Reusing stripe " << next_needed_pruning_stripe << " peer " << pe.adr.str());
-              random_index = i;
-              break;
-            }
-          }
-        }
-      }
-      else
-        random_index = crypto::rand_idx(filtered.size());
-
-      CHECK_AND_ASSERT_MES(random_index < filtered.size(), false, "random_index < filtered.size() failed!!");
-      random_index = filtered[random_index];
-      CHECK_AND_ASSERT_MES(random_index < (use_white_list ? zone.m_peerlist.get_white_peers_count() : zone.m_peerlist.get_gray_peers_count()),
-          false, "random_index < peers size failed!!");
-
-      if(tried_peers.count(random_index))
-        continue;
-
-      tried_peers.insert(random_index);
-      peerlist_entry pe = AUTO_VAL_INIT(pe);
-      bool r = use_white_list ? zone.m_peerlist.get_white_peer_by_index(pe, random_index):zone.m_peerlist.get_gray_peer_by_index(pe, random_index);
-      CHECK_AND_ASSERT_MES(r, false, "Failed to get random peer from peerlist(white:" << use_white_list << ")");
-
-      ++try_count;
-
-      _note("Considering connecting (out) to " << (use_white_list ? "white" : "gray") << " list peer: " <<
-          peerid_to_string(pe.id) << " " << pe.adr.str() << ", pruning seed " << epee::string_tools::to_string_hex(pe.pruning_seed) <<
-          " (stripe " << next_needed_pruning_stripe << " needed)");
-
-      if(zone.m_our_address == pe.adr)
-        continue;
-
-      if(is_peer_used(pe)) {
-        _note("Peer is used");
-        continue;
-      }
-
-      if(!is_remote_host_allowed(pe.adr))
-        continue;
-
-      if(is_addr_recently_failed(pe.adr))
-        continue;
-
-      MDEBUG("Selected peer: " << peerid_to_string(pe.id) << " " << pe.adr.str()
-                    << ", pruning seed " << epee::string_tools::to_string_hex(pe.pruning_seed) << " "
-                    << "[peer_list=" << (use_white_list ? white : gray)
-                    << "] last_seen: " << (pe.last_seen ? epee::misc_utils::get_time_interval_string(time(NULL) - pe.last_seen) : "never"));
-
-      if(!try_to_connect_and_handshake_with_new_peer(pe.adr, false, pe.last_seen, use_white_list ? white : gray)) {
-        _note("Handshake failed");
-        continue;
-      }
-
-      return true;
-    }
-    return false;
-  }
+ 
+ 
   //-----------------------------------------------------------------------------------
   template<class t_payload_net_handler>
   bool node_server<t_payload_net_handler>::connect_to_seed(epee::net_utils::zone zone)
@@ -1756,116 +1307,7 @@ namespace nodetool
       }
       return true;
   }
-  //-----------------------------------------------------------------------------------
-  template<class t_payload_net_handler>
-  bool node_server<t_payload_net_handler>::connections_maker()
-  {
-    using zone_type = epee::net_utils::zone;
-
-    if (m_offline) return true;
-    if (!connect_to_peerlist(m_exclusive_peers)) return false;
-
-    if (!m_exclusive_peers.empty()) return true;
-
-    bool one_succeeded = false;
-    for(auto& zone : m_network_zones)
-    {
-      size_t start_conn_count = get_outgoing_connections_count(zone.second);
-      if(!zone.second.m_peerlist.get_white_peers_count() && !connect_to_seed(zone.first))
-      {
-        continue;
-      }
-
-      if (zone.first == zone_type::public_ && !connect_to_peerlist(m_priority_peers)) continue;
-
-      size_t base_expected_white_connections = (zone.second.m_config.m_net_config.max_out_connection_count*P2P_DEFAULT_WHITELIST_CONNECTIONS_PERCENT)/100;
-
-      // carefully avoid `continue` in nested loop
-      
-      size_t conn_count = get_outgoing_connections_count(zone.second);
-      while(conn_count < zone.second.m_config.m_net_config.max_out_connection_count)
-      {
-        const size_t expected_white_connections = m_payload_handler.get_next_needed_pruning_stripe().second ? zone.second.m_config.m_net_config.max_out_connection_count : base_expected_white_connections;
-        if(conn_count < expected_white_connections)
-        {
-          //start from anchor list
-          while (get_outgoing_connections_count(zone.second) < P2P_DEFAULT_ANCHOR_CONNECTIONS_COUNT
-            && make_expected_connections_count(zone.second, anchor, P2P_DEFAULT_ANCHOR_CONNECTIONS_COUNT));
-          //then do white list
-          while (get_outgoing_connections_count(zone.second) < expected_white_connections
-            && make_expected_connections_count(zone.second, white, expected_white_connections));
-          //then do grey list
-          while (get_outgoing_connections_count(zone.second) < zone.second.m_config.m_net_config.max_out_connection_count
-            && make_expected_connections_count(zone.second, gray, zone.second.m_config.m_net_config.max_out_connection_count));
-        }else
-        {
-          //start from grey list
-          while (get_outgoing_connections_count(zone.second) < zone.second.m_config.m_net_config.max_out_connection_count
-            && make_expected_connections_count(zone.second, gray, zone.second.m_config.m_net_config.max_out_connection_count));
-          //and then do white list
-          while (get_outgoing_connections_count(zone.second) < zone.second.m_config.m_net_config.max_out_connection_count
-            && make_expected_connections_count(zone.second, white, zone.second.m_config.m_net_config.max_out_connection_count));
-        }
-        if(zone.second.m_net_server.is_stop_signal_sent())
-          return false;
-        size_t new_conn_count = get_outgoing_connections_count(zone.second);
-        if (new_conn_count <= conn_count)
-        {
-          // we did not make any connection, sleep a bit to avoid a busy loop in case we don't have
-          // any peers to try, then break so we will try seeds to get more peers
-          boost::this_thread::sleep_for(boost::chrono::seconds(1));
-          break;
-        }
-        conn_count = new_conn_count;
-      }
-
-      if (start_conn_count == get_outgoing_connections_count(zone.second) && start_conn_count < zone.second.m_config.m_net_config.max_out_connection_count)
-      {
-        MINFO("Failed to connect to any, trying seeds");
-        if (!connect_to_seed(zone.first))
-          continue;
-      }
-      one_succeeded = true;
-    }
-
-    return one_succeeded;
-  }
-  //-----------------------------------------------------------------------------------
-  template<class t_payload_net_handler>
-  bool node_server<t_payload_net_handler>::make_expected_connections_count(network_zone& zone, PeerType peer_type, size_t expected_connections)
-  {
-    if (m_offline)
-      return false;
-
-    std::vector<anchor_peerlist_entry> apl;
-
-    if (peer_type == anchor) {
-      zone.m_peerlist.get_and_empty_anchor_peerlist(apl);
-    }
-
-    size_t conn_count = get_outgoing_connections_count(zone);
-    //add new connections from white peers
-    if(conn_count < expected_connections)
-    {
-      if(zone.m_net_server.is_stop_signal_sent())
-        return false;
-
-      MDEBUG("Making expected connection, type " << peer_type << ", " << conn_count << "/" << expected_connections << " connections");
-
-      if (peer_type == anchor && !make_new_connection_from_anchor_peerlist(apl)) {
-        return false;
-      }
-
-      if (peer_type == white && !make_new_connection_from_peerlist(zone, true)) {
-        return false;
-      }
-
-      if (peer_type == gray && !make_new_connection_from_peerlist(zone, false)) {
-        return false;
-      }
-    }
-    return true;
-  }
+ 
   //-----------------------------------------------------------------------------------
   template<class t_payload_net_handler>
   size_t node_server<t_payload_net_handler>::get_public_outgoing_connections_count()
@@ -1961,18 +1403,7 @@ namespace nodetool
       zone.second.m_peerlist.get_peerlist(gray, white); // appends
     }
   }
-  //-----------------------------------------------------------------------------------
-  template<class t_payload_net_handler>
-  bool node_server<t_payload_net_handler>::idle_worker()
-  {
-    m_peer_handshake_idle_maker_interval.do_call(boost::bind(&node_server<t_payload_net_handler>::peer_sync_idle_maker, this));
-    m_connections_maker_interval.do_call(boost::bind(&node_server<t_payload_net_handler>::connections_maker, this));
-    m_gray_peerlist_housekeeping_interval.do_call(boost::bind(&node_server<t_payload_net_handler>::gray_peerlist_housekeeping, this));
-    m_peerlist_store_interval.do_call(boost::bind(&node_server<t_payload_net_handler>::store_config, this));
-    m_incoming_connections_interval.do_call(boost::bind(&node_server<t_payload_net_handler>::check_incoming_connections, this));
-    m_dns_blocklist_interval.do_call(boost::bind(&node_server<t_payload_net_handler>::update_dns_blocklist, this));
-    return true;
-  }
+ #include "net_node_idle.inl"
   //-----------------------------------------------------------------------------------
   template<class t_payload_net_handler>
   bool node_server<t_payload_net_handler>::update_dns_blocklist()
@@ -2058,96 +1489,7 @@ namespace nodetool
     }
     return true;
   }
-  //-----------------------------------------------------------------------------------
-  template<class t_payload_net_handler>
-  bool node_server<t_payload_net_handler>::peer_sync_idle_maker()
-  {
-    MDEBUG("STARTED PEERLIST IDLE HANDSHAKE");
-    typedef std::list<std::pair<epee::net_utils::connection_context_base, peerid_type> > local_connects_type;
-    local_connects_type cncts;
-    for(auto& zone : m_network_zones)
-    {
-      zone.second.m_net_server.get_config_object().foreach_connection([&](p2p_connection_context& cntxt)
-      {
-        if(cntxt.peer_id && !cntxt.m_in_timedsync)
-        {
-          cntxt.m_in_timedsync = true;
-          cncts.push_back(local_connects_type::value_type(cntxt, cntxt.peer_id));//do idle sync only with handshaked connections
-        }
-        return true;
-      });
-    }
-
-    std::for_each(cncts.begin(), cncts.end(), [&](const typename local_connects_type::value_type& vl){do_peer_timed_sync(vl.first, vl.second);});
-
-    MDEBUG("FINISHED PEERLIST IDLE HANDSHAKE");
-    return true;
-  }
-  //-----------------------------------------------------------------------------------
-  template<class t_payload_net_handler>
-  bool node_server<t_payload_net_handler>::sanitize_peerlist(std::vector<peerlist_entry>& local_peerlist)
-  {
-    for (size_t i = 0; i < local_peerlist.size(); ++i)
-    {
-      bool ignore = false;
-      peerlist_entry &be = local_peerlist[i];
-      epee::net_utils::network_address &na = be.adr;
-      if (na.is_loopback() || na.is_local())
-      {
-        ignore = true;
-      }
-      else if (be.adr.get_type_id() == epee::net_utils::ipv4_network_address::get_type_id())
-      {
-        const epee::net_utils::ipv4_network_address &ipv4 = na.as<const epee::net_utils::ipv4_network_address>();
-        if (ipv4.ip() == 0)
-          ignore = true;
-        else if (ipv4.port() == be.rpc_port)
-          ignore = true;
-      }
-      if (be.pruning_seed && (be.pruning_seed < tools::make_pruning_seed(1, CRYPTONOTE_PRUNING_LOG_STRIPES) || be.pruning_seed > tools::make_pruning_seed(1ul << CRYPTONOTE_PRUNING_LOG_STRIPES, CRYPTONOTE_PRUNING_LOG_STRIPES)))
-        ignore = true;
-      if (ignore)
-      {
-        MDEBUG("Ignoring " << be.adr.str());
-        std::swap(local_peerlist[i], local_peerlist[local_peerlist.size() - 1]);
-        local_peerlist.resize(local_peerlist.size() - 1);
-        --i;
-        continue;
-      }
-      local_peerlist[i].last_seen = 0;
-    }
-    return true;
-  }
-  //-----------------------------------------------------------------------------------
-  template<class t_payload_net_handler>
-  bool node_server<t_payload_net_handler>::handle_remote_peerlist(const std::vector<peerlist_entry>& peerlist, const epee::net_utils::connection_context_base& context)
-  {
-    if (peerlist.size() > P2P_MAX_PEERS_IN_HANDSHAKE)
-    {
-      MWARNING(context << "peer sent " << peerlist.size() << " peers, considered spamming");
-      return false;
-    }
-    std::vector<peerlist_entry> peerlist_ = peerlist;
-    if(!sanitize_peerlist(peerlist_))
-      return false;
-
-    const epee::net_utils::zone zone = context.m_remote_address.get_zone();
-    for(const auto& peer : peerlist_)
-    {
-      if(peer.adr.get_zone() != zone)
-      {
-        MWARNING(context << " sent peerlist from another zone, dropping");
-        return false;
-      }
-    }
-
-    LOG_DEBUG_CC(context, "REMOTE PEERLIST: remote peerlist size=" << peerlist_.size());
-    LOG_TRACE_CC(context, "REMOTE PEERLIST: " << ENDL << print_peerlist_to_string(peerlist_));
-    CRITICAL_REGION_LOCAL(m_blocked_hosts_lock);
-    return m_network_zones.at(context.m_remote_address.get_zone()).m_peerlist.merge_peerlist(peerlist_, [this](const peerlist_entry &pe) {
-      return !is_addr_recently_failed(pe.adr) && is_remote_host_allowed(pe.adr);
-    });
-  }
+ 
   //-----------------------------------------------------------------------------------
   template<class t_payload_net_handler>
   bool node_server<t_payload_net_handler>::get_local_node_data(basic_node_data& node_data, const network_zone& zone)
@@ -2163,13 +1505,7 @@ namespace nodetool
     node_data.support_flags = zone.m_config.m_support_flags;
     return true;
   }
-  //-----------------------------------------------------------------------------------
-  template<class t_payload_net_handler>
-  int node_server<t_payload_net_handler>::handle_get_support_flags(int command, COMMAND_REQUEST_SUPPORT_FLAGS::request& arg, COMMAND_REQUEST_SUPPORT_FLAGS::response& rsp, p2p_connection_context& context)
-  {
-    rsp.support_flags = m_network_zones.at(context.m_remote_address.get_zone()).m_config.m_support_flags;
-    return 1;
-  }
+
   //-----------------------------------------------------------------------------------
   template<class t_payload_net_handler>
   void node_server<t_payload_net_handler>::request_callback(const epee::net_utils::connection_context_base& context)
@@ -2224,38 +1560,6 @@ namespace nodetool
     if (m_network_zones.size() <= 2)
       return send(*m_network_zones.rbegin()); // see static asserts below; sends over anonymity network iff enabled
 
-    /* These checks are to ensure that i2p is highest priority if multiple
-       zones are selected. Make sure to update logic if the values cannot be
-       in the same relative order. `m_network_zones` must be sorted map too. */
-    static_assert(std::is_same<std::underlying_type<enet::zone>::type, std::uint8_t>{}, "expected uint8_t zone");
-    static_assert(unsigned(enet::zone::invalid) == 0, "invalid expected to be 0");
-    static_assert(unsigned(enet::zone::public_) == 1, "public_ expected to be 1");
-    static_assert(unsigned(enet::zone::i2p) == 2, "i2p expected to be 2");
-    static_assert(unsigned(enet::zone::tor) == 3, "tor expected to be 3");
-
-    // check for anonymity networks with noise and connections
-    for (auto network = ++m_network_zones.begin(); network != m_network_zones.end(); ++network)
-    {
-      if (enet::zone::tor < network->first)
-        break; // unknown network
-
-      const auto status = network->second.m_notifier.get_status();
-      if (status.has_noise && status.connections_filled)
-        return send(*network);
-    }
-
-    // use the anonymity network with outbound support
-    for (auto network = ++m_network_zones.begin(); network != m_network_zones.end(); ++network)
-    {
-      if (enet::zone::tor < network->first)
-        break; // unknown network
-
-      if (network->second.m_connect)
-        return send(*network);
-    }
-
-    // configuration should not allow this scenario
-    return enet::zone::invalid;
   }
   //-----------------------------------------------------------------------------------
   template<class t_payload_net_handler>
@@ -2281,302 +1585,11 @@ namespace nodetool
     m_network_zones.at(context.m_remote_address.get_zone()).m_net_server.get_config_object().close(context.m_connection_id);
     return true;
   }
-  //-----------------------------------------------------------------------------------
-  template<class t_payload_net_handler> template<class t_callback>
-  bool node_server<t_payload_net_handler>::try_ping(basic_node_data& node_data, p2p_connection_context& context, const t_callback &cb)
-  {
-    if(!node_data.my_port)
-      return false;
 
-    bool address_ok = (context.m_remote_address.get_type_id() == epee::net_utils::ipv4_network_address::get_type_id() || context.m_remote_address.get_type_id() == epee::net_utils::ipv6_network_address::get_type_id());
-    CHECK_AND_ASSERT_MES(address_ok, false,
-        "Only IPv4 or IPv6 addresses are supported here");
 
-    const epee::net_utils::network_address na = context.m_remote_address;
-    std::string ip;
-    uint32_t ipv4_addr = 0;
-    boost::asio::ip::address_v6 ipv6_addr;
-    bool is_ipv4;
-    if (na.get_type_id() == epee::net_utils::ipv4_network_address::get_type_id())
-    {
-      ipv4_addr = na.as<const epee::net_utils::ipv4_network_address>().ip();
-      ip = epee::string_tools::get_ip_string_from_int32(ipv4_addr);
-      is_ipv4 = true;
-    }
-    else
-    {
-      ipv6_addr = na.as<const epee::net_utils::ipv6_network_address>().ip();
-      ip = ipv6_addr.to_string();
-      is_ipv4 = false;
-    }
-    network_zone& zone = m_network_zones.at(na.get_zone());
+  #include "net_node_p2p.inl"
+  
 
-    if(!zone.m_peerlist.is_host_allowed(context.m_remote_address))
-      return false;
-
-    std::string port = epee::string_tools::num_to_string_fast(node_data.my_port);
-
-    epee::net_utils::network_address address;
-    if (is_ipv4)
-    {
-      address = epee::net_utils::network_address{epee::net_utils::ipv4_network_address(ipv4_addr, node_data.my_port)};
-    }
-    else
-    {
-      address = epee::net_utils::network_address{epee::net_utils::ipv6_network_address(ipv6_addr, node_data.my_port)};
-    }
-    peerid_type pr = node_data.peer_id;
-    bool r = zone.m_net_server.connect_async(ip, port, zone.m_config.m_net_config.ping_connection_timeout, [cb, /*context,*/ address, pr, this](
-      const typename net_server::t_connection_context& ping_context,
-      const boost::system::error_code& ec)->bool
-    {
-      if(ec)
-      {
-        LOG_WARNING_CC(ping_context, "back ping connect failed to " << address.str());
-        return false;
-      }
-      COMMAND_PING::request req;
-      COMMAND_PING::response rsp;
-      //vc2010 workaround
-      /*std::string ip_ = ip;
-      std::string port_=port;
-      peerid_type pr_ = pr;
-      auto cb_ = cb;*/
-
-      // GCC 5.1.0 gives error with second use of uint64_t (peerid_type) variable.
-      peerid_type pr_ = pr;
-
-      network_zone& zone = m_network_zones.at(address.get_zone());
-
-      bool inv_call_res = epee::net_utils::async_invoke_remote_command2<COMMAND_PING::response>(ping_context, COMMAND_PING::ID, req, zone.m_net_server.get_config_object(),
-        [=](int code, const COMMAND_PING::response& rsp, p2p_connection_context& context)
-      {
-        if(code <= 0)
-        {
-          LOG_WARNING_CC(ping_context, "Failed to invoke COMMAND_PING to " << address.str() << "(" << code <<  ", " << epee::levin::get_err_descr(code) << ")");
-          return;
-        }
-
-        network_zone& zone = m_network_zones.at(address.get_zone());
-        if(rsp.status != PING_OK_RESPONSE_STATUS_TEXT || pr != rsp.peer_id)
-        {
-          LOG_WARNING_CC(ping_context, "back ping invoke wrong response \"" << rsp.status << "\" from" << address.str() << ", hsh_peer_id=" << pr_ << ", rsp.peer_id=" << peerid_to_string(rsp.peer_id));
-          zone.m_net_server.get_config_object().close(ping_context.m_connection_id);
-          return;
-        }
-        zone.m_net_server.get_config_object().close(ping_context.m_connection_id);
-        cb();
-      });
-
-      if(!inv_call_res)
-      {
-        LOG_WARNING_CC(ping_context, "back ping invoke failed to " << address.str());
-        zone.m_net_server.get_config_object().close(ping_context.m_connection_id);
-        return false;
-      }
-      return true;
-    });
-    if(!r)
-    {
-      LOG_WARNING_CC(context, "Failed to call connect_async, network error.");
-    }
-    return r;
-  }
-  //-----------------------------------------------------------------------------------
-  template<class t_payload_net_handler>
-  bool node_server<t_payload_net_handler>::try_get_support_flags(const p2p_connection_context& context, std::function<void(p2p_connection_context&, const uint32_t&)> f)
-  {
-    if(context.m_remote_address.get_zone() != epee::net_utils::zone::public_)
-      return false;
-
-    COMMAND_REQUEST_SUPPORT_FLAGS::request support_flags_request;
-    bool r = epee::net_utils::async_invoke_remote_command2<typename COMMAND_REQUEST_SUPPORT_FLAGS::response>
-    (
-      context,
-      COMMAND_REQUEST_SUPPORT_FLAGS::ID, 
-      support_flags_request, 
-      m_network_zones.at(epee::net_utils::zone::public_).m_net_server.get_config_object(),
-      [=](int code, const typename COMMAND_REQUEST_SUPPORT_FLAGS::response& rsp, p2p_connection_context& context_)
-      {  
-        if(code < 0)
-        {
-          LOG_WARNING_CC(context_, "COMMAND_REQUEST_SUPPORT_FLAGS invoke failed. (" << code <<  ", " << epee::levin::get_err_descr(code) << ")");
-          return;
-        }
-        
-        f(context_, rsp.support_flags);
-      },
-      P2P_DEFAULT_HANDSHAKE_INVOKE_TIMEOUT
-    );
-
-    return r;
-  }  
-  //-----------------------------------------------------------------------------------
-  template<class t_payload_net_handler>
-  int node_server<t_payload_net_handler>::handle_timed_sync(int command, typename COMMAND_TIMED_SYNC::request& arg, typename COMMAND_TIMED_SYNC::response& rsp, p2p_connection_context& context)
-  {
-    if(!m_payload_handler.process_payload_sync_data(arg.payload_data, context, false))
-    {
-      LOG_WARNING_CC(context, "Failed to process_payload_sync_data(), dropping connection");
-      drop_connection(context);
-      return 1;
-    }
-
-    //fill response
-    const epee::net_utils::zone zone_type = context.m_remote_address.get_zone();
-    network_zone& zone = m_network_zones.at(zone_type);
-
-    std::vector<peerlist_entry> local_peerlist_new;
-    zone.m_peerlist.get_peerlist_head(local_peerlist_new, true, P2P_DEFAULT_PEERS_IN_HANDSHAKE);
-
-    //only include out peers we did not already send
-    rsp.local_peerlist_new.reserve(local_peerlist_new.size());
-    for (auto &pe: local_peerlist_new)
-    {
-      if (!context.sent_addresses.insert(pe.adr).second)
-        continue;
-      rsp.local_peerlist_new.push_back(std::move(pe));
-    }
-    m_payload_handler.get_payload_sync_data(rsp.payload_data);
-
-    /* Tor/I2P nodes receiving connections via forwarding (from tor/i2p daemon)
-    do not know the address of the connecting peer. This is relayed to them,
-    iff the node has setup an inbound hidden service. The other peer will have
-    to use the random peer_id value to link the two. My initial thought is that
-    the inbound peer should leave the other side marked as `<unknown tor host>`,
-    etc., because someone could give faulty addresses over Tor/I2P to get the
-    real peer with that identity banned/blacklisted. */
-
-    if(!context.m_is_income && zone.m_our_address.get_zone() == zone_type)
-      rsp.local_peerlist_new.push_back(peerlist_entry{zone.m_our_address, zone.m_config.m_peer_id, std::time(nullptr)});
-
-    LOG_DEBUG_CC(context, "COMMAND_TIMED_SYNC");
-    return 1;
-  }
-  //-----------------------------------------------------------------------------------
-  template<class t_payload_net_handler>
-  int node_server<t_payload_net_handler>::handle_handshake(int command, typename COMMAND_HANDSHAKE::request& arg, typename COMMAND_HANDSHAKE::response& rsp, p2p_connection_context& context)
-  {
-    if(arg.node_data.network_id != m_network_id)
-    {
-
-      LOG_INFO_CC(context, "WRONG NETWORK AGENT CONNECTED! id=" << arg.node_data.network_id);
-      drop_connection(context);
-      add_host_fail(context.m_remote_address);
-      return 1;
-    }
-
-    if(!context.m_is_income)
-    {
-      LOG_WARNING_CC(context, "COMMAND_HANDSHAKE came not from incoming connection");
-      drop_connection(context);
-      add_host_fail(context.m_remote_address);
-      return 1;
-    }
-
-    if(context.peer_id)
-    {
-      LOG_WARNING_CC(context, "COMMAND_HANDSHAKE came, but seems that connection already have associated peer_id (double COMMAND_HANDSHAKE?)");
-      drop_connection(context);
-      return 1;
-    }
-
-    const auto azone = context.m_remote_address.get_zone();
-    network_zone& zone = m_network_zones.at(azone);
-
-    // test only the remote end's zone, otherwise an attacker could connect to you on clearnet
-    // and pass in a tor connection's peer id, and deduce the two are the same if you reject it
-    if(azone == epee::net_utils::zone::public_ && arg.node_data.peer_id == zone.m_config.m_peer_id)
-    {
-      LOG_DEBUG_CC(context, "Connection to self detected, dropping connection");
-      drop_connection(context);
-      return 1;
-    }
-
-    if (zone.m_current_number_of_in_peers >= zone.m_config.m_net_config.max_in_connection_count) // in peers limit
-    {
-      LOG_WARNING_CC(context, "COMMAND_HANDSHAKE came, but already have max incoming connections, so dropping this one.");
-      drop_connection(context);
-      return 1;
-    }
-
-    if(!m_payload_handler.process_payload_sync_data(arg.payload_data, context, true))
-    {
-      LOG_WARNING_CC(context, "COMMAND_HANDSHAKE came, but process_payload_sync_data returned false, dropping connection.");
-      drop_connection(context);
-      return 1;
-    }
-
-    if(has_too_many_connections(context.m_remote_address))
-    {
-      LOG_PRINT_CCONTEXT_L1("CONNECTION FROM " << context.m_remote_address.host_str() << " REFUSED, too many connections from the same address");
-      drop_connection(context);
-      return 1;
-    }
-
-    //associate peer_id with this connection
-    context.peer_id = arg.node_data.peer_id;
-    context.m_in_timedsync = false;
-    context.m_rpc_port = arg.node_data.rpc_port;
-    context.m_rpc_credits_per_hash = arg.node_data.rpc_credits_per_hash;
-    context.support_flags = arg.node_data.support_flags;
-
-    if(arg.node_data.my_port && zone.m_can_pingback)
-    {
-      peerid_type peer_id_l = arg.node_data.peer_id;
-      uint32_t port_l = arg.node_data.my_port;
-      //try ping to be sure that we can add this peer to peer_list
-      try_ping(arg.node_data, context, [peer_id_l, port_l, context, this]()
-      {
-        CHECK_AND_ASSERT_MES((context.m_remote_address.get_type_id() == epee::net_utils::ipv4_network_address::get_type_id() || context.m_remote_address.get_type_id() == epee::net_utils::ipv6_network_address::get_type_id()), void(),
-            "Only IPv4 or IPv6 addresses are supported here");
-        //called only(!) if success pinged, update local peerlist
-        peerlist_entry pe;
-        const epee::net_utils::network_address na = context.m_remote_address;
-        if (context.m_remote_address.get_type_id() == epee::net_utils::ipv4_network_address::get_type_id())
-        {
-          pe.adr = epee::net_utils::ipv4_network_address(na.as<epee::net_utils::ipv4_network_address>().ip(), port_l);
-        }
-        else
-        {
-          pe.adr = epee::net_utils::ipv6_network_address(na.as<epee::net_utils::ipv6_network_address>().ip(), port_l);
-        }
-        time_t last_seen;
-        time(&last_seen);
-        pe.last_seen = static_cast<int64_t>(last_seen);
-        pe.id = peer_id_l;
-        pe.pruning_seed = context.m_pruning_seed;
-        pe.rpc_port = context.m_rpc_port;
-        pe.rpc_credits_per_hash = context.m_rpc_credits_per_hash;
-        this->m_network_zones.at(context.m_remote_address.get_zone()).m_peerlist.append_with_peer_white(pe);
-        LOG_DEBUG_CC(context, "PING SUCCESS " << context.m_remote_address.host_str() << ":" << port_l);
-      });
-    }
-    
-    if (context.support_flags == 0)
-      try_get_support_flags(context, [](p2p_connection_context& flags_context, const uint32_t& support_flags) 
-      {
-        flags_context.support_flags = support_flags;
-      });
-
-    //fill response
-    zone.m_peerlist.get_peerlist_head(rsp.local_peerlist_new, true);
-    for (const auto &e: rsp.local_peerlist_new)
-      context.sent_addresses.insert(e.adr);
-    get_local_node_data(rsp.node_data, zone);
-    m_payload_handler.get_payload_sync_data(rsp.payload_data);
-    LOG_DEBUG_CC(context, "COMMAND_HANDSHAKE");
-    return 1;
-  }
-  //-----------------------------------------------------------------------------------
-  template<class t_payload_net_handler>
-  int node_server<t_payload_net_handler>::handle_ping(int command, COMMAND_PING::request& arg, COMMAND_PING::response& rsp, p2p_connection_context& context)
-  {
-    LOG_DEBUG_CC(context, "COMMAND_PING");
-    rsp.status = PING_OK_RESPONSE_STATUS_TEXT;
-    rsp.peer_id = m_network_zones.at(context.m_remote_address.get_zone()).m_config.m_peer_id;
-    return 1;
-  }
   //-----------------------------------------------------------------------------------
   template<class t_payload_net_handler>
   bool node_server<t_payload_net_handler>::log_peerlist()
@@ -2772,7 +1785,8 @@ namespace nodetool
       limit=default_limit_up;
     }
 
-    epee::net_utils::connection<epee::levin::async_protocol_handler<p2p_connection_context> >::set_rate_up_limit( limit );
+    //epee::net_utils::connection<epee::levin::async_protocol_handler<p2p_connection_context> >::set_rate_up_limit( limit );
+    net_server::ConnectionType::set_rate_up_limit(limit);
     MINFO("Set limit-up to " << limit << " kB/s");
     return true;
   }
@@ -2784,7 +1798,7 @@ namespace nodetool
     if(limit==-1) {
       limit=default_limit_down;
     }
-    epee::net_utils::connection<epee::levin::async_protocol_handler<p2p_connection_context> >::set_rate_down_limit( limit );
+    net_server::ConnectionType::set_rate_down_limit( limit );
     MINFO("Set limit-down to " << limit << " kB/s");
     return true;
   }
@@ -3047,6 +2061,7 @@ namespace nodetool
   boost::optional<p2p_connection_context_t<typename t_payload_net_handler::connection_context>>
   node_server<t_payload_net_handler>::socks_connect(network_zone& zone, const epee::net_utils::network_address& remote, epee::net_utils::ssl_support_t ssl_support)
   {
+    MINFO("socks_connect" << remote.str());
     auto result = socks_connect_internal(zone.m_net_server.get_stop_signal(), zone.m_net_server.get_io_service(), zone.m_proxy_address, remote);
     if (result) // if no error
     {
@@ -3061,6 +2076,7 @@ namespace nodetool
   boost::optional<p2p_connection_context_t<typename t_payload_net_handler::connection_context>>
   node_server<t_payload_net_handler>::public_connect(network_zone& zone, epee::net_utils::network_address const& na, epee::net_utils::ssl_support_t ssl_support)
   {
+    MINFO("public_connect "<<na.str()<<",ssl "<<std::to_string((uint8_t)ssl_support));
     bool is_ipv4 = na.get_type_id() == epee::net_utils::ipv4_network_address::get_type_id();
     bool is_ipv6 = na.get_type_id() == epee::net_utils::ipv6_network_address::get_type_id();
     CHECK_AND_ASSERT_MES(is_ipv4 || is_ipv6, boost::none,

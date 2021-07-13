@@ -106,13 +106,13 @@ static const char *get_default_categories(int level)
       categories = "*:INFO,global:INFO,stacktrace:INFO,logging:INFO,msgwriter:INFO,perf.*:DEBUG";
       break;
     case 2:
-      categories = "*:DEBUG";
+      categories = "*:INFO";
       break;
     case 3:
-      categories = "*:TRACE,*.dump:DEBUG";
+      categories = "*:DEBUG";
       break;
     case 4:
-      categories = "*:TRACE";
+      categories = "*:VERBOSE";
       break;
     default:
       break;

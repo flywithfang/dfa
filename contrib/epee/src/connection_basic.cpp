@@ -150,7 +150,7 @@ connection_basic::connection_basic(boost::asio::ip::tcp::socket&& sock, std::sha
 	std::string remote_addr_str = "?";
 	try { boost::system::error_code e; remote_addr_str = socket().remote_endpoint(e).address().to_string(); } catch(...){} ;
 
-	_note("Spawned connection #"<<mI->m_peer_number<<" to " << remote_addr_str << " currently we have sockets count:" << m_state->sock_count);
+	MINFO("Spawned connection #"<<mI->m_peer_number<<" to " << remote_addr_str << " currently we have sockets count:" << m_state->sock_count);
 }
 
 connection_basic::connection_basic(boost::asio::io_service &io_service, std::shared_ptr<connection_basic_shared_state> state, ssl_support_t ssl_support)
@@ -173,7 +173,7 @@ connection_basic::connection_basic(boost::asio::io_service &io_service, std::sha
 	std::string remote_addr_str = "?";
 	try { boost::system::error_code e; remote_addr_str = socket().remote_endpoint(e).address().to_string(); } catch(...){} ;
 
-	_note("Spawned connection #"<<mI->m_peer_number<<" to " << remote_addr_str << " currently we have sockets count:" << m_state->sock_count);
+	MINFO("Spawned connection #"<<mI->m_peer_number<<" to " << remote_addr_str << " currently we have sockets count:" << m_state->sock_count);
 }
 
 connection_basic::~connection_basic() noexcept(false) {

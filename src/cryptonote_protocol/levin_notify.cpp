@@ -819,6 +819,7 @@ namespace levin
 
       for (std::size_t channel = 0; channel < zone_->channels.size(); ++channel)
       {
+        MINFO("relay txs");
         zone_->channels[channel].strand.dispatch(
           queue_covert_notify{zone_, message.clone(), channel}
         );

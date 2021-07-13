@@ -2126,6 +2126,7 @@ static int priority(Level level) {
   if (level == Level::Error) return 1;
   if (level == Level::Warning) return 2;
   if (level == Level::Info) return 3;
+
   if (level == Level::Debug) return 4;
   if (level == Level::Verbose) return 5;
   if (level == Level::Trace) return 6;
@@ -2147,7 +2148,10 @@ void VRegistry::clearCategories(void) {
 void VRegistry::setCategories(const char* categories, bool clear) {
   base::threading::ScopedLock scopedLock(lock());
   auto insert = [&](std::stringstream& ss, Level level) {
-    m_categories.push_back(std::make_pair(ss.str(), level));
+    auto n = ss.str();
+
+    LOG(INFO)<<"setCategories "<<n<<" "<< LevelHelper::convertToString(level);
+    m_categories.push_back(std::make_pair(n, level));
     m_cached_allowed_categories.clear();
     int pri = priority(level);
     if (pri > s_lowest_priority)
