@@ -59,6 +59,7 @@ namespace nodetool
     std::vector<anchor_peerlist_entry> anchor;
   };
 
+
   #include "peerlist_storage.inl"
   /************************************************************************/
   /*                                                                      */

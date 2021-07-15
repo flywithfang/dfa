@@ -173,11 +173,7 @@ namespace cryptonote
   , "Check for new versions of monero: [disabled|notify|download|update]"
   , "notify"
   };
-  static const command_line::arg_descriptor<bool> arg_fluffy_blocks  = {
-    "fluffy-blocks"
-  , "Relay blocks as fluffy blocks (obsolete, now default)"
-  , true
-  };
+ 
   static const command_line::arg_descriptor<bool> arg_no_fluffy_blocks  = {
     "no-fluffy-blocks"
   , "Relay blocks as normal blocks"
@@ -196,7 +192,7 @@ namespace cryptonote
   static const command_line::arg_descriptor<bool> arg_prune_blockchain  = {
     "prune-blockchain"
   , "Prune blockchain"
-  , false
+  , true
   };
   static const command_line::arg_descriptor<std::string> arg_reorg_notify = {
     "reorg-notify"
@@ -228,9 +224,7 @@ namespace cryptonote
   core::core(i_cryptonote_protocol* pprotocol):
               m_mempool(m_blockchain_storage),
               m_blockchain_storage(m_mempool),
-              m_miner(this, [this](const cryptonote::block &b, uint64_t height, const crypto::hash *seed_hash, unsigned int threads, crypto::hash &hash) {
-                return cryptonote::get_block_longhash(&m_blockchain_storage, b, hash, height, seed_hash, threads);
-              }),
+              m_miner(this),
               m_starter_message_showed(false),
               m_target_blockchain_height(0),
               m_checkpoints_path(""),
@@ -336,7 +330,6 @@ namespace cryptonote
     command_line::add_arg(desc, arg_show_time_stats);
     command_line::add_arg(desc, arg_block_sync_size);
     command_line::add_arg(desc, arg_check_updates);
-    command_line::add_arg(desc, arg_fluffy_blocks);
     command_line::add_arg(desc, arg_no_fluffy_blocks);
     command_line::add_arg(desc, arg_test_dbg_lock_sleep);
     command_line::add_arg(desc, arg_offline);
@@ -388,8 +381,6 @@ namespace cryptonote
     m_fluffy_blocks_enabled = !get_arg(vm, arg_no_fluffy_blocks);
     m_offline = get_arg(vm, arg_offline);
     m_disable_dns_checkpoints = get_arg(vm, arg_disable_dns_checkpoints);
-    if (!command_line::is_arg_defaulted(vm, arg_fluffy_blocks))
-      MWARNING(arg_fluffy_blocks.name << " is obsolete, it is now default");
 
     if (command_line::get_arg(vm, arg_test_drop_download) == true)
       test_drop_download();
@@ -1325,51 +1316,7 @@ namespace cryptonote
     uint8_t version = m_blockchain_storage.get_current_hard_fork_version();
     return m_mempool.add_tx(tx, tx_hash, blob, tx_weight, tvc, tx_relay, relayed, version);
   }
-  //-----------------------------------------------------------------------------------------------
-  bool core::relay_txpool_transactions()
-  {
-    // we attempt to relay txes that should be relayed, but were not
-    std::vector<std::tuple<crypto::hash, cryptonote::blobdata, relay_method>> txs;
-    if (m_mempool.get_relayable_transactions(txs) && !txs.empty())
-    {
-      NOTIFY_NEW_TRANSACTIONS::request public_req{};
-      NOTIFY_NEW_TRANSACTIONS::request private_req{};
-      NOTIFY_NEW_TRANSACTIONS::request stem_req{};
-      for (auto& tx : txs)
-      {
-        switch (std::get<2>(tx))
-        {
-          default:
-          case relay_method::none:
-            break;
-          case relay_method::local:
-            private_req.txs.push_back(std::move(std::get<1>(tx)));
-            break;
-          case relay_method::forward:
-            stem_req.txs.push_back(std::move(std::get<1>(tx)));
-            break;
-          case relay_method::block:
-          case relay_method::fluff:
-          case relay_method::stem:
-            public_req.txs.push_back(std::move(std::get<1>(tx)));
-            break;
-        }
-      }
 
-      /* All txes are sent on randomized timers per connection in
-         `src/cryptonote_protocol/levin_notify.cpp.` They are either sent with
-         "white noise" delays or via  diffusion (Dandelion++ fluff). So
-         re-relaying public and private _should_ be acceptable here. */
-      const boost::uuids::uuid source = boost::uuids::nil_uuid();
-      if (!public_req.txs.empty())
-        get_protocol()->relay_transactions(public_req, source, epee::net_utils::zone::public_, relay_method::fluff);
-      if (!private_req.txs.empty())
-        get_protocol()->relay_transactions(private_req, source, epee::net_utils::zone::invalid, relay_method::local);
-      if (!stem_req.txs.empty())
-        get_protocol()->relay_transactions(stem_req, source, epee::net_utils::zone::public_, relay_method::stem);
-    }
-    return true;
-  }
   //-----------------------------------------------------------------------------------------------
   void core::on_transactions_relayed(const epee::span<const cryptonote::blobdata> tx_blobs, const relay_method tx_relay)
   {
@@ -1710,7 +1657,7 @@ namespace cryptonote
     m_miner.on_block_chain_update();
     return true;
   }
-  #include "cryptonote_idle.inl"
+  #include "cryptonote_core_idle.inl"
   //-----------------------------------------------------------------------------------------------
   uint8_t core::get_ideal_hard_fork_version() const
   {
@@ -1731,225 +1678,10 @@ namespace cryptonote
   {
     return get_blockchain_storage().get_earliest_ideal_height_for_version(version);
   }
-  //-----------------------------------------------------------------------------------------------
-  bool core::check_updates()
-  {
-    static const char software[] = "monero";
-#ifdef BUILD_TAG
-    static const char buildtag[] = BOOST_PP_STRINGIZE(BUILD_TAG);
-    static const char subdir[] = "cli"; // because it can never be simple
-#else
-    static const char buildtag[] = "source";
-    static const char subdir[] = "source"; // because it can never be simple
-#endif
+  
 
-    if (m_offline)
-      return true;
+  
 
-    if (check_updates_level == UPDATES_DISABLED)
-      return true;
-
-    std::string version, hash;
-    MCDEBUG("updates", "Checking for a new " << software << " version for " << buildtag);
-    if (!tools::check_updates(software, buildtag, version, hash))
-      return false;
-
-    if (tools::vercmp(version.c_str(), MONERO_VERSION) <= 0)
-    {
-      m_update_available = false;
-      return true;
-    }
-
-    std::string url = tools::get_update_url(software, subdir, buildtag, version, true);
-    MCLOG_CYAN(el::Level::Info, "global", "Version " << version << " of " << software << " for " << buildtag << " is available: " << url << ", SHA256 hash " << hash);
-    m_update_available = true;
-
-    if (check_updates_level == UPDATES_NOTIFY)
-      return true;
-
-    url = tools::get_update_url(software, subdir, buildtag, version, false);
-    std::string filename;
-    const char *slash = strrchr(url.c_str(), '/');
-    if (slash)
-      filename = slash + 1;
-    else
-      filename = std::string(software) + "-update-" + version;
-    boost::filesystem::path path(epee::string_tools::get_current_module_folder());
-    path /= filename;
-
-    boost::unique_lock<boost::mutex> lock(m_update_mutex);
-
-    if (m_update_download != 0)
-    {
-      MCDEBUG("updates", "Already downloading update");
-      return true;
-    }
-
-    crypto::hash file_hash;
-    if (!tools::sha256sum(path.string(), file_hash) || (hash != epee::string_tools::pod_to_hex(file_hash)))
-    {
-      MCDEBUG("updates", "We don't have that file already, downloading");
-      const std::string tmppath = path.string() + ".tmp";
-      if (epee::file_io_utils::is_file_exist(tmppath))
-      {
-        MCDEBUG("updates", "We have part of the file already, resuming download");
-      }
-      m_last_update_length = 0;
-      m_update_download = tools::download_async(tmppath, url, [this, hash, path](const std::string &tmppath, const std::string &uri, bool success) {
-        bool remove = false, good = true;
-        if (success)
-        {
-          crypto::hash file_hash;
-          if (!tools::sha256sum(tmppath, file_hash))
-          {
-            MCERROR("updates", "Failed to hash " << tmppath);
-            remove = true;
-            good = false;
-          }
-          else if (hash != epee::string_tools::pod_to_hex(file_hash))
-          {
-            MCERROR("updates", "Download from " << uri << " does not match the expected hash");
-            remove = true;
-            good = false;
-          }
-        }
-        else
-        {
-          MCERROR("updates", "Failed to download " << uri);
-          good = false;
-        }
-        boost::unique_lock<boost::mutex> lock(m_update_mutex);
-        m_update_download = 0;
-        if (success && !remove)
-        {
-          std::error_code e = tools::replace_file(tmppath, path.string());
-          if (e)
-          {
-            MCERROR("updates", "Failed to rename downloaded file");
-            good = false;
-          }
-        }
-        else if (remove)
-        {
-          if (!boost::filesystem::remove(tmppath))
-          {
-            MCERROR("updates", "Failed to remove invalid downloaded file");
-            good = false;
-          }
-        }
-        if (good)
-          MCLOG_CYAN(el::Level::Info, "updates", "New version downloaded to " << path.string());
-      }, [this](const std::string &path, const std::string &uri, size_t length, ssize_t content_length) {
-        if (length >= m_last_update_length + 1024 * 1024 * 10)
-        {
-          m_last_update_length = length;
-          MCDEBUG("updates", "Downloaded " << length << "/" << (content_length ? std::to_string(content_length) : "unknown"));
-        }
-        return true;
-      });
-    }
-    else
-    {
-      MCDEBUG("updates", "We already have " << path << " with expected hash");
-    }
-
-    lock.unlock();
-
-    if (check_updates_level == UPDATES_DOWNLOAD)
-      return true;
-
-    MCERROR("updates", "Download/update not implemented yet");
-    return true;
-  }
-  //-----------------------------------------------------------------------------------------------
-  bool core::check_disk_space()
-  {
-    uint64_t free_space = get_free_space();
-    if (free_space < 1ull * 1024 * 1024 * 1024) // 1 GB
-    {
-      const el::Level level = el::Level::Warning;
-      MCLOG_RED(level, "global", "Free space is below 1 GB on " << m_config_folder);
-    }
-    return true;
-  }
-  //-----------------------------------------------------------------------------------------------
-  double factorial(unsigned int n)
-  {
-    if (n <= 1)
-      return 1.0;
-    double f = n;
-    while (n-- > 1)
-      f *= n;
-    return f;
-  }
-  //-----------------------------------------------------------------------------------------------
-  static double probability1(unsigned int blocks, unsigned int expected)
-  {
-    // https://www.umass.edu/wsp/resources/poisson/#computing
-    return pow(expected, blocks) / (factorial(blocks) * exp(expected));
-  }
-  //-----------------------------------------------------------------------------------------------
-  static double probability(unsigned int blocks, unsigned int expected)
-  {
-    double p = 0.0;
-    if (blocks <= expected)
-    {
-      for (unsigned int b = 0; b <= blocks; ++b)
-        p += probability1(b, expected);
-    }
-    else if (blocks > expected)
-    {
-      for (unsigned int b = blocks; b <= expected * 3 /* close enough */; ++b)
-        p += probability1(b, expected);
-    }
-    return p;
-  }
-  //-----------------------------------------------------------------------------------------------
-  bool core::check_block_rate()
-  {
-    if (m_offline || m_nettype == FAKECHAIN || m_target_blockchain_height > get_current_blockchain_height() || m_target_blockchain_height == 0)
-    {
-      MDEBUG("Not checking block rate, offline or syncing");
-      return true;
-    }
-
-    static constexpr double threshold = 1. / (864000 / DIFFICULTY_TARGET_V2); // one false positive every 10 days
-    static constexpr unsigned int max_blocks_checked = 150;
-
-    const time_t now = time(NULL);
-    const std::vector<time_t> timestamps = m_blockchain_storage.get_last_block_timestamps(max_blocks_checked);
-
-    static const unsigned int seconds[] = { 5400, 3600, 1800, 1200, 600 };
-    for (size_t n = 0; n < sizeof(seconds)/sizeof(seconds[0]); ++n)
-    {
-      unsigned int b = 0;
-      const time_t time_boundary = now - static_cast<time_t>(seconds[n]);
-      for (time_t ts: timestamps) b += ts >= time_boundary;
-      const double p = probability(b, seconds[n] / DIFFICULTY_TARGET_V2);
-      MDEBUG("blocks in the last " << seconds[n] / 60 << " minutes: " << b << " (probability " << p << ")");
-      if (p < threshold)
-      {
-        MWARNING("There were " << b << (b == max_blocks_checked ? " or more" : "") << " blocks in the last " << seconds[n] / 60 << " minutes, there might be large hash rate changes, or we might be partitioned, cut off from the Monero network or under attack, or your computer's time is off. Or it could be just sheer bad luck.");
-
-        std::shared_ptr<tools::Notify> block_rate_notify = m_block_rate_notify;
-        if (block_rate_notify)
-        {
-          auto expected = seconds[n] / DIFFICULTY_TARGET_V2;
-          block_rate_notify->notify("%t", std::to_string(seconds[n] / 60).c_str(), "%b", std::to_string(b).c_str(), "%e", std::to_string(expected).c_str(), NULL);
-        }
-
-        break; // no need to look further
-      }
-    }
-
-    return true;
-  }
-  //-----------------------------------------------------------------------------------------------
-  bool core::recalculate_difficulties()
-  {
-    m_blockchain_storage.recalculate_difficulties();
-    return true;
-  }
   //-----------------------------------------------------------------------------------------------
   void core::flush_bad_txs_cache()
   {
@@ -1968,11 +1700,7 @@ namespace cryptonote
   {
     return m_mempool.get_complement(hashes, txes);
   }
-  //-----------------------------------------------------------------------------------------------
-  bool core::update_blockchain_pruning()
-  {
-    return m_blockchain_storage.update_blockchain_pruning();
-  }
+ 
   //-----------------------------------------------------------------------------------------------
   bool core::check_blockchain_pruning()
   {

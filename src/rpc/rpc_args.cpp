@@ -205,23 +205,7 @@ namespace cryptonote
         return boost::none;
       }
     }
-    if (!config.restricted_bind_ipv6_address.empty())
-    {
-      // allow square braces, but remove them here if present
-      if (config.restricted_bind_ipv6_address.find('[') != std::string::npos)
-      {
-        config.restricted_bind_ipv6_address = config.restricted_bind_ipv6_address.substr(1, config.restricted_bind_ipv6_address.size() - 2);
-      }
-
-      // always parse IP here for error consistency
-      boost::system::error_code ec{};
-      boost::asio::ip::address::from_string(config.restricted_bind_ipv6_address, ec);
-      if (ec)
-      {
-        LOG_ERROR(tr("Invalid IP address given for --") << arg.rpc_restricted_bind_ipv6_address.name);
-        return boost::none;
-      }
-    }
+  
 
     const char *env_rpc_login = nullptr;
     const bool has_rpc_arg = command_line::has_arg(vm, arg.rpc_login);

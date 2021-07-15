@@ -766,78 +766,7 @@ namespace cryptonote
     typedef epee::misc_utils::struct_init<response_t> response;
   };
 
-  //-----------------------------------------------
-  struct COMMAND_RPC_STOP_MINING
-  {
-    struct request_t: public rpc_request_base
-    {
-      BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE_PARENT(rpc_request_base)
-      END_KV_SERIALIZE_MAP()
-    };
-    typedef epee::misc_utils::struct_init<request_t> request;
-
-
-    struct response_t: public rpc_response_base
-    {
-      BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE_PARENT(rpc_response_base)
-      END_KV_SERIALIZE_MAP()
-    };
-    typedef epee::misc_utils::struct_init<response_t> response;
-  };
-
-  //-----------------------------------------------
-  struct COMMAND_RPC_MINING_STATUS
-  {
-    struct request_t: public rpc_request_base
-    {
-      BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE_PARENT(rpc_request_base)
-      END_KV_SERIALIZE_MAP()
-    };
-    typedef epee::misc_utils::struct_init<request_t> request;
-
-
-    struct response_t: public rpc_response_base
-    {
-      bool active;
-      uint64_t speed;
-      uint32_t threads_count;
-      std::string address;
-      std::string pow_algorithm;
-      bool is_background_mining_enabled;
-      uint8_t bg_idle_threshold;
-      uint8_t bg_min_idle_seconds;
-      bool bg_ignore_battery;
-      uint8_t bg_target;
-      uint32_t block_target;
-      uint64_t block_reward;
-      uint64_t difficulty;
-      std::string wide_difficulty;
-      uint64_t difficulty_top64;
-
-      BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE_PARENT(rpc_response_base)
-        KV_SERIALIZE(active)
-        KV_SERIALIZE(speed)
-        KV_SERIALIZE(threads_count)
-        KV_SERIALIZE(address)
-        KV_SERIALIZE(pow_algorithm)
-        KV_SERIALIZE(is_background_mining_enabled)
-        KV_SERIALIZE(bg_idle_threshold)
-        KV_SERIALIZE(bg_min_idle_seconds)
-        KV_SERIALIZE(bg_ignore_battery)
-        KV_SERIALIZE(bg_target)
-        KV_SERIALIZE(block_target)
-        KV_SERIALIZE(block_reward)
-        KV_SERIALIZE(difficulty)
-        KV_SERIALIZE(wide_difficulty)
-        KV_SERIALIZE(difficulty_top64)
-      END_KV_SERIALIZE_MAP()
-    };
-    typedef epee::misc_utils::struct_init<response_t> response;
-  };
+ 
 
   //-----------------------------------------------
   struct COMMAND_RPC_SAVE_BC

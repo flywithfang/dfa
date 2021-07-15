@@ -118,43 +118,6 @@ static inline int enabled_flags(void) {
 
 static inline int is_power_of_2(uint64_t n) { return n && (n & (n-1)) == 0; }
 
-static int get_seedhash_epoch_lag(void)
-{
-  static unsigned int lag = (unsigned int)-1;
-  if (lag != (unsigned int)-1)
-    return lag;
-  const char *e = getenv("SEEDHASH_EPOCH_LAG");
-  if (e)
-  {
-    lag = atoi(e);
-    if (lag > SEEDHASH_EPOCH_LAG || !is_power_of_2(lag))
-      lag = SEEDHASH_EPOCH_LAG;
-  }
-  else
-  {
-    lag = SEEDHASH_EPOCH_LAG;
-  }
-  return lag;
-}
-
-static unsigned int get_seedhash_epoch_blocks(void)
-{
-  static unsigned int blocks = (unsigned int)-1;
-  if (blocks != (unsigned int)-1)
-    return blocks;
-  const char *e = getenv("SEEDHASH_EPOCH_BLOCKS");
-  if (e)
-  {
-    blocks = atoi(e);
-    if (blocks < 2 || blocks > SEEDHASH_EPOCH_BLOCKS || !is_power_of_2(blocks))
-      blocks = SEEDHASH_EPOCH_BLOCKS;
-  }
-  else
-  {
-    blocks = SEEDHASH_EPOCH_BLOCKS;
-  }
-  return blocks;
-}
 
 void rx_reorg(const uint64_t split_height) {
   int i;
@@ -170,16 +133,14 @@ void rx_reorg(const uint64_t split_height) {
 }
 
 uint64_t rx_seedheight(const uint64_t height) {
-  const uint64_t seedhash_epoch_lag = get_seedhash_epoch_lag();
-  const uint64_t seedhash_epoch_blocks = get_seedhash_epoch_blocks();
-  uint64_t s_height =  (height <= seedhash_epoch_blocks+seedhash_epoch_lag) ? 0 :
-                       (height - seedhash_epoch_lag - 1) & ~(seedhash_epoch_blocks-1);
+  uint64_t s_height =  (height <= SEEDHASH_EPOCH_BLOCKS+SEEDHASH_EPOCH_LAG) ? 0 :
+                       (height - SEEDHASH_EPOCH_LAG - 1) & ~(SEEDHASH_EPOCH_BLOCKS-1);
   return s_height;
 }
 
 void rx_seedheights(const uint64_t height, uint64_t *seedheight, uint64_t *nextheight) {
   *seedheight = rx_seedheight(height);
-  *nextheight = rx_seedheight(height + get_seedhash_epoch_lag());
+  *nextheight = rx_seedheight(height + SEEDHASH_EPOCH_LAG);
 }
 
 typedef struct seedinfo {
@@ -233,10 +194,9 @@ static void rx_initdata(randomx_cache *rs_cache, const int miners, const uint64_
   rx_dataset_height = seedheight;
 }
 
-void rx_slow_hash(const uint64_t mainheight, const uint64_t seedheight, const char *seedhash, const void *data, size_t length,
-  char *hash, int miners, int is_alt) {
+void rx_slow_hash(const uint64_t mainheight, const uint64_t seedheight, const char *seedhash, const void *data, size_t length,  char *hash, int miners, int is_alt) {
   uint64_t s_height = rx_seedheight(mainheight);
-  int toggle = (s_height & get_seedhash_epoch_blocks()) != 0;
+  int toggle = (s_height & SEEDHASH_EPOCH_BLOCKS) != 0;
   randomx_flags flags = enabled_flags() & ~disabled_flags();
   rx_state *rx_sp;
   randomx_cache *cache;
@@ -346,6 +306,8 @@ void rx_slow_hash(const uint64_t mainheight, const uint64_t seedheight, const ch
   /* mainchain users can run in parallel */
   if (!is_alt)
     CTHR_MUTEX_UNLOCK(rx_sp->rs_mutex);
+
+
   randomx_calculate_hash(rx_vm, data, length, hash);
   /* altchain slot users always get fully serialized */
   if (is_alt)

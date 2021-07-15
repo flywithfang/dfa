@@ -131,21 +131,25 @@ namespace nodetool
 
 #pragma pack(pop)
 
+inline std::ostream& operator<<(std::ostream & ost,const peerlist_entry &pe){
+   time_t now_time = 0;
+    time(&now_time);
+ ost << peerid_to_string(pe.id) << "\t" << pe.adr.str()
+        << " rpc port " << (pe.rpc_port > 0 ? std::to_string(pe.rpc_port) : "-")
+        << " rpc credits per hash " << (pe.rpc_credits_per_hash > 0 ? std::to_string(pe.rpc_credits_per_hash) : "-")
+        << " pruning seed " << pe.pruning_seed 
+        << " last_seen: " << (pe.last_seen == 0 ? std::string("never") : epee::misc_utils::get_time_interval_string(now_time - pe.last_seen));
+
+        return ost;
+}
   inline 
   std::string print_peerlist_to_string(const std::vector<peerlist_entry>& pl)
   {
-    time_t now_time = 0;
-    time(&now_time);
     std::stringstream ss;
     ss << std::setfill ('0') << std::setw (8) << std::hex << std::noshowbase;
     for(const peerlist_entry& pe: pl)
     {
-      ss << peerid_to_string(pe.id) << "\t" << pe.adr.str()
-        << " \trpc port " << (pe.rpc_port > 0 ? std::to_string(pe.rpc_port) : "-")
-        << " \trpc credits per hash " << (pe.rpc_credits_per_hash > 0 ? std::to_string(pe.rpc_credits_per_hash) : "-")
-        << " \tpruning seed " << pe.pruning_seed 
-        << " \tlast_seen: " << (pe.last_seen == 0 ? std::string("never") : epee::misc_utils::get_time_interval_string(now_time - pe.last_seen))
-        << std::endl;
+      ss << pe<<std::endl;
     }
     return ss.str();
   }

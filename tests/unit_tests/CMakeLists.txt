@@ -41,7 +41,6 @@ set(unit_tests_sources
   checkpoints.cpp
   command_line.cpp
   crypto.cpp
-  decompose_amount_into_digits.cpp
   device.cpp
   difficulty.cpp
   dns_resolver.cpp

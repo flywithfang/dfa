@@ -152,7 +152,6 @@ namespace cryptonote
   void core_rpc_server::init_options(boost::program_options::options_description& desc)
   {
     command_line::add_arg(desc, arg_rpc_bind_port);
-    command_line::add_arg(desc, arg_rpc_restricted_bind_port);
     command_line::add_arg(desc, arg_restricted_rpc);
     command_line::add_arg(desc, arg_bootstrap_daemon_address);
     command_line::add_arg(desc, arg_bootstrap_daemon_login);
@@ -263,7 +262,6 @@ namespace cryptonote
       const boost::program_options::variables_map& vm
       , const bool restricted
       , const std::string& port
-      , bool allow_rpc_payment
     )
   {
     m_restricted = restricted;
@@ -276,57 +274,12 @@ namespace cryptonote
 
     std::string bind_ip_str = rpc_config->bind_ip;
     std::string bind_ipv6_str = rpc_config->bind_ipv6_address;
-    if (restricted)
-    {
-      const auto restricted_rpc_port_arg = cryptonote::core_rpc_server::arg_rpc_restricted_bind_port;
-      const bool has_restricted_rpc_port_arg = !command_line::is_arg_defaulted(vm, restricted_rpc_port_arg);
-      if (has_restricted_rpc_port_arg && port == command_line::get_arg(vm, restricted_rpc_port_arg))
-      {
-        bind_ip_str = rpc_config->restricted_bind_ip;
-        bind_ipv6_str = rpc_config->restricted_bind_ipv6_address;
-      }
-    }
+   
     disable_rpc_ban = rpc_config->disable_rpc_ban;
     const std::string data_dir{command_line::get_arg(vm, cryptonote::arg_data_dir)};
     std::string address = command_line::get_arg(vm, arg_rpc_payment_address);
-    if (!address.empty() && allow_rpc_payment)
-    {
-      if (!m_restricted && nettype() != FAKECHAIN)
-      {
-        MFATAL("RPC payment enabled, but server is not restricted, anyone can adjust their balance to bypass payment");
-        return false;
-      }
-      cryptonote::address_parse_info info;
-      if (!get_account_address_from_str(info, nettype(), address))
-      {
-        MFATAL("Invalid payment address: " << address);
-        return false;
-      }
-      if (info.is_subaddress)
-      {
-        MFATAL("Payment address may not be a subaddress: " << address);
-        return false;
-      }
-      uint64_t diff = command_line::get_arg(vm, arg_rpc_payment_difficulty);
-      uint64_t credits = command_line::get_arg(vm, arg_rpc_payment_credits);
-      if (diff == 0 || credits == 0)
-      {
-        MFATAL("Payments difficulty and/or payments credits are 0, but a payment address was given");
-        return false;
-      }
-      m_rpc_payment_allow_free_loopback = command_line::get_arg(vm, arg_rpc_payment_allow_free_loopback);
-      m_rpc_payment.reset(new rpc_payment(info.address, diff, credits));
-      m_rpc_payment->load(data_dir);
-      m_p2p.set_rpc_credits_per_hash(RPC_CREDITS_PER_HASH_SCALE * (credits / (float)diff));
-    }
-
-    if (!m_rpc_payment)
-    {
-      uint32_t bind_ip;
-      bool ok = epee::string_tools::get_ip_int32_from_string(bind_ip, bind_ip_str);
-      if (ok & !epee::net_utils::is_ip_loopback(bind_ip))
-        MWARNING("The RPC server is accessible from the outside, but no RPC payment was setup. RPC access will be free for all.");
-    }
+   
+ 
 
     if (!set_bootstrap_daemon(
           command_line::get_arg(vm, arg_bootstrap_daemon_address),
@@ -342,8 +295,6 @@ namespace cryptonote
     if (rpc_config->login)
       http_login.emplace(std::move(rpc_config->login->username), std::move(rpc_config->login->password).password());
 
-    if (m_rpc_payment)
-      m_net_server.add_idle_handler([this](){ return m_rpc_payment->on_idle(); }, 60 * 1000);
 
     bool store_ssl_key = !restricted && rpc_config->ssl_options && rpc_config->ssl_options.auth.certificate_path.empty();
     const auto ssl_base_path = (boost::filesystem::path{data_dir} / "rpc_ssl").string();
@@ -1273,118 +1224,8 @@ namespace cryptonote
     res.status = CORE_RPC_STATUS_OK;
     return true;
   }
-  //------------------------------------------------------------------------------------------------------------------------------
-  bool core_rpc_server::on_start_mining(const COMMAND_RPC_START_MINING::request& req, COMMAND_RPC_START_MINING::response& res, const connection_context *ctx)
-  {
-    RPC_TRACKER(start_mining);
-    CHECK_CORE_READY();
-    cryptonote::address_parse_info info;
-    if(!get_account_address_from_str(info, nettype(), req.miner_address))
-    {
-      res.status = "Failed, wrong address";
-      LOG_PRINT_L0(res.status);
-      return true;
-    }
-    if (info.is_subaddress)
-    {
-      res.status = "Mining to subaddress isn't supported yet";
-      LOG_PRINT_L0(res.status);
-      return true;
-    }
 
-    unsigned int concurrency_count = boost::thread::hardware_concurrency() * 4;
-
-    // if we couldn't detect threads, set it to a ridiculously high number
-    if(concurrency_count == 0)
-    {
-      concurrency_count = 257;
-    }
-
-    // if there are more threads requested than the hardware supports
-    // then we fail and log that.
-    if(req.threads_count > concurrency_count)
-    {
-      res.status = "Failed, too many threads relative to CPU cores.";
-      LOG_PRINT_L0(res.status);
-      return true;
-    }
-
-    cryptonote::miner &miner= m_core.get_miner();
-    if (miner.is_mining())
-    {
-      res.status = "Already mining";
-      return true;
-    }
-    if(!miner.start(info.address, static_cast<size_t>(req.threads_count), req.do_background_mining, req.ignore_battery))
-    {
-      res.status = "Failed, mining not started";
-      LOG_PRINT_L0(res.status);
-      return true;
-    }
-    res.status = CORE_RPC_STATUS_OK;
-    return true;
-  }
-  //------------------------------------------------------------------------------------------------------------------------------
-  bool core_rpc_server::on_stop_mining(const COMMAND_RPC_STOP_MINING::request& req, COMMAND_RPC_STOP_MINING::response& res, const connection_context *ctx)
-  {
-    RPC_TRACKER(stop_mining);
-    cryptonote::miner &miner= m_core.get_miner();
-    if(!miner.is_mining())
-    {
-      res.status = "Mining never started";
-      LOG_PRINT_L0(res.status);
-      return true;
-    }
-    if(!miner.stop())
-    {
-      res.status = "Failed, mining not stopped";
-      LOG_PRINT_L0(res.status);
-      return true;
-    }
-    res.status = CORE_RPC_STATUS_OK;
-    return true;
-  }
-  //------------------------------------------------------------------------------------------------------------------------------
-  bool core_rpc_server::on_mining_status(const COMMAND_RPC_MINING_STATUS::request& req, COMMAND_RPC_MINING_STATUS::response& res, const connection_context *ctx)
-  {
-    RPC_TRACKER(mining_status);
-
-    const miner& lMiner = m_core.get_miner();
-    res.active = lMiner.is_mining();
-    res.is_background_mining_enabled = lMiner.get_is_background_mining_enabled();
-    store_difficulty(m_core.get_blockchain_storage().get_difficulty_for_next_block(), res.difficulty, res.wide_difficulty, res.difficulty_top64);
-    
-    res.block_target = m_core.get_blockchain_storage().get_current_hard_fork_version() < 2 ? DIFFICULTY_TARGET_V1 : DIFFICULTY_TARGET_V2;
-    if ( lMiner.is_mining() ) {
-      res.speed = lMiner.get_speed();
-      res.threads_count = lMiner.get_threads_count();
-      res.block_reward = lMiner.get_block_reward();
-    }
-    const account_public_address& lMiningAdr = lMiner.get_mining_address();
-    if (lMiner.is_mining() || lMiner.get_is_background_mining_enabled())
-      res.address = get_account_address_as_str(nettype(), false, lMiningAdr);
-    const uint8_t major_version = m_core.get_blockchain_storage().get_current_hard_fork_version();
-    const unsigned variant = major_version >= 7 ? major_version - 6 : 0;
-    switch (variant)
-    {
-      case 0: res.pow_algorithm = "Cryptonight"; break;
-      case 1: res.pow_algorithm = "CNv1 (Cryptonight variant 1)"; break;
-      case 2: case 3: res.pow_algorithm = "CNv2 (Cryptonight variant 2)"; break;
-      case 4: case 5: res.pow_algorithm = "CNv4 (Cryptonight variant 4)"; break;
-      case 6: case 7: case 8: case 9: res.pow_algorithm = "RandomX"; break;
-      default: res.pow_algorithm = "RandomX"; break; // assumed
-    }
-    if (res.is_background_mining_enabled)
-    {
-      res.bg_idle_threshold = lMiner.get_idle_threshold();
-      res.bg_min_idle_seconds = lMiner.get_min_idle_seconds();
-      res.bg_ignore_battery = lMiner.get_ignore_battery();
-      res.bg_target = lMiner.get_mining_target();
-    }
-
-    res.status = CORE_RPC_STATUS_OK;
-    return true;
-  }
+ 
   //------------------------------------------------------------------------------------------------------------------------------
   bool core_rpc_server::on_save_bc(const COMMAND_RPC_SAVE_BC::request& req, COMMAND_RPC_SAVE_BC::response& res, const connection_context *ctx)
   {
@@ -1489,17 +1330,7 @@ namespace cryptonote
   //------------------------------------------------------------------------------------------------------------------------------
   bool core_rpc_server::on_set_log_hash_rate(const COMMAND_RPC_SET_LOG_HASH_RATE::request& req, COMMAND_RPC_SET_LOG_HASH_RATE::response& res, const connection_context *ctx)
   {
-    RPC_TRACKER(set_log_hash_rate);
-    if(m_core.get_miner().is_mining())
-    {
-      m_core.get_miner().do_print_hashrate(req.visible);
-      res.status = CORE_RPC_STATUS_OK;
-    }
-    else
-    {
-      res.status = CORE_RPC_STATUS_NOT_MINING;
-    }
-    return true;
+       return true;
   }
   //------------------------------------------------------------------------------------------------------------------------------
   bool core_rpc_server::on_set_log_level(const COMMAND_RPC_SET_LOG_LEVEL::request& req, COMMAND_RPC_SET_LOG_LEVEL::response& res, const connection_context *ctx)
@@ -1711,10 +1542,10 @@ namespace cryptonote
     return 0;
   }
   //------------------------------------------------------------------------------------------------------------------------------
-  bool core_rpc_server::get_block_template(const account_public_address &address, const crypto::hash *prev_block, const cryptonote::blobdata &extra_nonce, size_t &reserved_offset, cryptonote::difficulty_type  &difficulty, uint64_t &height, uint64_t &expected_reward, block &b, uint64_t &seed_height, crypto::hash &seed_hash, crypto::hash &next_seed_hash, epee::json_rpc::error &error_resp)
+  bool core_rpc_server::get_block_template(const account_public_address &address, const crypto::hash *prev_block, const cryptonote::blobdata &blob_reserve, size_t &reserved_offset, cryptonote::difficulty_type  &difficulty, uint64_t &height, uint64_t &expected_reward, block &b, uint64_t &seed_height, crypto::hash &seed_hash, crypto::hash &next_seed_hash, epee::json_rpc::error &error_resp)
   {
-    b = boost::value_initialized<cryptonote::block>();
-    if(!m_core.get_block_template(b, prev_block, address, difficulty, height, expected_reward, extra_nonce, seed_height, seed_hash))
+    b =cryptonote::block{};
+    if(!m_core.get_block_template(b, prev_block, address, difficulty, height, expected_reward, blob_reserve, seed_height, seed_hash))
     {
       error_resp.code = CORE_RPC_ERROR_CODE_INTERNAL_ERROR;
       error_resp.message = "Internal error: failed to create block template";
@@ -1738,7 +1569,7 @@ namespace cryptonote
     else
       next_seed_hash = seed_hash;
 
-    if (extra_nonce.empty())
+    if (blob_reserve.empty())
     {
       reserved_offset = 0;
       return true;
@@ -1753,7 +1584,7 @@ namespace cryptonote
       return false;
     }
     reserved_offset += sizeof(tx_pub_key) + 2; //2 bytes: tag for TX_EXTRA_NONCE(1 byte), counter in TX_EXTRA_NONCE(1 byte)
-    if(reserved_offset + extra_nonce.size() > block_blob.size())
+    if(reserved_offset + blob_reserve.size() > block_blob.size())
     {
       error_resp.code = CORE_RPC_ERROR_CODE_INTERNAL_ERROR;
       error_resp.message = "Internal error: failed to create block template";
@@ -1980,7 +1811,9 @@ namespace cryptonote
   //------------------------------------------------------------------------------------------------------------------------------
   bool core_rpc_server::on_submitblock(const COMMAND_RPC_SUBMITBLOCK::request& req, COMMAND_RPC_SUBMITBLOCK::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
   {
-    RPC_TRACKER(submitblock);
+    PERF_TIMER(submitblock);
+    RPCTracker tracker("submitblock", PERF_TIMER_NAME(submitblock));
+
     {
       boost::shared_lock<boost::shared_mutex> lock(m_bootstrap_daemon_mutex);
       if (m_should_use_bootstrap_daemon)
@@ -2034,81 +1867,7 @@ namespace cryptonote
     res.status = CORE_RPC_STATUS_OK;
     return true;
   }
-  //------------------------------------------------------------------------------------------------------------------------------
-  bool core_rpc_server::on_generateblocks(const COMMAND_RPC_GENERATEBLOCKS::request& req, COMMAND_RPC_GENERATEBLOCKS::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
-  {
-    RPC_TRACKER(generateblocks);
-
-    CHECK_CORE_READY();
-    
-    res.status = CORE_RPC_STATUS_OK;
-
-    if(m_core.get_nettype() != FAKECHAIN)
-    {
-      error_resp.code = CORE_RPC_ERROR_CODE_REGTEST_REQUIRED;
-      error_resp.message = "Regtest required when generating blocks";      
-      return false;
-    }
-
-    COMMAND_RPC_GETBLOCKTEMPLATE::request template_req;
-    COMMAND_RPC_GETBLOCKTEMPLATE::response template_res;
-    COMMAND_RPC_SUBMITBLOCK::request submit_req;
-    COMMAND_RPC_SUBMITBLOCK::response submit_res;
-
-    template_req.reserve_size = 1;
-    template_req.wallet_address = req.wallet_address;
-    template_req.prev_block = req.prev_block;
-    submit_req.push_back(std::string{});
-    res.height = m_core.get_blockchain_storage().get_current_blockchain_height();
-
-    for(size_t i = 0; i < req.amount_of_blocks; i++)
-    {
-      bool r = on_getblocktemplate(template_req, template_res, error_resp, ctx);
-      res.status = template_res.status;
-      template_req.prev_block.clear();
-      
-      if (!r) return false;
-
-      blobdata blockblob;
-      if(!string_tools::parse_hexstr_to_binbuff(template_res.blocktemplate_blob, blockblob))
-      {
-        error_resp.code = CORE_RPC_ERROR_CODE_WRONG_BLOCKBLOB;
-        error_resp.message = "Wrong block blob";
-        return false;
-      }
-      block b;
-      if(!parse_and_validate_block_from_blob(blockblob, b))
-      {
-        error_resp.code = CORE_RPC_ERROR_CODE_WRONG_BLOCKBLOB;
-        error_resp.message = "Wrong block blob";
-        return false;
-      }
-      b.nonce = req.starting_nonce;
-      crypto::hash seed_hash = crypto::null_hash;
-      if (b.major_version >= RX_BLOCK_VERSION && !epee::string_tools::hex_to_pod(template_res.seed_hash, seed_hash))
-      {
-        error_resp.code = CORE_RPC_ERROR_CODE_INTERNAL_ERROR;
-        error_resp.message = "Error converting seed hash";
-        return false;
-      }
-      miner::find_nonce_for_given_block([this](const cryptonote::block &b, uint64_t height, const crypto::hash *seed_hash, unsigned int threads, crypto::hash &hash) {
-        return cryptonote::get_block_longhash(&(m_core.get_blockchain_storage()), b, hash, height, seed_hash, threads);
-      }, b, template_res.difficulty, template_res.height, &seed_hash);
-
-      submit_req.front() = string_tools::buff_to_hex_nodelimer(block_to_blob(b));
-      r = on_submitblock(submit_req, submit_res, error_resp, ctx);
-      res.status = submit_res.status;
-
-      if (!r) return false;
-
-      res.blocks.push_back(epee::string_tools::pod_to_hex(get_block_hash(b)));
-      template_req.prev_block = res.blocks.back();
-      res.height = template_res.height;
-    }
-
-    return true;
-  }
-  //------------------------------------------------------------------------------------------------------------------------------
+ 
   uint64_t core_rpc_server::get_block_reward(const block& blk)
   {
     uint64_t reward = 0;
@@ -3479,11 +3238,6 @@ namespace cryptonote
       }
     };
 
-  const command_line::arg_descriptor<std::string> core_rpc_server::arg_rpc_restricted_bind_port = {
-      "rpc-restricted-bind-port"
-    , "Port for restricted RPC server"
-    , ""
-    };
 
   const command_line::arg_descriptor<bool> core_rpc_server::arg_restricted_rpc = {
       "restricted-rpc"

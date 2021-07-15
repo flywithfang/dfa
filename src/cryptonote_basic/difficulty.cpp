@@ -182,13 +182,9 @@ namespace cryptonote {
 #endif
     // usual slow check
     boost::multiprecision::uint512_t hashVal = 0;
-#ifdef FORCE_FULL_128_BITS
-    for(int i = 0; i < 4; i++) { // highest word is zero
-#else
-    for(int i = 1; i < 4; i++) { // highest word is zero
-#endif
+    for(int i = 3; i >=0; i--) { // highest word is zero
+      hashVal |= swap64le(((const uint64_t *) &hash)[i]);
       hashVal <<= 64;
-      hashVal |= swap64le(((const uint64_t *) &hash)[3 - i]);
     }
     return hashVal * difficulty <= max256bit;
   }
@@ -200,7 +196,7 @@ namespace cryptonote {
       return check_hash_128(hash, difficulty);
   }
 
-  difficulty_type next_difficulty(std::vector<uint64_t> timestamps, std::vector<difficulty_type> cumulative_difficulties, size_t target_seconds) {
+  difficulty_type next_difficulty(std::vector<uint64_t> timestamps, std::vector<difficulty_type> cumulative_difficulties, size_t block_time) {
     //cutoff DIFFICULTY_LAG
     if(timestamps.size() > DIFFICULTY_WINDOW)
     {
@@ -233,7 +229,7 @@ namespace cryptonote {
     }
     difficulty_type total_work = cumulative_difficulties[cut_end - 1] - cumulative_difficulties[cut_begin];
     assert(total_work > 0);
-    boost::multiprecision::uint256_t res =  (boost::multiprecision::uint256_t(total_work) * target_seconds + time_span - 1) / time_span;
+    boost::multiprecision::uint256_t res =  (boost::multiprecision::uint256_t(total_work) * block_time + time_span - 1) / time_span;
     if(res > max128bit)
       return 0; // to behave like previous implementation, may be better return max128bit?
     return res.convert_to<difficulty_type>();

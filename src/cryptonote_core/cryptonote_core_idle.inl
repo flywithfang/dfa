@@ -1,3 +1,36 @@
+//-----------------------------------------------------------------------------------------------
+  double factorial(unsigned int n)
+  {
+    if (n <= 1)
+      return 1.0;
+    double f = n;
+    while (n-- > 1)
+      f *= n;
+    return f;
+  }
+  //-----------------------------------------------------------------------------------------------
+  static double probability1(unsigned int blocks, unsigned int expected)
+  {
+    // https://www.umass.edu/wsp/resources/poisson/#computing
+    return pow(expected, blocks) / (factorial(blocks) * exp(expected));
+  }
+  //-----------------------------------------------------------------------------------------------
+  static double probability(unsigned int blocks, unsigned int expected)
+  {
+    double p = 0.0;
+    if (blocks <= expected)
+    {
+      for (unsigned int b = 0; b <= blocks; ++b)
+        p += probability1(b, expected);
+    }
+    else if (blocks > expected)
+    {
+      for (unsigned int b = blocks; b <= expected * 3 /* close enough */; ++b)
+        p += probability1(b, expected);
+    }
+    return p;
+  }
+ 
 
   //-----------------------------------------------------------------------------------------------
   bool core::on_idle()
@@ -32,6 +65,53 @@
     m_mempool.on_idle();
     return true;
   }
+
+  //-----------------------------------------------------------------------------------------------
+  bool core::relay_txpool_transactions()
+  {
+    // we attempt to relay txes that should be relayed, but were not
+    std::vector<std::tuple<crypto::hash, cryptonote::blobdata, relay_method>> txs;
+    if (m_mempool.get_relayable_transactions(txs) && !txs.empty())
+    {
+      NOTIFY_NEW_TRANSACTIONS::request public_req{};
+      NOTIFY_NEW_TRANSACTIONS::request private_req{};
+      NOTIFY_NEW_TRANSACTIONS::request stem_req{};
+      for (auto& tx : txs)
+      {
+        switch (std::get<2>(tx))
+        {
+          default:
+          case relay_method::none:
+            break;
+          case relay_method::local:
+            private_req.txs.push_back(std::move(std::get<1>(tx)));
+            break;
+          case relay_method::forward:
+            stem_req.txs.push_back(std::move(std::get<1>(tx)));
+            break;
+          case relay_method::block:
+          case relay_method::fluff:
+          case relay_method::stem:
+            public_req.txs.push_back(std::move(std::get<1>(tx)));
+            break;
+        }
+      }
+
+      /* All txes are sent on randomized timers per connection in
+         `src/cryptonote_protocol/levin_notify.cpp.` They are either sent with
+         "white noise" delays or via  diffusion (Dandelion++ fluff). So
+         re-relaying public and private _should_ be acceptable here. */
+      const boost::uuids::uuid source = boost::uuids::nil_uuid();
+      if (!public_req.txs.empty())
+        get_protocol()->relay_transactions(public_req, source, epee::net_utils::zone::public_, relay_method::fluff);
+      if (!private_req.txs.empty())
+        get_protocol()->relay_transactions(private_req, source, epee::net_utils::zone::invalid, relay_method::local);
+      if (!stem_req.txs.empty())
+        get_protocol()->relay_transactions(stem_req, source, epee::net_utils::zone::public_, relay_method::stem);
+    }
+    return true;
+  }
+
 
   //-----------------------------------------------------------------------------------------------
   bool core::check_updates()
@@ -205,135 +285,8 @@
     return true;
   }
 
-    //-----------------------------------------------------------------------------------------------
-  bool core::relay_txpool_transactions()
-  {
-    // we attempt to relay txes that should be relayed, but were not
-    std::vector<std::tuple<crypto::hash, cryptonote::blobdata, relay_method>> txs;
-    if (m_mempool.get_relayable_transactions(txs) && !txs.empty())
-    {
-      NOTIFY_NEW_TRANSACTIONS::request public_req{};
-      NOTIFY_NEW_TRANSACTIONS::request private_req{};
-      NOTIFY_NEW_TRANSACTIONS::request stem_req{};
-      for (auto& tx : txs)
-      {
-        switch (std::get<2>(tx))
-        {
-          default:
-          case relay_method::none:
-            break;
-          case relay_method::local:
-            private_req.txs.push_back(std::move(std::get<1>(tx)));
-            break;
-          case relay_method::forward:
-            stem_req.txs.push_back(std::move(std::get<1>(tx)));
-            break;
-          case relay_method::block:
-          case relay_method::fluff:
-          case relay_method::stem:
-            public_req.txs.push_back(std::move(std::get<1>(tx)));
-            break;
-        }
-      }
-
-      /* All txes are sent on randomized timers per connection in
-         `src/cryptonote_protocol/levin_notify.cpp.` They are either sent with
-         "white noise" delays or via  diffusion (Dandelion++ fluff). So
-         re-relaying public and private _should_ be acceptable here. */
-      const boost::uuids::uuid source = boost::uuids::nil_uuid();
-      if (!public_req.txs.empty())
-        get_protocol()->relay_transactions(public_req, source, epee::net_utils::zone::public_, relay_method::fluff);
-      if (!private_req.txs.empty())
-        get_protocol()->relay_transactions(private_req, source, epee::net_utils::zone::invalid, relay_method::local);
-      if (!stem_req.txs.empty())
-        get_protocol()->relay_transactions(stem_req, source, epee::net_utils::zone::public_, relay_method::stem);
-    }
-    return true;
-  }
-
-
-   //---------------------------------------------------------------------------------
-  //TODO: investigate whether boolean return is appropriate
-  bool tx_memory_pool::get_relayable_transactions(std::vector<std::tuple<crypto::hash, cryptonote::blobdata, relay_method>> &txs)
-  {
-    using clock = std::chrono::system_clock;
-
-    const uint64_t now = time(NULL);
-    if (uint64_t{std::numeric_limits<time_t>::max()} < now || time_t(now) < m_next_check)
-      return false;
-
-    uint64_t next_check = clock::to_time_t(clock::from_time_t(time_t(now)) + max_relayable_check);
-    std::vector<std::pair<crypto::hash, txpool_tx_meta_t>> change_timestamps;
-
-    CRITICAL_REGION_LOCAL(m_transactions_lock);
-    CRITICAL_REGION_LOCAL1(m_blockchain);
-    LockedTXN lock(m_blockchain.get_db());
-    txs.reserve(m_blockchain.get_txpool_tx_count());
-    m_blockchain.for_all_txpool_txes([this, now, &txs, &change_timestamps, &next_check](const crypto::hash &txid, const txpool_tx_meta_t &meta, const cryptonote::blobdata_ref *){
-      // 0 fee transactions are never relayed
-      if(!meta.pruned && meta.fee > 0 && !meta.do_not_relay)
-      {
-        const relay_method tx_relay = meta.get_relay_method();
-        switch (tx_relay)
-        {
-          case relay_method::stem:
-          case relay_method::forward:
-            if (meta.last_relayed_time > now)
-            {
-              next_check = std::min(next_check, meta.last_relayed_time);
-              return true; // continue to next tx
-            }
-            change_timestamps.emplace_back(txid, meta);
-            break;
-          default:
-          case relay_method::none:
-            return true;
-          case relay_method::local:
-          case relay_method::fluff:
-          case relay_method::block:
-            if (now - meta.last_relayed_time <= get_relay_delay(now, meta.receive_time))
-              return true; // continue to next tx
-            break;
-        }
-
-        // if the tx is older than half the max lifetime, we don't re-relay it, to avoid a problem
-        // mentioned by smooth where nodes would flush txes at slightly different times, causing
-        // flushed txes to be re-added when received from a node which was just about to flush it
-        uint64_t max_age = (tx_relay == relay_method::block) ? CRYPTONOTE_MEMPOOL_TX_FROM_ALT_BLOCK_LIVETIME : CRYPTONOTE_MEMPOOL_TX_LIVETIME;
-        if (now - meta.receive_time <= max_age / 2)
-        {
-          try
-          {
-            txs.emplace_back(txid, m_blockchain.get_txpool_tx_blob(txid, relay_category::all), tx_relay);
-          }
-          catch (const std::exception &e)
-          {
-            MERROR("Failed to get transaction blob from db");
-            // ignore error
-          }
-        }
-      }
-      return true;
-    }, false, relay_category::relayable);
-
-    for (auto& elem : change_timestamps)
-    {
-      /* These transactions are still in forward or stem state, so the field
-         represents the next time a relay should be attempted. Will be
-         overwritten when the state is upgraded to stem, fluff or block. This
-         function is only called every ~2 minutes, so this resetting should be
-         unnecessary, but is primarily a precaution against potential changes
-   to the callback routines. */
-      elem.second.last_relayed_time = now + get_relay_delay(now, elem.second.receive_time);
-      m_blockchain.update_txpool_tx(elem.first, elem.second);
-    }
-
-    m_next_check = time_t(next_check);
-    return true;
-  }
-
-
-    //-----------------------------------------------------------------------------------------------
+  
+  //-----------------------------------------------------------------------------------------------
   bool core::check_disk_space()
   {
     uint64_t free_space = get_free_space();

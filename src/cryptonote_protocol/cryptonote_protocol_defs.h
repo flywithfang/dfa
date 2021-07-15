@@ -189,6 +189,49 @@ namespace cryptonote
   /************************************************************************/
   /*                                                                      */
   /************************************************************************/
+  struct NOTIFY_NEW_FLUFFY_BLOCK
+  {
+    const static int ID = BC_COMMANDS_POOL_BASE + 8;
+
+    struct request_t
+    {
+      block_complete_entry b;
+      uint64_t current_blockchain_height;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(b)
+        KV_SERIALIZE(current_blockchain_height)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<request_t> request;
+  };  
+
+
+  /************************************************************************/
+  /*                                                                      */
+  /************************************************************************/
+  struct NOTIFY_REQUEST_FLUFFY_MISSING_TX
+  {
+    const static int ID = BC_COMMANDS_POOL_BASE + 9;
+
+    struct request_t
+    {
+      crypto::hash block_hash;
+      uint64_t current_blockchain_height;      
+      std::vector<uint64_t> missing_tx_indices;
+      
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE_VAL_POD_AS_BLOB(block_hash)
+        KV_SERIALIZE(current_blockchain_height)
+        KV_SERIALIZE_CONTAINER_POD_AS_BLOB(missing_tx_indices)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<request_t> request;
+  }; 
+  
+  /************************************************************************/
+  /*                                                                      */
+  /************************************************************************/
   struct NOTIFY_NEW_TRANSACTIONS
   {
     const static int ID = BC_COMMANDS_POOL_BASE + 2;
@@ -316,47 +359,8 @@ namespace cryptonote
     typedef epee::misc_utils::struct_init<request_t> request;
   };
   
-  /************************************************************************/
-  /*                                                                      */
-  /************************************************************************/
-  struct NOTIFY_NEW_FLUFFY_BLOCK
-  {
-    const static int ID = BC_COMMANDS_POOL_BASE + 8;
 
-    struct request_t
-    {
-      block_complete_entry b;
-      uint64_t current_blockchain_height;
 
-      BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE(b)
-        KV_SERIALIZE(current_blockchain_height)
-      END_KV_SERIALIZE_MAP()
-    };
-    typedef epee::misc_utils::struct_init<request_t> request;
-  };  
-
-  /************************************************************************/
-  /*                                                                      */
-  /************************************************************************/
-  struct NOTIFY_REQUEST_FLUFFY_MISSING_TX
-  {
-    const static int ID = BC_COMMANDS_POOL_BASE + 9;
-
-    struct request_t
-    {
-      crypto::hash block_hash;
-      uint64_t current_blockchain_height;      
-      std::vector<uint64_t> missing_tx_indices;
-      
-      BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE_VAL_POD_AS_BLOB(block_hash)
-        KV_SERIALIZE(current_blockchain_height)
-        KV_SERIALIZE_CONTAINER_POD_AS_BLOB(missing_tx_indices)
-      END_KV_SERIALIZE_MAP()
-    };
-    typedef epee::misc_utils::struct_init<request_t> request;
-  }; 
 
   /************************************************************************/
   /*                                                                      */

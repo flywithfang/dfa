@@ -75,9 +75,6 @@ class DaemonHandler : public RpcHandler
 
     void handle(const GetInfo::Request& req, GetInfo::Response& res);
 
-    void handle(const StopMining::Request& req, StopMining::Response& res);
-
-    void handle(const MiningStatus::Request& req, MiningStatus::Response& res);
 
     void handle(const SaveBC::Request& req, SaveBC::Response& res);
 

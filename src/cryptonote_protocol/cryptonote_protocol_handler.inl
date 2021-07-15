@@ -747,6 +747,7 @@ namespace cryptonote
         MDEBUG("We are missing " << need_tx_indices.size() << " txes for this fluffy block");
         for (auto txidx: need_tx_indices)
           MDEBUG("  tx " << new_block.tx_hashes[txidx]);
+        
         NOTIFY_REQUEST_FLUFFY_MISSING_TX::request missing_tx_req;
         missing_tx_req.block_hash = get_block_hash(new_block);
         missing_tx_req.current_blockchain_height = arg.current_blockchain_height;
@@ -2807,7 +2808,7 @@ skip:
     });
     const bool use_next = (n_next > m_max_out_peers / 2 && n_subsequent <= 1) || (n_next > 2 && n_subsequent == 0);
     const uint32_t ret_stripe = use_next ? subsequent_pruning_stripe: next_pruning_stripe;
-    MIDEBUG(const std::string po = get_peers_overview(), "get_next_needed_pruning_stripe: want height " << want_height << " (" <<
+      MIDEBUG(const std::string po = get_peers_overview(), "get_next_needed_pruning_stripe: want height " << want_height << " (" <<
         want_height_from_blockchain << " from blockchain, " << want_height_from_block_queue << " from block queue), stripe " <<
         next_pruning_stripe << " (" << n_next << "/" << m_max_out_peers << " on it and " << n_subsequent << " on " <<
         subsequent_pruning_stripe << ", " << n_others << " others) -> " << ret_stripe << " (+" <<

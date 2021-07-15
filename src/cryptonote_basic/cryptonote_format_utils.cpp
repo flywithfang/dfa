@@ -1229,6 +1229,7 @@ public:
 
     // base rct
     CHECK_AND_ASSERT_MES(prefix_size <= unprunable_size && unprunable_size <= blob.size(), false, "Inconsistent transaction prefix, unprunable and blob sizes");
+    
     cryptonote::get_blob_hash(blobdata_ref(blob.data() + prefix_size, unprunable_size - prefix_size), hashes[1]);
 
     // prunable rct
@@ -1277,6 +1278,7 @@ public:
       ++tx_hashes_cached_count;
       return true;
     }
+
     ++tx_hashes_calculated_count;
     bool ret = calculate_transaction_hash(t, res, blob_size);
     if (!ret)
@@ -1296,7 +1298,8 @@ public:
   //---------------------------------------------------------------
   blobdata get_block_hashing_blob(const block& b)
   {
-    blobdata blob = t_serializable_object_to_blob(static_cast<block_header>(b));
+    const block_header & b_h=b;
+    blobdata blob = t_serializable_object_to_blob(b_h);
     crypto::hash tree_root_hash = get_tx_tree_hash(b);
     blob.append(reinterpret_cast<const char*>(&tree_root_hash), sizeof(tree_root_hash));
     blob.append(tools::get_varint_data(b.tx_hashes.size()+1));
@@ -1305,46 +1308,11 @@ public:
   //---------------------------------------------------------------
   bool calculate_block_hash(const block& b, crypto::hash& res, const blobdata_ref *blob)
   {
-    blobdata bd;
-    blobdata_ref bdref;
-    if (!blob)
-    {
-      bd = block_to_blob(b);
-      bdref = bd;
-      blob = &bdref;
-    }
-
+   
     bool hash_result = get_object_hash(get_block_hashing_blob(b), res);
     if (!hash_result)
       return false;
 
-    if (b.miner_tx.vin.size() == 1 && b.miner_tx.vin[0].type() == typeid(cryptonote::txin_gen))
-    {
-      const cryptonote::txin_gen &txin_gen = boost::get<cryptonote::txin_gen>(b.miner_tx.vin[0]);
-      if (txin_gen.height != 202612)
-        return true;
-    }
-
-    // EXCEPTION FOR BLOCK 202612
-    const std::string correct_blob_hash_202612 = "3a8a2b3a29b50fc86ff73dd087ea43c6f0d6b8f936c849194d5c84c737903966";
-    const std::string existing_block_id_202612 = "bbd604d2ba11ba27935e006ed39c9bfdd99b76bf4a50654bc1e1e61217962698";
-    crypto::hash block_blob_hash = get_blob_hash(*blob);
-
-    if (string_tools::pod_to_hex(block_blob_hash) == correct_blob_hash_202612)
-    {
-      string_tools::hex_to_pod(existing_block_id_202612, res);
-      return true;
-    }
-
-    {
-      // make sure that we aren't looking at a block with the 202612 block id but not the correct blobdata
-      if (string_tools::pod_to_hex(res) == existing_block_id_202612)
-      {
-        LOG_ERROR("Block with block id for 202612 but incorrect block blob hash found!");
-        res = null_hash;
-        return false;
-      }
-    }
     return hash_result;
   }
   //---------------------------------------------------------------

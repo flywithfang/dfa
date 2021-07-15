@@ -59,8 +59,9 @@ public:
     , uint16_t port
     , const boost::optional<tools::login>& login
     , const epee::net_utils::ssl_options_t& ssl_options
-    , bool is_rpc = true
-    , cryptonote::core_rpc_server* rpc_server = NULL
+    , bool is_rpc 
+    , cryptonote::core_rpc_server* rpc_server ,
+     cryptonote::core& core
     );
 
   bool process_command_str(const std::string& cmd);

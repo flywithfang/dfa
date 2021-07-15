@@ -740,85 +740,7 @@ namespace cryptonote
     }
     return true;
   }
-  //---------------------------------------------------------------------------------
-  //TODO: investigate whether boolean return is appropriate
-  bool tx_memory_pool::get_relayable_transactions(std::vector<std::tuple<crypto::hash, cryptonote::blobdata, relay_method>> &txs)
-  {
-    using clock = std::chrono::system_clock;
-
-    const uint64_t now = time(NULL);
-    if (uint64_t{std::numeric_limits<time_t>::max()} < now || time_t(now) < m_next_check)
-      return false;
-
-    uint64_t next_check = clock::to_time_t(clock::from_time_t(time_t(now)) + max_relayable_check);
-    std::vector<std::pair<crypto::hash, txpool_tx_meta_t>> change_timestamps;
-
-    CRITICAL_REGION_LOCAL(m_transactions_lock);
-    CRITICAL_REGION_LOCAL1(m_blockchain);
-    LockedTXN lock(m_blockchain.get_db());
-    txs.reserve(m_blockchain.get_txpool_tx_count());
-    m_blockchain.for_all_txpool_txes([this, now, &txs, &change_timestamps, &next_check](const crypto::hash &txid, const txpool_tx_meta_t &meta, const cryptonote::blobdata_ref *){
-      // 0 fee transactions are never relayed
-      if(!meta.pruned && meta.fee > 0 && !meta.do_not_relay)
-      {
-        const relay_method tx_relay = meta.get_relay_method();
-        switch (tx_relay)
-        {
-          case relay_method::stem:
-          case relay_method::forward:
-            if (meta.last_relayed_time > now)
-            {
-              next_check = std::min(next_check, meta.last_relayed_time);
-              return true; // continue to next tx
-            }
-            change_timestamps.emplace_back(txid, meta);
-            break;
-          default:
-          case relay_method::none:
-            return true;
-          case relay_method::local:
-          case relay_method::fluff:
-          case relay_method::block:
-            if (now - meta.last_relayed_time <= get_relay_delay(now, meta.receive_time))
-              return true; // continue to next tx
-            break;
-        }
-
-        // if the tx is older than half the max lifetime, we don't re-relay it, to avoid a problem
-        // mentioned by smooth where nodes would flush txes at slightly different times, causing
-        // flushed txes to be re-added when received from a node which was just about to flush it
-        uint64_t max_age = (tx_relay == relay_method::block) ? CRYPTONOTE_MEMPOOL_TX_FROM_ALT_BLOCK_LIVETIME : CRYPTONOTE_MEMPOOL_TX_LIVETIME;
-        if (now - meta.receive_time <= max_age / 2)
-        {
-          try
-          {
-            txs.emplace_back(txid, m_blockchain.get_txpool_tx_blob(txid, relay_category::all), tx_relay);
-          }
-          catch (const std::exception &e)
-          {
-            MERROR("Failed to get transaction blob from db");
-            // ignore error
-          }
-        }
-      }
-      return true;
-    }, false, relay_category::relayable);
-
-    for (auto& elem : change_timestamps)
-    {
-      /* These transactions are still in forward or stem state, so the field
-         represents the next time a relay should be attempted. Will be
-         overwritten when the state is upgraded to stem, fluff or block. This
-         function is only called every ~2 minutes, so this resetting should be
-         unnecessary, but is primarily a precaution against potential changes
-	 to the callback routines. */
-      elem.second.last_relayed_time = now + get_relay_delay(now, elem.second.receive_time);
-      m_blockchain.update_txpool_tx(elem.first, elem.second);
-    }
-
-    m_next_check = time_t(next_check);
-    return true;
-  }
+ 
   //---------------------------------------------------------------------------------
   void tx_memory_pool::set_relayed(const epee::span<const crypto::hash> hashes, const relay_method method)
   {
@@ -1404,13 +1326,10 @@ namespace cryptonote
       return false;
     }
 
-
-    size_t max_total_weight_pre_v5 = (130 * median_weight) / 100 - CRYPTONOTE_COINBASE_BLOB_RESERVED_SIZE;
-    size_t max_total_weight_v5 = 2 * median_weight - CRYPTONOTE_COINBASE_BLOB_RESERVED_SIZE;
-    size_t max_total_weight = version >= 5 ? max_total_weight_v5 : max_total_weight_pre_v5;
+    const size_t max_total_weight =2 * median_weight - CRYPTONOTE_COINBASE_BLOB_RESERVED_SIZE;
     std::unordered_set<crypto::key_image> k_images;
 
-    LOG_PRINT_L2("Filling block template, median weight " << median_weight << ", " << m_txs_by_fee_and_receive_time.size() << " txes in the pool");
+    MINFO("Filling block template, median weight " << median_weight << ", " << m_txs_by_fee_and_receive_time.size() << " txes in the pool");
 
     LockedTXN lock(m_blockchain.get_db());
 
@@ -1418,7 +1337,8 @@ namespace cryptonote
     for (; sorted_it != m_txs_by_fee_and_receive_time.end(); ++sorted_it)
     {
       txpool_tx_meta_t meta;
-      if (!m_blockchain.get_txpool_tx_meta(sorted_it->second, meta))
+      const auto tx_hash= sorted_it->second;
+      if (!m_blockchain.get_txpool_tx_meta(tx_hash, meta))
       {
         static bool warned = false;
         if (!warned)
@@ -1426,57 +1346,42 @@ namespace cryptonote
         warned = true;
         continue;
       }
-      LOG_PRINT_L2("Considering " << sorted_it->second << ", weight " << meta.weight << ", current block weight " << total_weight << "/" << max_total_weight << ", current coinbase " << print_money(best_coinbase) << ", relay method " << (unsigned)meta.get_relay_method());
+      MINFO("Considering " << sorted_it->second << ", weight " << meta.weight << ", current block weight " << total_weight << "/" << max_total_weight << ", current coinbase " << print_money(best_coinbase) << ", relay method " << (unsigned)meta.get_relay_method());
 
-      if (!meta.matches(relay_category::legacy) && !(m_mine_stem_txes && meta.get_relay_method() == relay_method::stem))
-      {
-        LOG_PRINT_L2("  tx relay method is " << (unsigned)meta.get_relay_method());
-        continue;
-      }
       if (meta.pruned)
       {
-        LOG_PRINT_L2("  tx is pruned");
+        MINFO("  tx is pruned");
         continue;
       }
 
       // Can not exceed maximum block weight
       if (max_total_weight < total_weight + meta.weight)
       {
-        LOG_PRINT_L2("  would exceed maximum block weight");
+        MINFO("  would exceed maximum block weight");
         continue;
       }
 
       // start using the optimal filling algorithm from v5
-      if (version >= 5)
       {
         // If we're getting lower coinbase tx,
         // stop including more tx
         uint64_t block_reward;
         if(!get_block_reward(median_weight, total_weight + meta.weight, already_generated_coins, block_reward, version))
         {
-          LOG_PRINT_L2("  would exceed maximum block weight");
+          MINFO("  would exceed maximum block weight");
           continue;
         }
         coinbase = block_reward + fee + meta.fee;
         if (coinbase < template_accept_threshold(best_coinbase))
         {
-          LOG_PRINT_L2("  would decrease coinbase to " << print_money(coinbase));
+          MINFO("  would decrease coinbase to " << print_money(coinbase));
           continue;
         }
       }
-      else
-      {
-        // If we've exceeded the penalty free weight,
-        // stop including more tx
-        if (total_weight > median_weight)
-        {
-          LOG_PRINT_L2("  would exceed median block weight");
-          break;
-        }
-      }
+     
 
       // "local" and "stem" txes are filtered above
-      cryptonote::blobdata txblob = m_blockchain.get_txpool_tx_blob(sorted_it->second, relay_category::all);
+      cryptonote::blobdata txblob = m_blockchain.get_txpool_tx_blob(tx_hash, relay_category::all);
 
       cryptonote::transaction tx;
 
@@ -1487,7 +1392,7 @@ namespace cryptonote
       bool ready = false;
       try
       {
-        ready = is_transaction_ready_to_go(meta, sorted_it->second, txblob, tx);
+        ready = is_transaction_ready_to_go(meta, tx_hash, txblob, tx);
       }
       catch (const std::exception &e)
       {
@@ -1497,23 +1402,23 @@ namespace cryptonote
       if (memcmp(&original_meta, &meta, sizeof(meta)))
       {
         try
-	{
-	  m_blockchain.update_txpool_tx(sorted_it->second, meta);
-	}
+        	{
+        	  m_blockchain.update_txpool_tx(tx_hash, meta);
+        	}
         catch (const std::exception &e)
-	{
-	  MERROR("Failed to update tx meta: " << e.what());
-	  // continue, not fatal
-	}
+      	{
+      	  MERROR("Failed to update tx meta: " << e.what());
+      	  // continue, not fatal
+      	}
       }
       if (!ready)
       {
-        LOG_PRINT_L2("  not ready to go");
+        MINFO("  not ready to go");
         continue;
       }
       if (have_key_images(k_images, tx))
       {
-        LOG_PRINT_L2("  key images already seen");
+        MINFO("  key images already seen");
         continue;
       }
 
@@ -1522,12 +1427,12 @@ namespace cryptonote
       fee += meta.fee;
       best_coinbase = coinbase;
       append_key_images(k_images, tx);
-      LOG_PRINT_L2("  added, new block weight " << total_weight << "/" << max_total_weight << ", coinbase " << print_money(best_coinbase));
+      MINFO("  added, new block weight " << total_weight << "/" << max_total_weight << ", coinbase " << print_money(best_coinbase));
     }
     lock.commit();
 
     expected_reward = best_coinbase;
-    LOG_PRINT_L2("Block template filled with " << bl.tx_hashes.size() << " txes, weight "
+    MINFO("Block template filled with " << bl.tx_hashes.size() << " txes, weight "
         << total_weight << "/" << max_total_weight << ", coinbase " << print_money(best_coinbase)
         << " (including " << print_money(fee) << " in fees)");
     return true;
@@ -1665,4 +1570,85 @@ namespace cryptonote
   {
     return true;
   }
+
+   //---------------------------------------------------------------------------------
+  //TODO: investigate whether boolean return is appropriate
+  bool tx_memory_pool::get_relayable_transactions(std::vector<std::tuple<crypto::hash, cryptonote::blobdata, relay_method>> &txs)
+  {
+    using clock = std::chrono::system_clock;
+
+    const uint64_t now = time(NULL);
+    if (uint64_t{std::numeric_limits<time_t>::max()} < now || time_t(now) < m_next_check)
+      return false;
+
+    uint64_t next_check = clock::to_time_t(clock::from_time_t(time_t(now)) + max_relayable_check);
+    std::vector<std::pair<crypto::hash, txpool_tx_meta_t>> change_timestamps;
+
+    CRITICAL_REGION_LOCAL(m_transactions_lock);
+    CRITICAL_REGION_LOCAL1(m_blockchain);
+    LockedTXN lock(m_blockchain.get_db());
+    txs.reserve(m_blockchain.get_txpool_tx_count());
+    m_blockchain.for_all_txpool_txes([this, now, &txs, &change_timestamps, &next_check](const crypto::hash &txid, const txpool_tx_meta_t &meta, const cryptonote::blobdata_ref *){
+      // 0 fee transactions are never relayed
+      if(!meta.pruned && meta.fee > 0 && !meta.do_not_relay)
+      {
+        const relay_method tx_relay = meta.get_relay_method();
+        switch (tx_relay)
+        {
+          case relay_method::stem:
+          case relay_method::forward:
+            if (meta.last_relayed_time > now)
+            {
+              next_check = std::min(next_check, meta.last_relayed_time);
+              return true; // continue to next tx
+            }
+            change_timestamps.emplace_back(txid, meta);
+            break;
+          default:
+          case relay_method::none:
+            return true;
+          case relay_method::local:
+          case relay_method::fluff:
+          case relay_method::block:
+            if (now - meta.last_relayed_time <= get_relay_delay(now, meta.receive_time))
+              return true; // continue to next tx
+            break;
+        }
+
+        // if the tx is older than half the max lifetime, we don't re-relay it, to avoid a problem
+        // mentioned by smooth where nodes would flush txes at slightly different times, causing
+        // flushed txes to be re-added when received from a node which was just about to flush it
+        uint64_t max_age = (tx_relay == relay_method::block) ? CRYPTONOTE_MEMPOOL_TX_FROM_ALT_BLOCK_LIVETIME : CRYPTONOTE_MEMPOOL_TX_LIVETIME;
+        if (now - meta.receive_time <= max_age / 2)
+        {
+          try
+          {
+            txs.emplace_back(txid, m_blockchain.get_txpool_tx_blob(txid, relay_category::all), tx_relay);
+          }
+          catch (const std::exception &e)
+          {
+            MERROR("Failed to get transaction blob from db");
+            // ignore error
+          }
+        }
+      }
+      return true;
+    }, false, relay_category::relayable);
+
+    for (auto& elem : change_timestamps)
+    {
+      /* These transactions are still in forward or stem state, so the field
+         represents the next time a relay should be attempted. Will be
+         overwritten when the state is upgraded to stem, fluff or block. This
+         function is only called every ~2 minutes, so this resetting should be
+         unnecessary, but is primarily a precaution against potential changes
+   to the callback routines. */
+      elem.second.last_relayed_time = now + get_relay_delay(now, elem.second.receive_time);
+      m_blockchain.update_txpool_tx(elem.first, elem.second);
+    }
+
+    m_next_check = time_t(next_check);
+    return true;
+  }
+
 }

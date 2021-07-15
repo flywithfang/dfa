@@ -3089,8 +3089,6 @@ boost::optional<wallet2::cache_file_data> wallet2::get_cache_file_data(const epe
 uint64_t wallet2::balance(uint32_t index_major, bool strict) const
 {
   uint64_t amount = 0;
-  if(m_light_wallet)
-    return m_light_wallet_balance;
   for (const auto& i : balance_per_subaddress(index_major, strict))
     amount += i.second;
   return amount;

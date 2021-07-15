@@ -77,17 +77,11 @@ public:
     protocol.set_p2p_endpoint(p2p.get());
     core.set_protocol(protocol.get());
 
-    const auto restricted = command_line::get_arg(vm, cryptonote::core_rpc_server::arg_restricted_rpc);
+    const bool restricted = command_line::get_arg(vm, cryptonote::core_rpc_server::arg_restricted_rpc);
     const auto main_rpc_port = command_line::get_arg(vm, cryptonote::core_rpc_server::arg_rpc_bind_port);
-    const auto restricted_rpc_port_arg = cryptonote::core_rpc_server::arg_rpc_restricted_bind_port;
-    const bool has_restricted_rpc_port_arg = !command_line::is_arg_defaulted(vm, restricted_rpc_port_arg);
-    rpcs.emplace_back(new t_rpc{vm, core, p2p, restricted, main_rpc_port, "core", !has_restricted_rpc_port_arg});
+    rpcs.emplace_back(new t_rpc{vm, core, p2p, restricted, main_rpc_port, "core"});
 
-    if(has_restricted_rpc_port_arg)
-    {
-      auto restricted_rpc_port = command_line::get_arg(vm, restricted_rpc_port_arg);
-      rpcs.emplace_back(new t_rpc{vm, core, p2p, true, restricted_rpc_port, "restricted", true});
-    }
+ 
 
   
   }
@@ -167,7 +161,7 @@ bool t_daemon::run(bool interactive)
     if (interactive && mp_internals->rpcs.size())
     {
       // The first three variables are not used when the fourth is false
-      rpc_commands.reset(new daemonize::t_command_server(0, 0, boost::none, epee::net_utils::ssl_support_t::e_ssl_support_disabled, false, mp_internals->rpcs.front()->get_server()));
+      rpc_commands.reset(new daemonize::t_command_server(0, 0, boost::none, epee::net_utils::ssl_support_t::e_ssl_support_disabled, false, mp_internals->rpcs.front()->get_server(),mp_internals->core.get()));
       rpc_commands->start_handling(std::bind(&daemonize::t_daemon::stop_p2p, this));
     }
 

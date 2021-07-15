@@ -45,9 +45,10 @@ t_command_server::t_command_server(
   , const boost::optional<tools::login>& login
   , const epee::net_utils::ssl_options_t& ssl_options
   , bool is_rpc
-  , cryptonote::core_rpc_server* rpc_server
+  , cryptonote::core_rpc_server* rpc_server,
+   cryptonote::core& core
   )
-  : m_parser(ip, port, login, ssl_options, is_rpc, rpc_server)
+  : m_parser(ip, port, login, ssl_options, is_rpc, rpc_server,core)
   , m_command_lookup()
   , m_is_rpc(is_rpc)
 {

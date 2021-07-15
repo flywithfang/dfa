@@ -68,8 +68,10 @@ namespace cryptonote
     bool operator()(const tx_by_fee_and_receive_time_entry& a, const tx_by_fee_and_receive_time_entry& b) const
     {
       // sort by greatest first, not least
-      if (a.first.first > b.first.first) return true;
-      else if (a.first.first < b.first.first) return false;
+      const auto a_fee= a.first.first;
+      const auto b_fee=b.first.first;
+      if (a_fee > b_fee) return true;
+      else if (a_fee < b_fee) return false;
       else if (a.first.second < b.first.second) return true;
       else if (a.first.second > b.first.second) return false;
       else if (a.second != b.second) return true;
@@ -565,13 +567,9 @@ namespace cryptonote
      */
     typedef std::unordered_map<crypto::key_image, std::unordered_set<crypto::hash>> key_images_container;
 
-#if defined(DEBUG_CREATE_BLOCK_TEMPLATE)
-public:
-#endif
+
     mutable epee::critical_section m_transactions_lock;  //!< lock for the pool
-#if defined(DEBUG_CREATE_BLOCK_TEMPLATE)
-private:
-#endif
+
 
     //! container for spent key images from the transactions in the pool
     key_images_container m_spent_key_images;  

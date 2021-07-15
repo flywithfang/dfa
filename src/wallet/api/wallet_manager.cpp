@@ -278,15 +278,7 @@ uint64_t WalletManagerImpl::networkDifficulty()
 
 double WalletManagerImpl::miningHashRate()
 {
-    cryptonote::COMMAND_RPC_MINING_STATUS::request mreq;
-    cryptonote::COMMAND_RPC_MINING_STATUS::response mres;
-
-    epee::net_utils::http::http_simple_client http_client;
-    if (!epee::net_utils::invoke_http_json("/mining_status", mreq, mres, m_http_client))
-      return 0.0;
-    if (!mres.active)
-      return 0.0;
-    return mres.speed;
+   return 0;
 }
 
 uint64_t WalletManagerImpl::blockTarget()
@@ -301,37 +293,17 @@ uint64_t WalletManagerImpl::blockTarget()
 
 bool WalletManagerImpl::isMining()
 {
-    cryptonote::COMMAND_RPC_MINING_STATUS::request mreq;
-    cryptonote::COMMAND_RPC_MINING_STATUS::response mres;
-
-    if (!epee::net_utils::invoke_http_json("/mining_status", mreq, mres, m_http_client))
-      return false;
-    return mres.active;
+    retur false;
 }
 
 bool WalletManagerImpl::startMining(const std::string &address, uint32_t threads, bool background_mining, bool ignore_battery)
 {
-    cryptonote::COMMAND_RPC_START_MINING::request mreq;
-    cryptonote::COMMAND_RPC_START_MINING::response mres;
-
-    mreq.miner_address = address;
-    mreq.threads_count = threads;
-    mreq.ignore_battery = ignore_battery;
-    mreq.do_background_mining = background_mining;
-
-    if (!epee::net_utils::invoke_http_json("/start_mining", mreq, mres, m_http_client))
-      return false;
-    return mres.status == CORE_RPC_STATUS_OK;
+    return false;
 }
 
 bool WalletManagerImpl::stopMining()
 {
-    cryptonote::COMMAND_RPC_STOP_MINING::request mreq;
-    cryptonote::COMMAND_RPC_STOP_MINING::response mres;
-
-    if (!epee::net_utils::invoke_http_json("/stop_mining", mreq, mres, m_http_client))
-      return false;
-    return mres.status == CORE_RPC_STATUS_OK;
+   return false;
 }
 
 std::string WalletManagerImpl::resolveOpenAlias(const std::string &address, bool &dnssec_valid) const

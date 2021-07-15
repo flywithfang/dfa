@@ -96,7 +96,7 @@ namespace daemon_args
   const command_line::arg_descriptor<bool> arg_public_node = {
     "public-node"
   , "Allow other users to use the node as a remote (restricted RPC mode, view-only commands) and advertise it over P2P"
-  , false
+  , true
   };
 
 

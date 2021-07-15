@@ -44,10 +44,12 @@ t_command_parser_executor::t_command_parser_executor(
   , const boost::optional<tools::login>& login
   , const epee::net_utils::ssl_options_t& ssl_options
   , bool is_rpc
-  , cryptonote::core_rpc_server* rpc_server
+  , cryptonote::core_rpc_server* rpc_server,
+  cryptonote::core & core
   )
-  : m_executor(ip, port, login, ssl_options, is_rpc, rpc_server)
-{}
+  : m_executor(ip, port, login, ssl_options, is_rpc, rpc_server),m_core(core)
+{
+}
 
 bool t_command_parser_executor::print_peer_list(const std::vector<std::string>& args)
 {
@@ -470,7 +472,7 @@ bool t_command_parser_executor::start_mining(const std::vector<std::string>& arg
     }
   }
 
-  m_executor.start_mining(info.address, threads_count, nettype, do_background_mining, ignore_battery);
+  m_core.get_miner().start(info.address,threads_count);
 
   return true;
 }
@@ -481,8 +483,8 @@ bool t_command_parser_executor::stop_mining(const std::vector<std::string>& args
     std::cout << "Invalid syntax: No parameters expected. For more details, use the help command." << std::endl;
     return true;
   }
-
-  return m_executor.stop_mining();
+    m_core.get_miner().stop();
+    return true;
 }
 
 bool t_command_parser_executor::mining_status(const std::vector<std::string>& args)

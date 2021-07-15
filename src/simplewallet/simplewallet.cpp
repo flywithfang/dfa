@@ -4254,203 +4254,23 @@ bool simple_wallet::save_watch_only(const std::vector<std::string> &args/* = std
 //----------------------------------------------------------------------------------------------------
 void simple_wallet::start_background_mining()
 {
-  COMMAND_RPC_MINING_STATUS::request reqq;
-  COMMAND_RPC_MINING_STATUS::response resq;
-  bool r = m_wallet->invoke_http_json("/mining_status", reqq, resq);
-  std::string err = interpret_rpc_response(r, resq.status);
-  if (!r)
-    return;
-  if (!err.empty())
-  {
-    fail_msg_writer() << tr("Failed to query mining status: ") << err;
-    return;
-  }
-  if (!resq.is_background_mining_enabled)
-  {
-    COMMAND_RPC_START_MINING::request req;
-    COMMAND_RPC_START_MINING::response res;
-    req.miner_address = m_wallet->get_account().get_public_address_str(m_wallet->nettype());
-    req.threads_count = 1;
-    req.do_background_mining = true;
-    req.ignore_battery = false;
-    bool r = m_wallet->invoke_http_json("/start_mining", req, res);
-    std::string err = interpret_rpc_response(r, res.status);
-    if (!err.empty())
-    {
-      fail_msg_writer() << tr("Failed to setup background mining: ") << err;
-      return;
-    }
-  }
-  success_msg_writer() << tr("Background mining enabled. Thank you for supporting the Monero network.");
 }
 //----------------------------------------------------------------------------------------------------
 void simple_wallet::stop_background_mining()
 {
-  COMMAND_RPC_MINING_STATUS::request reqq;
-  COMMAND_RPC_MINING_STATUS::response resq;
-  bool r = m_wallet->invoke_http_json("/mining_status", reqq, resq);
-  if (!r)
-    return;
-  std::string err = interpret_rpc_response(r, resq.status);
-  if (!err.empty())
-  {
-    fail_msg_writer() << tr("Failed to query mining status: ") << err;
-    return;
-  }
-  if (resq.is_background_mining_enabled)
-  {
-    COMMAND_RPC_STOP_MINING::request req;
-    COMMAND_RPC_STOP_MINING::response res;
-    bool r = m_wallet->invoke_http_json("/stop_mining", req, res);
-    std::string err = interpret_rpc_response(r, res.status);
-    if (!err.empty())
-    {
-      fail_msg_writer() << tr("Failed to setup background mining: ") << err;
-      return;
-    }
-  }
-  message_writer(console_color_red, false) << tr("Background mining not enabled. Run \"set setup-background-mining 1\" to change.");
 }
 //----------------------------------------------------------------------------------------------------
 void simple_wallet::check_background_mining(const epee::wipeable_string &password)
 {
-  tools::wallet2::BackgroundMiningSetupType setup = m_wallet->setup_background_mining();
-  if (setup == tools::wallet2::BackgroundMiningNo)
-  {
-    message_writer(console_color_red, false) << tr("Background mining not enabled. Run \"set setup-background-mining 1\" to change.");
-    return;
-  }
-
-  if (!m_wallet->is_trusted_daemon())
-  {
-    message_writer() << tr("Using an untrusted daemon, skipping background mining check");
-    return;
-  }
-
-  COMMAND_RPC_MINING_STATUS::request req;
-  COMMAND_RPC_MINING_STATUS::response res;
-  bool r = m_wallet->invoke_http_json("/mining_status", req, res);
-  std::string err = interpret_rpc_response(r, res.status);
-  bool is_background_mining_enabled = false;
-  if (err.empty())
-    is_background_mining_enabled = res.is_background_mining_enabled;
-
-  if (is_background_mining_enabled)
-  {
-    // already active, nice
-    if (setup == tools::wallet2::BackgroundMiningMaybe)
-    {
-      m_wallet->setup_background_mining(tools::wallet2::BackgroundMiningYes);
-      m_wallet->rewrite(m_wallet_file, password);
-    }
-    start_background_mining();
-    return;
-  }
-  if (res.active)
-    return;
-
-  if (setup == tools::wallet2::BackgroundMiningMaybe)
-  {
-    message_writer() << tr("The daemon is not set up to background mine.");
-    message_writer() << tr("With background mining enabled, the daemon will mine when idle and not on battery.");
-    message_writer() << tr("Enabling this supports the network you are using, and makes you eligible for receiving new monero");
-    std::string accepted = input_line(tr("Do you want to do it now? (Y/Yes/N/No): "));
-    if (std::cin.eof() || !command_line::is_yes(accepted)) {
-      m_wallet->setup_background_mining(tools::wallet2::BackgroundMiningNo);
-      m_wallet->rewrite(m_wallet_file, password);
-      message_writer(console_color_red, false) << tr("Background mining not enabled. Set setup-background-mining to 1 to change.");
-      return;
-    }
-    m_wallet->setup_background_mining(tools::wallet2::BackgroundMiningYes);
-    m_wallet->rewrite(m_wallet_file, password);
-    start_background_mining();
-  }
-  else
-  {
-    // the setting is already enabled, and the daemon is not mining yet, so start it
-    start_background_mining();
-  }
 }
 //----------------------------------------------------------------------------------------------------
 bool simple_wallet::start_mining(const std::vector<std::string>& args)
 {
-  if (!m_wallet->is_trusted_daemon())
-  {
-    fail_msg_writer() << tr("this command requires a trusted daemon. Enable with --trusted-daemon");
-    return true;
-  }
-
-  if (!try_connect_to_daemon())
-    return true;
-
-  if (!m_wallet)
-  {
-    fail_msg_writer() << tr("wallet is null");
-    return true;
-  }
-  COMMAND_RPC_START_MINING::request req = AUTO_VAL_INIT(req); 
-  req.miner_address = m_wallet->get_account().get_public_address_str(m_wallet->nettype());
-
-  bool ok = true;
-  size_t arg_size = args.size();
-  if(arg_size >= 3)
-  {
-    if (!parse_bool_and_use(args[2], [&](bool r) { req.ignore_battery = r; }))
-      return true;
-  }
-  if(arg_size >= 2)
-  {
-    if (!parse_bool_and_use(args[1], [&](bool r) { req.do_background_mining = r; }))
-      return true;
-  }
-  if(arg_size >= 1)
-  {
-    uint16_t num = 1;
-    ok = string_tools::get_xtype_from_string(num, args[0]);
-    ok = ok && 1 <= num;
-    req.threads_count = num;
-  }
-  else
-  {
-    req.threads_count = 1;
-  }
-
-  if (!ok)
-  {
-    PRINT_USAGE(USAGE_START_MINING);
-    return true;
-  }
-
-  COMMAND_RPC_START_MINING::response res;
-  bool r = m_wallet->invoke_http_json("/start_mining", req, res);
-  std::string err = interpret_rpc_response(r, res.status);
-  if (err.empty())
-    success_msg_writer() << tr("Mining started in daemon");
-  else
-    fail_msg_writer() << tr("mining has NOT been started: ") << err;
-  return true;
 }
 //----------------------------------------------------------------------------------------------------
 bool simple_wallet::stop_mining(const std::vector<std::string>& args)
 {
-  if (!try_connect_to_daemon())
-    return true;
-
-  if (!m_wallet)
-  {
-    fail_msg_writer() << tr("wallet is null");
-    return true;
-  }
-
-  COMMAND_RPC_STOP_MINING::request req;
-  COMMAND_RPC_STOP_MINING::response res;
-  bool r = m_wallet->invoke_http_json("/stop_mining", req, res);
-  std::string err = interpret_rpc_response(r, res.status);
-  if (err.empty())
-    success_msg_writer() << tr("Mining stopped in daemon");
-  else
-    fail_msg_writer() << tr("mining has NOT been stopped: ") << err;
-  return true;
+  
 }
 //----------------------------------------------------------------------------------------------------
 bool simple_wallet::check_daemon_rpc_prices(const std::string &daemon_url, uint32_t &actual_cph, uint32_t &claimed_cph)

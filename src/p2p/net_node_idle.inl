@@ -150,8 +150,6 @@
   template<class t_payload_net_handler>
   bool node_server<t_payload_net_handler>::connections_maker()
   {
-    MINFO("connections_maker");
-
     using zone_type = epee::net_utils::zone;
 
     if (m_offline) return true;
@@ -237,11 +235,6 @@
   {
     if (m_offline)
       return false;
-
-      zone.m_peerlist.foreach(true,[](const peerlist_entry & e){
-
-        MINFO("mecc peerlist_entry id"<<e.id<<", adr "<<e.adr.str()); return true;
-      });
 
     std::vector<anchor_peerlist_entry> apl;
 
