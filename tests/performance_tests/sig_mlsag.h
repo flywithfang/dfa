@@ -125,13 +125,7 @@ class test_sig_mlsag
 
         bool test()
         {
-            for (size_t u = 0; u < w; u++)
-            {
-                if (!verRctMGSimple(messages[u],sigs[u],pubs,C_offsets[u]))
-                {
-                    return false;
-                }
-            }
+           
 
             // Check balanace
             std::vector<MultiexpData> balance;

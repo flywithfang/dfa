@@ -56,11 +56,9 @@
 #include "cn_fast_hash.h"
 #include "rct_mlsag.h"
 #include "equality.h"
-#include "range_proof.h"
 #include "bulletproof.h"
 #include "crypto_ops.h"
 #include "multiexp.h"
-#include "sig_mlsag.h"
 #include "sig_clsag.h"
 
 namespace po = boost::program_options;

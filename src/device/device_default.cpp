@@ -179,19 +179,7 @@ namespace hw {
         }
 
         cryptonote::account_public_address device_default::get_subaddress(const cryptonote::account_keys& keys, const cryptonote::subaddress_index &index) {
-            if (index.is_zero())
               return keys.m_account_address;
-
-            crypto::public_key D = get_subaddress_spend_public_key(keys, index);
-
-            // C = a*D
-            crypto::public_key C = rct::rct2pk(rct::scalarmultKey(rct::pk2rct(D), rct::sk2rct(keys.m_view_secret_key)));
-
-            // result: (C, D)
-            cryptonote::account_public_address address;
-            address.m_view_public_key  = C;
-            address.m_spend_public_key = D;
-            return address;
         }
 
         crypto::secret_key  device_default::get_subaddress_secret_key(const crypto::secret_key &a, const cryptonote::subaddress_index &index) {
@@ -263,7 +251,7 @@ namespace hw {
             return true;
         }
 
-        bool device_default::conceal_derivation(crypto::key_derivation &derivation, const crypto::public_key &tx_pub_key, const std::vector<crypto::public_key> &additional_tx_pub_keys, const crypto::key_derivation &main_derivation, const std::vector<crypto::key_derivation> &additional_derivations){
+        bool device_default::conceal_derivation(crypto::key_derivation &derivation, const crypto::public_key &tx_pub_key,  const crypto::key_derivation &main_derivation){
             return true;
         }
 
@@ -289,22 +277,9 @@ namespace hw {
         bool device_default::generate_output_ephemeral_keys(const size_t tx_version,
                                                             const cryptonote::account_keys &sender_account_keys, const crypto::public_key &txkey_pub,  const crypto::secret_key &tx_key,
                                                             const cryptonote::tx_destination_entry &dst_entr, const boost::optional<cryptonote::account_public_address> &change_addr, const size_t output_index,
-                                                            const bool &need_additional_txkeys, const std::vector<crypto::secret_key> &additional_tx_keys,
-                                                            std::vector<crypto::public_key> &additional_tx_public_keys,
                                                             std::vector<rct::key> &amount_keys,  crypto::public_key &out_eph_public_key) {
 
             crypto::key_derivation derivation;
-
-            // make additional tx pubkey if necessary
-            cryptonote::keypair additional_txkey;
-            if (need_additional_txkeys)
-            {
-                additional_txkey.sec = additional_tx_keys[output_index];
-                if (dst_entr.is_subaddress)
-                    additional_txkey.pub = rct::rct2pk(rct::scalarmultKey(rct::pk2rct(dst_entr.addr.m_spend_public_key), rct::sk2rct(additional_txkey.sec)));
-                else
-                    additional_txkey.pub = rct::rct2pk(rct::scalarmultBase(rct::sk2rct(additional_txkey.sec)));
-            }
 
             bool r;
             if (change_addr && dst_entr.addr == *change_addr)
@@ -316,16 +291,11 @@ namespace hw {
             else
             {
             // sending to the recipient; derivation = r*A (or s*C in the subaddress scheme)
-                r = generate_key_derivation(dst_entr.addr.m_view_public_key, dst_entr.is_subaddress && need_additional_txkeys ? additional_txkey.sec : tx_key, derivation);
-                CHECK_AND_ASSERT_MES(r, false, "at creation outs: failed to generate_key_derivation(" << dst_entr.addr.m_view_public_key << ", " << (dst_entr.is_subaddress && need_additional_txkeys ? additional_txkey.sec : tx_key) << ")");
+                r = generate_key_derivation(dst_entr.addr.m_view_public_key,  tx_key, derivation);
+                CHECK_AND_ASSERT_MES(r, false, "at creation outs: failed to generate_key_derivation(" << dst_entr.addr.m_view_public_key << ", " << ( tx_key) << ")");
             }
 
-            if (need_additional_txkeys)
-            {
-                additional_tx_public_keys.push_back(additional_txkey.pub);
-            }
-
-            if (tx_version > 1)
+        if (tx_version > 1)
             {
                 crypto::secret_key scalar1;
                 derivation_to_scalar(derivation, output_index, scalar1);

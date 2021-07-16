@@ -260,24 +260,6 @@ namespace boost
   }
 
   template <class Archive>
-  inline void serialize(Archive &a, rct::multisig_kLRki &x, const boost::serialization::version_type ver)
-  {
-    a & x.k;
-    a & x.L;
-    a & x.R;
-    a & x.ki;
-  }
-
-  template <class Archive>
-  inline void serialize(Archive &a, rct::multisig_out &x, const boost::serialization::version_type ver)
-  {
-    a & x.c;
-    if (ver < 1)
-      return;
-    a & x.mu_p;
-  }
-
-  template <class Archive>
   inline typename std::enable_if<Archive::is_loading::value, void>::type serializeOutPk(Archive &a, rct::ctkeyV &outPk_, const boost::serialization::version_type ver)
   {
     rct::keyV outPk;
@@ -307,10 +289,7 @@ namespace boost
       return;
     if (x.type != rct::RCTTypeFull && x.type != rct::RCTTypeSimple && x.type != rct::RCTTypeBulletproof && x.type != rct::RCTTypeBulletproof2 && x.type != rct::RCTTypeCLSAG)
       throw boost::archive::archive_exception(boost::archive::archive_exception::other_exception, "Unsupported rct type");
-    // a & x.message; message is not serialized, as it can be reconstructed from the tx data
-    // a & x.mixRing; mixRing is not serialized, as it can be reconstructed from the offsets
-    if (x.type == rct::RCTTypeSimple) // moved to prunable with bulletproofs
-      a & x.pseudoOuts;
+ 
     a & x.ecdhInfo;
     serializeOutPk(a, x.outPk, ver);
     a & x.txnFee;
@@ -319,13 +298,8 @@ namespace boost
   template <class Archive>
   inline void serialize(Archive &a, rct::rctSigPrunable &x, const boost::serialization::version_type ver)
   {
-    a & x.rangeSigs;
-    if (x.rangeSigs.empty())
       a & x.bulletproofs;
-    a & x.MGs;
-    if (ver >= 1u)
       a & x.CLSAGs;
-    if (x.rangeSigs.empty())
       a & x.pseudoOuts;
   }
 
@@ -339,18 +313,13 @@ namespace boost
       throw boost::archive::archive_exception(boost::archive::archive_exception::other_exception, "Unsupported rct type");
     // a & x.message; message is not serialized, as it can be reconstructed from the tx data
     // a & x.mixRing; mixRing is not serialized, as it can be reconstructed from the offsets
-    if (x.type == rct::RCTTypeSimple)
-      a & x.pseudoOuts;
     a & x.ecdhInfo;
     serializeOutPk(a, x.outPk, ver);
     a & x.txnFee;
     //--------------
-    a & x.p.rangeSigs;
-    if (x.p.rangeSigs.empty())
-      a & x.p.bulletproofs;
-    a & x.p.MGs;
-    if (ver >= 1u)
-      a & x.p.CLSAGs;
+    a & x.p.bulletproofs;
+
+    a & x.p.CLSAGs;
     if (x.type == rct::RCTTypeBulletproof || x.type == rct::RCTTypeBulletproof2 || x.type == rct::RCTTypeCLSAG)
       a & x.p.pseudoOuts;
   }
@@ -394,4 +363,3 @@ namespace boost
 
 BOOST_CLASS_VERSION(rct::rctSigPrunable, 1)
 BOOST_CLASS_VERSION(rct::rctSig, 1)
-BOOST_CLASS_VERSION(rct::multisig_out, 1)

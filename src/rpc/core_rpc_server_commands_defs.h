@@ -608,34 +608,7 @@ namespace cryptonote
     };
     typedef epee::misc_utils::struct_init<response_t> response;
   };
-  //-----------------------------------------------
-  struct COMMAND_RPC_START_MINING
-  {
-    struct request_t: public rpc_request_base
-    {
-      std::string miner_address;
-      uint64_t    threads_count;
-      bool        do_background_mining;
-      bool        ignore_battery;
-
-      BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE_PARENT(rpc_request_base)
-        KV_SERIALIZE(miner_address)
-        KV_SERIALIZE(threads_count)
-        KV_SERIALIZE(do_background_mining)        
-        KV_SERIALIZE(ignore_battery)        
-      END_KV_SERIALIZE_MAP()
-    };
-    typedef epee::misc_utils::struct_init<request_t> request;
-
-    struct response_t: public rpc_response_base
-    {
-      BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE_PARENT(rpc_response_base)
-      END_KV_SERIALIZE_MAP()
-    };
-    typedef epee::misc_utils::struct_init<response_t> response;
-  };
+ 
   //-----------------------------------------------
   struct COMMAND_RPC_GET_INFO
   {
@@ -926,39 +899,7 @@ namespace cryptonote
     typedef epee::misc_utils::struct_init<response_t> response;
   };
 
-  struct COMMAND_RPC_GENERATEBLOCKS
-  {
-    struct request_t: public rpc_request_base
-    {
-      uint64_t amount_of_blocks;
-      std::string wallet_address;
-      std::string prev_block;
-      uint32_t starting_nonce;
 
-      BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE_PARENT(rpc_request_base)
-        KV_SERIALIZE(amount_of_blocks)
-        KV_SERIALIZE(wallet_address)
-        KV_SERIALIZE(prev_block)
-        KV_SERIALIZE_OPT(starting_nonce, (uint32_t)0)
-      END_KV_SERIALIZE_MAP()
-    };
-    typedef epee::misc_utils::struct_init<request_t> request;
-    
-    struct response_t: public rpc_response_base
-    {
-      uint64_t height;
-      std::vector<std::string> blocks;
-      
-      BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE_PARENT(rpc_response_base)
-        KV_SERIALIZE(height)
-        KV_SERIALIZE(blocks)
-      END_KV_SERIALIZE_MAP()
-    };
-    typedef epee::misc_utils::struct_init<response_t> response;
-  };
-  
   struct block_header_response
   {
       uint8_t major_version;
@@ -1246,27 +1187,6 @@ namespace cryptonote
     typedef epee::misc_utils::struct_init<response_t> response;
   };
 
-  struct COMMAND_RPC_SET_LOG_HASH_RATE
-  {
-    struct request_t: public rpc_request_base
-    {
-      bool visible;
-
-      BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE_PARENT(rpc_request_base)
-        KV_SERIALIZE(visible)
-      END_KV_SERIALIZE_MAP()
-    };
-    typedef epee::misc_utils::struct_init<request_t> request;
-
-    struct response_t: public rpc_response_base
-    {
-      BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE_PARENT(rpc_response_base)
-      END_KV_SERIALIZE_MAP()
-    };
-    typedef epee::misc_utils::struct_init<response_t> response;
-  };
 
   struct COMMAND_RPC_SET_LOG_LEVEL
   {

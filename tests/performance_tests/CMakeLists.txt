@@ -44,7 +44,6 @@ set(performance_tests_headers
   signature.h
   is_out_to_acc.h
   subaddress_expand.h
-  range_proof.h
   bulletproof.h
   crypto_ops.h
   sc_reduce32.h

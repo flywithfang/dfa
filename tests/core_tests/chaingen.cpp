@@ -472,7 +472,7 @@ bool init_output_indices(map_output_idx_t& outs, std::map<uint64_t, std::vector<
                     size_t tx_global_idx = outs[out.amount].size() - 1;
                     outs[out.amount][tx_global_idx].idx = tx_global_idx;
                     // Is out to me?
-                    if (is_out_to_acc(from.get_keys(), boost::get<txout_to_key>(out.target), get_tx_pub_key_from_extra(tx), get_additional_tx_pub_keys_from_extra(tx), j)) {
+                    if (is_out_to_acc(from.get_keys(), boost::get<txout_to_key>(out.target), get_tx_pub_key_from_extra(tx),  j)) {
                         outs_mine[out.amount].push_back(tx_global_idx);
                     }
                 }
@@ -497,7 +497,7 @@ bool init_spent_output_indices(map_output_idx_t& outs, map_output_t& outs_mine, 
             std::unordered_map<crypto::public_key, cryptonote::subaddress_index> subaddresses;
             subaddresses[acc_keys.m_account_address.m_spend_public_key] = {0,0};
             const auto tx_key=get_tx_pub_key_from_extra(*oi.p_tx); 
-             std::vector<crypto::public_key> tx_keys=get_additional_tx_pub_keys_from_extra(*oi.p_tx);
+            
              
              auto &  dev=hw::get_device(("default"));
             generate_key_image_helper(acc_keys, subaddresses, out_key,tx_key ,tx_keys, oi.out_no, in_ephemeral, img,dev );
@@ -1078,10 +1078,9 @@ bool construct_tx_rct(const cryptonote::account_keys& sender_account_keys, std::
   std::unordered_map<crypto::public_key, cryptonote::subaddress_index> subaddresses;
   subaddresses[sender_account_keys.m_account_address.m_spend_public_key] = {0, 0};
   crypto::secret_key tx_key;
-  std::vector<crypto::secret_key> additional_tx_keys;
   std::vector<tx_destination_entry> destinations_copy = destinations;
   rct::RCTConfig rct_config = {range_proof_type, bp_version};
-  return construct_tx_and_get_tx_key(sender_account_keys, subaddresses, sources, destinations_copy, change_addr, extra, tx, unlock_time, tx_key, additional_tx_keys, rct, rct_config, nullptr);
+  return construct_tx_and_get_tx_key(sender_account_keys, subaddresses, sources, destinations_copy, change_addr, extra, tx, unlock_time, tx_key,  rct, rct_config);
 }
 
 transaction construct_tx_with_fee(std::vector<test_event_entry>& events, const block& blk_head,

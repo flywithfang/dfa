@@ -884,6 +884,7 @@ namespace net_utils
 				return true;
 			}
 		};
+		
 		typedef http_simple_client_template<blocked_mode_client> http_simple_client;
 	}
 }

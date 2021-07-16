@@ -245,7 +245,7 @@ namespace crypto {
     //H(xA||i)+b
     sc_add(&unwrap(derived_key), &unwrap(b), &scalar);
   }
-
+////B=OK - H(xA||i)
   bool crypto_ops::derive_subaddress_public_key(const public_key &out_key, const key_derivation &derivation, std::size_t output_index, public_key &derived_key) {
     ec_scalar scalar;
     ge_p3 point1;

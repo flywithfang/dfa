@@ -17,7 +17,7 @@ using namespace epee;
 
 #include "cryptonote_config.h"
 #include "cryptonote_core/tx_sanity_check.h"
-#include "wallet_rpc_helpers.h"
+
 #include "wallet2.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "net/parse.h"
@@ -27,7 +27,7 @@ using namespace epee;
 #include "rpc/rpc_payment_costs.h"
 #include "misc_language.h"
 #include "cryptonote_basic/cryptonote_basic_impl.h"
-#include "multisig/multisig.h"
+
 #include "common/boost_serialization_helper.h"
 #include "common/command_line.h"
 #include "common/threadpool.h"
@@ -221,10 +221,7 @@ size_t estimate_rct_tx_size(int n_inputs, int mixin, int n_outputs, size_t extra
     size += (2*64*32+32+64*32) * n_outputs;
 
   // MGs/CLSAGs
-  if (clsag)
     size += n_inputs * (32 * (mixin+1) + 64);
-  else
-    size += n_inputs * (64 * (mixin+1) + 32);
 
   // mixRing - not serialized, can be reconstructed
   /* size += 2 * 32 * (mixin+1) * n_inputs; */
@@ -273,16 +270,10 @@ uint64_t estimate_tx_weight(bool use_rct, int n_inputs, int mixin, int n_outputs
 //----------------------------------------------------------------------------------------------------
 uint64_t wallet2::estimate_fee(bool use_per_byte_fee, bool use_rct, int n_inputs, int mixin, int n_outputs, size_t extra_size, bool bulletproof, bool clsag, uint64_t base_fee, uint64_t fee_multiplier, uint64_t fee_quantization_mask) const
 {
-  if (use_per_byte_fee)
-  {
+ 
     const size_t estimated_tx_weight = estimate_tx_weight(use_rct, n_inputs, mixin, n_outputs, extra_size, bulletproof, clsag);
     return calculate_fee_from_weight(base_fee, estimated_tx_weight, fee_multiplier, fee_quantization_mask);
-  }
-  else
-  {
-    const size_t estimated_tx_size = estimate_tx_size(use_rct, n_inputs, mixin, n_outputs, extra_size, bulletproof, clsag);
-    return calculate_fee(base_fee, estimated_tx_size, fee_multiplier);
-  }
+  
 }
 
 uint64_t wallet2::get_fee_multiplier(uint32_t priority, int fee_algorithm)
@@ -326,40 +317,21 @@ uint64_t wallet2::get_fee_multiplier(uint32_t priority, int fee_algorithm)
   THROW_WALLET_EXCEPTION_IF (false, error::invalid_priority);
   return 1;
 }
-//----------------------------------------------------------------------------------------------------
-uint64_t wallet2::get_dynamic_base_fee_estimate()
-{
-  uint64_t fee;
-  boost::optional<std::string> result = m_node_rpc_proxy.get_dynamic_base_fee_estimate(FEE_ESTIMATE_GRACE_BLOCKS, fee);
-  if (!result)
-    return fee;
-  const uint64_t base_fee = use_fork_rules(HF_VERSION_PER_BYTE_FEE) ? FEE_PER_BYTE : FEE_PER_KB;
-  MINFO("Failed to query base fee, using " << print_money(base_fee));
-  return base_fee;
-}
+
 //----------------------------------------------------------------------------------------------------
 uint64_t wallet2::get_base_fee()
 {
 
-  bool use_dyn_fee = use_fork_rules(HF_VERSION_DYNAMIC_FEE, -30 * 1);
-  if (!use_dyn_fee)
     return FEE_PER_KB;
 
-  return get_dynamic_base_fee_estimate();
 }
 //----------------------------------------------------------------------------------------------------
 uint64_t wallet2::get_fee_quantization_mask()
 {
 
-  bool use_per_byte_fee = use_fork_rules(HF_VERSION_PER_BYTE_FEE, 0);
-  if (!use_per_byte_fee)
+
     return 1;
 
-  uint64_t fee_quantization_mask;
-  boost::optional<std::string> result = m_node_rpc_proxy.get_fee_quantization_mask(fee_quantization_mask);
-  if (result)
-    return 1;
-  return fee_quantization_mask;
 }
 //----------------------------------------------------------------------------------------------------
 int wallet2::get_fee_algorithm()
@@ -431,7 +403,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(std::vector<cryp
   }
   cout<<endl;
   for(auto dst : dsts){
-    cout<<"dst "<<dst.original<<","<<dst.amount<<","<<dst.addr.m_view_public_key<<","<<dst.is_subaddress<<","<<dst.is_integrated<<endl;
+    cout<<"dst "<<dst.original<<","<<dst.amount<<","<<dst.addr.m_view_public_key<<","<<","<<dst.is_integrated<<endl;
   }
   
   //ensure device is let in NONE mode in any case
@@ -452,11 +424,10 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(std::vector<cryp
   uint64_t upper_transaction_weight_limit = get_upper_transaction_weight_limit();
   const bool use_per_byte_fee = use_fork_rules(HF_VERSION_PER_BYTE_FEE, 0);
   const bool use_rct =true;
-  const bool bulletproof = use_fork_rules(get_bulletproof_fork(), 0);
-  const bool clsag = use_fork_rules(get_clsag_fork(), 0);
+  const bool bulletproof = true;
+  const bool clsag = true;
   const rct::RCTConfig rct_config {
-    bulletproof ? rct::RangeProofPaddedBulletproof : rct::RangeProofBorromean,
-    bulletproof ? (use_fork_rules(HF_VERSION_CLSAG, -10) ? 3 : use_fork_rules(HF_VERSION_SMALLER_BP, -10) ? 2 : 1) : 0
+    rct::RangeProofPaddedBulletproof ,3
   };
 
   const uint64_t base_fee  = get_base_fee();
@@ -724,7 +695,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(std::vector<cryp
       while (!dsts.empty() && dsts[0].amount <= available_amount && estimate_tx_weight(use_rct, tx.selected_transfers.size(), fake_outs_count, tx.dsts.size()+1, extra.size(), bulletproof, clsag) < TX_WEIGHT_TARGET(upper_transaction_weight_limit))
       {
         // we can fully pay that destination
-        MINFO("We can fully pay " << get_account_address_as_str(m_nettype, dsts[0].is_subaddress, dsts[0].addr) <<
+        MINFO("We can fully pay " << get_account_address_as_str(m_nettype,  dsts[0].addr) <<
           " for " << print_money(dsts[0].amount));
         if (!tx.add(dsts[0], dsts[0].amount, original_output_index, m_merge_destinations, BULLETPROOF_MAX_OUTPUTS-1))
         {
@@ -740,7 +711,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(std::vector<cryp
 
       if (!out_slots_exhausted && available_amount > 0 && !dsts.empty() && estimate_tx_weight(use_rct, tx.selected_transfers.size(), fake_outs_count, tx.dsts.size()+1, extra.size(), bulletproof, clsag) < TX_WEIGHT_TARGET(upper_transaction_weight_limit)) {
         // we can partially fill that destination
-        MINFO("We can partially pay " << get_account_address_as_str(m_nettype, dsts[0].is_subaddress, dsts[0].addr) <<
+        MINFO("We can partially pay " << get_account_address_as_str(m_nettype, dsts[0].addr) <<
           " for " << print_money(available_amount) << "/" << print_money(dsts[0].amount));
         if (tx.add(dsts[0], available_amount, original_output_index, m_merge_destinations, BULLETPROOF_MAX_OUTPUTS-1))
         {
@@ -825,7 +796,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_2(std::vector<cryp
         if (i->amount > needed_fee)
         {
           uint64_t new_paid_amount = i->amount /*+ test_ptx.fee*/ - needed_fee;
-          MINFO("Adjusting amount paid to " << get_account_address_as_str(m_nettype, i->is_subaddress, i->addr) << " from " <<
+          MINFO("Adjusting amount paid to " << get_account_address_as_str(m_nettype, i->addr) << " from " <<
             print_money(i->amount) << " to " << print_money(new_paid_amount) << " to accommodate " <<
             print_money(needed_fee) << " fee");
           dsts[0].amount += i->amount - new_paid_amount;
@@ -938,7 +909,7 @@ skip_tx:
     ptx_vector.push_back(tx.ptx);
   }
 
-  THROW_WALLET_EXCEPTION_IF(! (ptx_vector, original_dsts), error::wallet_internal_error, "Created transaction(s) failed sanity check");
+  THROW_WALLET_EXCEPTION_IF(!sanity_check (ptx_vector, original_dsts), error::wallet_internal_error, "Created transaction(s) failed sanity check");
 
   // if we made it this far, we're OK to actually send the transactions
   return ptx_vector;
@@ -957,7 +928,7 @@ bool wallet2::sanity_check(const std::vector<wallet2::pending_tx> &ptx_vector, s
   for (const auto &d: dsts)
   {
     required[d.addr].first += d.amount;
-    required[d.addr].second = d.is_subaddress;
+    required[d.addr].second = false;
   }
 
   // add change
@@ -980,7 +951,7 @@ bool wallet2::sanity_check(const std::vector<wallet2::pending_tx> &ptx_vector, s
     THROW_WALLET_EXCEPTION_IF(m_subaddresses.find(ptx.change_dts.addr.m_spend_public_key) == m_subaddresses.end(),
          error::wallet_internal_error, "Change address is not ours");
     required[ptx.change_dts.addr].first += ptx.change_dts.amount;
-    required[ptx.change_dts.addr].second = ptx.change_dts.is_subaddress;
+    required[ptx.change_dts.addr].second = false;
   }
 
   for (const auto &r: required)
@@ -993,15 +964,15 @@ bool wallet2::sanity_check(const std::vector<wallet2::pending_tx> &ptx_vector, s
       uint64_t received = 0;
       try
       {
-        std::string proof = get_tx_proof(ptx.tx, ptx.tx_key, ptx.additional_tx_keys, address, r.second.second, "automatic-sanity-check");
-        check_tx_proof(ptx.tx, address, r.second.second, "automatic-sanity-check", proof, received);
+        std::string proof = get_tx_proof(ptx.tx, ptx.tx_key, address,  "automatic-sanity-check");
+        check_tx_proof(ptx.tx, address,  "automatic-sanity-check", proof, received);
       }
       catch (const std::exception &e) { received = 0; }
       total_received += received;
     }
 
     std::stringstream ss;
-    ss << "Total received by " << cryptonote::get_account_address_as_str(m_nettype, r.second.second, address) << ": "
+    ss << "Total received by " << cryptonote::get_account_address_as_str(m_nettype,  address) << ": "
         << cryptonote::print_money(total_received) << ", expected " << cryptonote::print_money(r.second.first);
     MDEBUG(ss.str());
     THROW_WALLET_EXCEPTION_IF(total_received < r.second.first, error::wallet_internal_error, ss.str());
@@ -1016,12 +987,12 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_all(uint64_t below
 {
   std::vector<size_t> unused_transfers_indices;
   std::vector<size_t> unused_dust_indices;
-  const bool use_rct = use_fork_rules(4, 0);
+  const bool use_rct = true;
 
   // determine threshold for fractional amount
-  const bool use_per_byte_fee = use_fork_rules(HF_VERSION_PER_BYTE_FEE, 0);
-  const bool bulletproof = use_fork_rules(get_bulletproof_fork(), 0);
-  const bool clsag = use_fork_rules(get_clsag_fork(), 0);
+  const bool use_per_byte_fee =true;
+  const bool bulletproof = true;
+  const bool clsag = true;
   const uint64_t base_fee  = get_base_fee();
   const uint64_t fee_multiplier = get_fee_multiplier(priority, get_fee_algorithm());
   const size_t tx_weight_one_ring = estimate_tx_weight(use_rct, 1, fake_outs_count, 2, 0, bulletproof, clsag);
@@ -1131,11 +1102,10 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_from(const crypton
 
   const bool use_per_byte_fee = use_fork_rules(HF_VERSION_PER_BYTE_FEE);
   const bool use_rct = fake_outs_count > 0 && use_fork_rules(4, 0);
-  const bool bulletproof = use_fork_rules(get_bulletproof_fork(), 0);
+  const bool bulletproof = true;
   const bool clsag = use_fork_rules(get_clsag_fork(), 0);
   const rct::RCTConfig rct_config {
-    bulletproof ? rct::RangeProofPaddedBulletproof : rct::RangeProofBorromean,
-    bulletproof ? (use_fork_rules(HF_VERSION_CLSAG, -10) ? 3 : use_fork_rules(HF_VERSION_SMALLER_BP, -10) ? 2 : 1) : 0,
+    rct::RangeProofPaddedBulletproof,3
   };
   const uint64_t base_fee  = get_base_fee();
   const uint64_t fee_multiplier = get_fee_multiplier(priority, get_fee_algorithm());
@@ -1207,7 +1177,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_from(const crypton
 
       // add N - 1 outputs for correct initial fee estimation
       for (size_t i = 0; i < ((outputs > 1) ? outputs - 1 : outputs); ++i)
-        tx.dsts.push_back(tx_destination_entry(1, address, is_subaddress));
+        tx.dsts.push_back(tx_destination_entry(1, address));
 
       MINFO("Trying to create a tx now, with " << tx.dsts.size() << " destinations and " <<
         tx.selected_transfers.size() << " outputs");
@@ -1225,7 +1195,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_from(const crypton
 
       // add last output, missed for fee estimation
       if (outputs > 1)
-        tx.dsts.push_back(tx_destination_entry(1, address, is_subaddress));
+        tx.dsts.push_back(tx_destination_entry(1, address));
 
       THROW_WALLET_EXCEPTION_IF(needed_fee > available_for_fee, error::wallet_internal_error, "Transaction cannot pay for itself");
 
@@ -1314,7 +1284,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_from(const crypton
     }
     a -= tx.ptx.fee;
   }
-  std::vector<cryptonote::tx_destination_entry> synthetic_dsts(1, cryptonote::tx_destination_entry("", a, address, is_subaddress));
+  std::vector<cryptonote::tx_destination_entry> synthetic_dsts(1, cryptonote::tx_destination_entry("", a, address));
   THROW_WALLET_EXCEPTION_IF(!sanity_check(ptx_vector, synthetic_dsts), error::wallet_internal_error, "Created transaction(s) failed sanity check");
 
   // if we made it this far, we're OK to actually send the transactions
@@ -1365,7 +1335,7 @@ std::pair<size_t, uint64_t> wallet2::estimate_tx_size_and_weight(bool use_rct, i
   if (n_outputs == 1)
     n_outputs = 2; // extra dummy output
 
-  const bool bulletproof = use_fork_rules(get_bulletproof_fork(), 0);
+  const bool bulletproof = true;
   const bool clsag = use_fork_rules(get_clsag_fork(), 0);
   size_t size = estimate_tx_size(use_rct, n_inputs, ring_size - 1, n_outputs, extra_size, bulletproof, clsag);
   uint64_t weight = estimate_tx_weight(use_rct, n_inputs, ring_size - 1, n_outputs, extra_size, bulletproof, clsag);
@@ -1377,8 +1347,6 @@ std::pair<size_t, uint64_t> wallet2::estimate_tx_size_and_weight(bool use_rct, i
 void wallet2::commit_tx(pending_tx& ptx)
 {
   using namespace cryptonote;
-  
-
   {
     // Normal submit
     COMMAND_RPC_SEND_RAW_TX::request req;
@@ -1389,11 +1357,9 @@ void wallet2::commit_tx(pending_tx& ptx)
 
     {
       const boost::lock_guard<boost::recursive_mutex> lock{m_daemon_rpc_mutex};
-      uint64_t pre_call_credits = m_rpc_payment_state.credits;
-      req.client = get_client_signature();
+
       bool r = epee::net_utils::invoke_http_json("/sendrawtransaction", req, daemon_send_resp, *m_http_client, rpc_timeout);
       THROW_ON_RPC_RESPONSE_ERROR(r, {}, daemon_send_resp, "sendrawtransaction", error::tx_rejected, ptx.tx, get_rpc_status(daemon_send_resp.status), get_text_reason(daemon_send_resp));
-      check_rpc_cost("/sendrawtransaction", daemon_send_resp.credits, pre_call_credits, COST_PER_TX_RELAY);
     }
 
     // sanity checks
@@ -1420,7 +1386,6 @@ void wallet2::commit_tx(pending_tx& ptx)
   if (store_tx_info() && ptx.tx_key != crypto::null_skey)
   {
     m_tx_keys[txid] = ptx.tx_key;
-    m_additional_tx_keys[txid] = ptx.additional_tx_keys;
   }
 
   MINFO("transaction " << txid << " generated ok and sent to daemon, key_images: [" << ptx.key_images << "]");

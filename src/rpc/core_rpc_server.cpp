@@ -157,10 +157,7 @@ namespace cryptonote
     command_line::add_arg(desc, arg_bootstrap_daemon_login);
     command_line::add_arg(desc, arg_bootstrap_daemon_proxy);
     cryptonote::rpc_args::init_options(desc, true);
-    command_line::add_arg(desc, arg_rpc_payment_address);
-    command_line::add_arg(desc, arg_rpc_payment_difficulty);
-    command_line::add_arg(desc, arg_rpc_payment_credits);
-    command_line::add_arg(desc, arg_rpc_payment_allow_free_loopback);
+
   }
   //------------------------------------------------------------------------------------------------------------------------------
   core_rpc_server::core_rpc_server(
@@ -1128,12 +1125,7 @@ namespace cryptonote
   {
     RPC_TRACKER(send_raw_tx);
 
-    {
-      bool ok;
-      use_bootstrap_daemon_if_necessary<COMMAND_RPC_SEND_RAW_TX>(invoke_http_mode::JON, "/sendrawtransaction", req, res, ok);
-    }
-
-    const bool restricted = m_restricted && ctx;
+   const bool restricted = m_restricted && ctx;
 
     bool skip_validation = false;
     if (!restricted)
@@ -1153,7 +1145,6 @@ namespace cryptonote
       CHECK_CORE_READY();
     }
 
-    CHECK_PAYMENT_MIN1(req, res, COST_PER_TX_RELAY, false);
 
     std::string tx_blob;
     if(!string_tools::parse_hexstr_to_binbuff(req.tx_as_hex, tx_blob))
@@ -1327,11 +1318,7 @@ namespace cryptonote
 
     return true;
   }
-  //------------------------------------------------------------------------------------------------------------------------------
-  bool core_rpc_server::on_set_log_hash_rate(const COMMAND_RPC_SET_LOG_HASH_RATE::request& req, COMMAND_RPC_SET_LOG_HASH_RATE::response& res, const connection_context *ctx)
-  {
-       return true;
-  }
+ 
   //------------------------------------------------------------------------------------------------------------------------------
   bool core_rpc_server::on_set_log_level(const COMMAND_RPC_SET_LOG_LEVEL::request& req, COMMAND_RPC_SET_LOG_LEVEL::response& res, const connection_context *ctx)
   {
@@ -1412,7 +1399,6 @@ namespace cryptonote
     if (use_bootstrap_daemon_if_necessary<COMMAND_RPC_GET_TRANSACTION_POOL_HASHES>(invoke_http_mode::JON, "/get_transaction_pool_hashes", req, res, r))
       return r;
 
-    CHECK_PAYMENT(req, res, 1);
 
     const bool restricted = m_restricted && ctx;
     const bool request_has_rpc_origin = ctx != NULL;
@@ -1421,7 +1407,6 @@ namespace cryptonote
     size_t n_txes = m_core.get_pool_transactions_count(allow_sensitive);
     if (n_txes > 0)
     {
-      CHECK_PAYMENT_SAME_TS(req, res, n_txes * COST_PER_POOL_HASH);
       std::vector<crypto::hash> tx_hashes;
       m_core.get_pool_transaction_hashes(tx_hashes, allow_sensitive);
       res.tx_hashes.reserve(tx_hashes.size());
@@ -1635,12 +1620,6 @@ namespace cryptonote
     {
       error_resp.code = CORE_RPC_ERROR_CODE_WRONG_WALLET_ADDRESS;
       error_resp.message = "Failed to parse wallet address";
-      return false;
-    }
-    if (info.is_subaddress)
-    {
-      error_resp.code = CORE_RPC_ERROR_CODE_MINING_TO_SUBADDRESS;
-      error_resp.message = "Mining to subaddress is not supported yet";
       return false;
     }
 
@@ -1995,7 +1974,6 @@ namespace cryptonote
       return r;
 
     CHECK_CORE_READY();
-    CHECK_PAYMENT_MIN1(req, res, COST_PER_BLOCK_HEADER, false);
     uint64_t last_block_height;
     crypto::hash last_block_hash;
     m_core.get_blockchain_top(last_block_height, last_block_hash);

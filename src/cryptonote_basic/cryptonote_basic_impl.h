@@ -78,7 +78,6 @@ namespace cryptonote {
   struct address_parse_info
   {
     account_public_address address;
-    bool is_subaddress;
     bool has_payment_id;
     crypto::hash8 payment_id;
   };
@@ -92,11 +91,7 @@ namespace cryptonote {
   uint8_t get_account_address_checksum(const public_address_outer_blob& bl);
   uint8_t get_account_integrated_address_checksum(const public_integrated_address_outer_blob& bl);
 
-  std::string get_account_address_as_str(
-      network_type nettype
-    , bool subaddress
-    , const account_public_address& adr
-    );
+  std::string get_account_address_as_str(      network_type nettype, const account_public_address& adr    );
 
   std::string get_account_integrated_address_as_str(
       network_type nettype

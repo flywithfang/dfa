@@ -120,11 +120,11 @@ bool test_transaction_generation_and_ring_signature()
   std::vector<size_t> outs;
   uint64_t money = 0;
 
-  r = lookup_acc_outs(rv_acc.get_keys(), tx_rc1, get_tx_pub_key_from_extra(tx_rc1), get_additional_tx_pub_keys_from_extra(tx_rc1), outs,  money);
+  r = lookup_acc_outs(rv_acc.get_keys(), tx_rc1, get_tx_pub_key_from_extra(tx_rc1), outs,  money);
   CHECK_AND_ASSERT_MES(r, false, "failed to lookup_acc_outs");
   CHECK_AND_ASSERT_MES(td.amount == money, false, "wrong money amount in new transaction");
   money = 0;
-  r = lookup_acc_outs(rv_acc2.get_keys(), tx_rc1, get_tx_pub_key_from_extra(tx_rc1), get_additional_tx_pub_keys_from_extra(tx_rc1), outs,  money);
+  r = lookup_acc_outs(rv_acc2.get_keys(), tx_rc1, get_tx_pub_key_from_extra(tx_rc1), outs,  money);
   CHECK_AND_ASSERT_MES(r, false, "failed to lookup_acc_outs");
   CHECK_AND_ASSERT_MES(0 == money, false, "wrong money amount in new transaction");
   return true;

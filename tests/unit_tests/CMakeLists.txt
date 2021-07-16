@@ -66,7 +66,6 @@ set(unit_tests_sources
   mnemonics.cpp
   mul_div.cpp
   multiexp.cpp
-  multisig.cpp
   net.cpp
   node_server.cpp
   notify.cpp
@@ -78,7 +77,6 @@ set(unit_tests_sources
   serialization.cpp
   sha256.cpp
   slow_memmem.cpp
-  subaddress.cpp
   test_tx_utils.cpp
   test_peerlist.cpp
   test_protocol_pack.cpp
@@ -88,7 +86,6 @@ set(unit_tests_sources
   unbound.cpp
   uri.cpp
   varint.cpp
-  ringct.cpp
   output_selection.cpp
   vercmp.cpp
   ringdb.cpp

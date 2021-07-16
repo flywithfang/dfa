@@ -596,17 +596,9 @@ TEST(Serialization, serializes_ringct_types)
   const rct::RCTConfig rct_config{ rct::RangeProofPaddedBulletproof, 2 };
   s0 = rct::genRctSimple(rct::zero(), sc, pc, destinations, inamounts, amounts, amount_keys, NULL, NULL, 0, 3, rct_config, hw::get_device("default"));
 
-  ASSERT_FALSE(s0.p.MGs.empty());
   ASSERT_TRUE(s0.p.CLSAGs.empty());
-  mg0 = s0.p.MGs[0];
-  ASSERT_TRUE(serialization::dump_binary(mg0, blob));
   ASSERT_TRUE(serialization::parse_binary(blob, mg1));
-  ASSERT_TRUE(mg0.ss.size() == mg1.ss.size());
-  for (size_t n = 0; n < mg0.ss.size(); ++n)
-  {
-    ASSERT_TRUE(mg0.ss[n] == mg1.ss[n]);
-  }
-  ASSERT_TRUE(mg0.cc == mg1.cc);
+
 
   // mixRing and II are not serialized, they are meant to be reconstructed
   ASSERT_TRUE(mg1.II.empty());
@@ -622,7 +614,6 @@ TEST(Serialization, serializes_ringct_types)
   s0 = rct::genRctSimple(rct::zero(), sc, pc, destinations, inamounts, amounts, amount_keys, NULL, NULL, 0, 3, rct_config_clsag, hw::get_device("default"));
 
   ASSERT_FALSE(s0.p.CLSAGs.empty());
-  ASSERT_TRUE(s0.p.MGs.empty());
   clsag0 = s0.p.CLSAGs[0];
   ASSERT_TRUE(serialization::dump_binary(clsag0, blob));
   ASSERT_TRUE(serialization::parse_binary(blob, clsag1));
