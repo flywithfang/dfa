@@ -58,18 +58,14 @@ bool test_transaction_generation_and_ring_signature()
   rv_acc.generate();
   account_base rv_acc2;
   rv_acc2.generate();
-  transaction tx_mine_1;
-  construct_miner_tx(0, 0, 0, 10, 0, miner_acc1.get_keys().m_account_address, tx_mine_1);
-  transaction tx_mine_2;
-  construct_miner_tx(0, 0, 0, 0, 0, miner_acc2.get_keys().m_account_address, tx_mine_2);
-  transaction tx_mine_3;
-  construct_miner_tx(0, 0, 0, 0, 0, miner_acc3.get_keys().m_account_address, tx_mine_3);
-  transaction tx_mine_4;
-  construct_miner_tx(0, 0, 0, 0, 0, miner_acc4.get_keys().m_account_address, tx_mine_4);
-  transaction tx_mine_5;
-  construct_miner_tx(0, 0, 0, 0, 0, miner_acc5.get_keys().m_account_address, tx_mine_5);
-  transaction tx_mine_6;
-  construct_miner_tx(0, 0, 0, 0, 0, miner_acc6.get_keys().m_account_address, tx_mine_6);
+  bool r=false;
+  transaction tx_mine_1,tx_mine_2,tx_mine_3,tx_mine_4,tx_mine_5,tx_mine_6;
+  std::tie(r,tx_mine_1)=construct_miner_tx(0, 0, 0, 10, 0, miner_acc1.get_keys().m_account_address);
+  std::tie(r,tx_mine_2)=construct_miner_tx(0, 0, 0, 0, 0, miner_acc2.get_keys().m_account_address);
+  std::tie(r,tx_mine_3)=construct_miner_tx(0, 0, 0, 0, 0, miner_acc3.get_keys().m_account_address);
+  std::tie(r,tx_mine_4)=construct_miner_tx(0, 0, 0, 0, 0, miner_acc4.get_keys().m_account_address);
+  std::tie(r,tx_mine_5)=construct_miner_tx(0, 0, 0, 0, 0, miner_acc5.get_keys().m_account_address);
+  std::tie(r,tx_mine_6)=construct_miner_tx(0, 0, 0, 0, 0, miner_acc6.get_keys().m_account_address);
 
   //fill inputs entry
   typedef tx_source_entry::output_entry tx_output_entry;

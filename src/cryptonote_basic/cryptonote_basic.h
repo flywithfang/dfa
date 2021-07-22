@@ -57,22 +57,6 @@ namespace cryptonote
 
   /* outputs */
 
-  struct txout_to_script
-  {
-    std::vector<crypto::public_key> keys;
-    std::vector<uint8_t> script;
-
-    BEGIN_SERIALIZE_OBJECT()
-      FIELD(keys)
-      FIELD(script)
-    END_SERIALIZE()
-  };
-
-  struct txout_to_scripthash
-  {
-    crypto::hash hash;
-  };
-
   struct txout_to_key
   {
     txout_to_key() { }
@@ -92,34 +76,7 @@ namespace cryptonote
     END_SERIALIZE()
   };
 
-  struct txin_to_script
-  {
-    crypto::hash prev;
-    size_t prevout;
-    std::vector<uint8_t> sigset;
-
-    BEGIN_SERIALIZE_OBJECT()
-      FIELD(prev)
-      VARINT_FIELD(prevout)
-      FIELD(sigset)
-    END_SERIALIZE()
-  };
-
-  struct txin_to_scripthash
-  {
-    crypto::hash prev;
-    size_t prevout;
-    txout_to_script script;
-    std::vector<uint8_t> sigset;
-
-    BEGIN_SERIALIZE_OBJECT()
-      FIELD(prev)
-      VARINT_FIELD(prevout)
-      FIELD(script)
-      FIELD(sigset)
-    END_SERIALIZE()
-  };
-
+  
   struct txin_to_key
   {
     uint64_t amount;
@@ -134,7 +91,7 @@ namespace cryptonote
   };
 
 
-  typedef boost::variant<txin_gen, txin_to_script, txin_to_scripthash, txin_to_key> txin_v;
+  typedef boost::variant<txin_gen, txin_to_key> txin_v;
 
   typedef boost::variant< txout_to_key> txout_target_v;
 
@@ -199,7 +156,6 @@ namespace cryptonote
     mutable std::atomic<bool> blob_size_valid;
 
   public:
-    std::vector<std::vector<crypto::signature> > signatures; //count signatures  always the same as inputs count
     rct::rctSig rct_signatures;
 
     // hash cash
@@ -243,41 +199,7 @@ namespace cryptonote
       if (std::is_same<Archive<W>, binary_archive<W>>())
         prefix_size = getpos(ar) - start_pos;
 
-      if (version == 1)
-      {
-        if (std::is_same<Archive<W>, binary_archive<W>>())
-          unprunable_size = getpos(ar) - start_pos;
-
-        ar.tag("signatures");
-        ar.begin_array();
-        PREPARE_CUSTOM_VECTOR_SERIALIZATION(vin.size(), signatures);
-        bool signatures_not_expected = signatures.empty();
-        if (!signatures_not_expected && vin.size() != signatures.size())
-          return false;
-
-        if (!pruned) for (size_t i = 0; i < vin.size(); ++i)
-        {
-          size_t signature_size = get_signature_size(vin[i]);
-          if (signatures_not_expected)
-          {
-            if (0 == signature_size)
-              continue;
-            else
-              return false;
-          }
-
-          PREPARE_CUSTOM_VECTOR_SERIALIZATION(signature_size, signatures[i]);
-          if (signature_size != signatures[i].size())
-            return false;
-
-          FIELDS(signatures[i]);
-
-          if (vin.size() - i > 1)
-            ar.delimit_array();
-        }
-        ar.end_array();
-      }
-      else
+    
       {
         ar.tag("rct_signatures");
         if (!vin.empty())
@@ -309,11 +231,6 @@ namespace cryptonote
     bool serialize_base(Archive<W> &ar)
     {
       FIELDS(*static_cast<transaction_prefix *>(this))
-
-      if (version == 1)
-      {
-      }
-      else
       {
         ar.tag("rct_signatures");
         if (!vin.empty())
@@ -338,7 +255,6 @@ namespace cryptonote
     hash_valid(false),
     prunable_hash_valid(false),
     blob_size_valid(false),
-    signatures(t.signatures),
     rct_signatures(t.rct_signatures),
     pruned(t.pruned),
     unprunable_size(t.unprunable_size.load()),
@@ -368,7 +284,6 @@ namespace cryptonote
     set_hash_valid(false);
     set_prunable_hash_valid(false);
     set_blob_size_valid(false);
-    signatures = t.signatures;
     rct_signatures = t.rct_signatures;
     if (t.is_hash_valid())
     {
@@ -406,7 +321,6 @@ namespace cryptonote
   void transaction::set_null()
   {
     transaction_prefix::set_null();
-    signatures.clear();
     rct_signatures.type = rct::RCTTypeNull;
     set_hash_valid(false);
     set_prunable_hash_valid(false);
@@ -430,8 +344,6 @@ namespace cryptonote
     struct txin_signature_size_visitor : public boost::static_visitor<size_t>
     {
       size_t operator()(const txin_gen& txin) const{return 0;}
-      size_t operator()(const txin_to_script& txin) const{return 0;}
-      size_t operator()(const txin_to_scripthash& txin) const{return 0;}
       size_t operator()(const txin_to_key& txin) const {return txin.key_offsets.size();}
     };
 
@@ -559,29 +471,19 @@ BLOB_SERIALIZER(cryptonote::txout_to_key);
 BLOB_SERIALIZER(cryptonote::txout_to_scripthash);
 
 VARIANT_TAG(binary_archive, cryptonote::txin_gen, 0xff);
-VARIANT_TAG(binary_archive, cryptonote::txin_to_script, 0x0);
-VARIANT_TAG(binary_archive, cryptonote::txin_to_scripthash, 0x1);
 VARIANT_TAG(binary_archive, cryptonote::txin_to_key, 0x2);
-VARIANT_TAG(binary_archive, cryptonote::txout_to_script, 0x0);
-VARIANT_TAG(binary_archive, cryptonote::txout_to_scripthash, 0x1);
 VARIANT_TAG(binary_archive, cryptonote::txout_to_key, 0x2);
 VARIANT_TAG(binary_archive, cryptonote::transaction, 0xcc);
 VARIANT_TAG(binary_archive, cryptonote::block, 0xbb);
 
 VARIANT_TAG(json_archive, cryptonote::txin_gen, "gen");
-VARIANT_TAG(json_archive, cryptonote::txin_to_script, "script");
-VARIANT_TAG(json_archive, cryptonote::txin_to_scripthash, "scripthash");
 VARIANT_TAG(json_archive, cryptonote::txin_to_key, "key");
 VARIANT_TAG(json_archive, cryptonote::txout_to_key, "key");
 VARIANT_TAG(json_archive, cryptonote::transaction, "tx");
 VARIANT_TAG(json_archive, cryptonote::block, "block");
 
 VARIANT_TAG(debug_archive, cryptonote::txin_gen, "gen");
-VARIANT_TAG(debug_archive, cryptonote::txin_to_script, "script");
-VARIANT_TAG(debug_archive, cryptonote::txin_to_scripthash, "scripthash");
 VARIANT_TAG(debug_archive, cryptonote::txin_to_key, "key");
-VARIANT_TAG(debug_archive, cryptonote::txout_to_script, "script");
-VARIANT_TAG(debug_archive, cryptonote::txout_to_scripthash, "scripthash");
 VARIANT_TAG(debug_archive, cryptonote::txout_to_key, "key");
 VARIANT_TAG(debug_archive, cryptonote::transaction, "tx");
 VARIANT_TAG(debug_archive, cryptonote::block, "block");

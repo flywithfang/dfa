@@ -352,14 +352,7 @@ void toJsonValue(rapidjson::Writer<epee::byte_stream>& dest, const cryptonote::t
     {
       INSERT_INTO_JSON_OBJECT(dest, gen, input);
     }
-    void operator()(cryptonote::txin_to_script const& input) const
-    {
-      INSERT_INTO_JSON_OBJECT(dest, to_script, input);
-    }
-    void operator()(cryptonote::txin_to_scripthash const& input) const
-    {
-      INSERT_INTO_JSON_OBJECT(dest, to_scripthash, input);
-    }
+  
   };
   boost::apply_visitor(add_input{dest}, txin);
   dest.EndObject();
@@ -426,56 +419,7 @@ void fromJsonValue(const rapidjson::Value& val, cryptonote::txin_gen& txin)
   GET_FROM_JSON_OBJECT(val, txin.height, height);
 }
 
-void toJsonValue(rapidjson::Writer<epee::byte_stream>& dest, const cryptonote::txin_to_script& txin)
-{
-  dest.StartObject();
 
-  INSERT_INTO_JSON_OBJECT(dest, prev, txin.prev);
-  INSERT_INTO_JSON_OBJECT(dest, prevout, txin.prevout);
-  INSERT_INTO_JSON_OBJECT(dest, sigset, txin.sigset);
-
-  dest.EndObject();
-}
-
-
-void fromJsonValue(const rapidjson::Value& val, cryptonote::txin_to_script& txin)
-{
-  if (!val.IsObject())
-  {
-    throw WRONG_TYPE("json object");
-  }
-
-  GET_FROM_JSON_OBJECT(val, txin.prev, prev);
-  GET_FROM_JSON_OBJECT(val, txin.prevout, prevout);
-  GET_FROM_JSON_OBJECT(val, txin.sigset, sigset);
-}
-
-
-void toJsonValue(rapidjson::Writer<epee::byte_stream>& dest, const cryptonote::txin_to_scripthash& txin)
-{
-  dest.StartObject();
-
-  INSERT_INTO_JSON_OBJECT(dest, prev, txin.prev);
-  INSERT_INTO_JSON_OBJECT(dest, prevout, txin.prevout);
-  INSERT_INTO_JSON_OBJECT(dest, script, txin.script);
-  INSERT_INTO_JSON_OBJECT(dest, sigset, txin.sigset);
-
-  dest.EndObject();
-}
-
-
-void fromJsonValue(const rapidjson::Value& val, cryptonote::txin_to_scripthash& txin)
-{
-  if (!val.IsObject())
-  {
-    throw WRONG_TYPE("json object");
-  }
-
-  GET_FROM_JSON_OBJECT(val, txin.prev, prev);
-  GET_FROM_JSON_OBJECT(val, txin.prevout, prevout);
-  GET_FROM_JSON_OBJECT(val, txin.script, script);
-  GET_FROM_JSON_OBJECT(val, txin.sigset, sigset);
-}
 
 void toJsonValue(rapidjson::Writer<epee::byte_stream>& dest, const cryptonote::txin_to_key& txin)
 {

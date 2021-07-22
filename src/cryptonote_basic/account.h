@@ -63,6 +63,7 @@ namespace cryptonote
     hw::device& get_device()  const ;
     void set_device( hw::device &hwdev) ;
 
+    
   private:
     void xor_with_key_stream(const crypto::chacha_key &key);
   };
@@ -99,6 +100,9 @@ namespace cryptonote
     void decrypt_keys(const crypto::chacha_key &key) { m_keys.decrypt(key); }
     void encrypt_viewkey(const crypto::chacha_key &key) { m_keys.encrypt_viewkey(key); }
     void decrypt_viewkey(const crypto::chacha_key &key) { m_keys.decrypt_viewkey(key); }
+
+    const crypto::public_key& get_view_public_key()const { return m_keys.m_account_address.m_view_public_key;}
+    const crypto::public_key& get_spend_public_key()const { return m_keys.m_account_address.m_spend_public_key;}
 
     template <class t_archive>
     inline void serialize(t_archive &a, const unsigned int /*ver*/)

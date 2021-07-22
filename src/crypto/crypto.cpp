@@ -231,7 +231,9 @@ namespace crypto {
     // H(xA||i)G+B
     ge_scalarmult_base(&point2, &scalar);
     ge_p3_to_cached(&point3, &point2);
+
     ge_add(&point4, &point1, &point3);
+    
     ge_p1p1_to_p2(&point5, &point4);
     ge_tobytes(&derived_key, &point5);
     return true;
@@ -239,21 +241,21 @@ namespace crypto {
 
   void crypto_ops::derive_secret_key(const key_derivation &derivation, size_t output_index,
     const secret_key &b, secret_key &derived_key) {
-    ec_scalar scalar;
+    ec_scalar sk;
     assert(sc_check(&base) == 0);
-    derivation_to_scalar(derivation, output_index, scalar);
+    derivation_to_scalar(derivation, output_index, sk);
     //H(xA||i)+b
-    sc_add(&unwrap(derived_key), &unwrap(b), &scalar);
+    sc_add(&unwrap(derived_key), &unwrap(b), &sk);
   }
 ////B=OK - H(xA||i)
-  bool crypto_ops::derive_subaddress_public_key(const public_key &out_key, const key_derivation &derivation, std::size_t output_index, public_key &derived_key) {
+  bool crypto_ops::derive_subaddress_public_key(const public_key &otk, const key_derivation &derivation, std::size_t output_index, public_key &derived_key) {
     ec_scalar scalar;
     ge_p3 point1;
     ge_p3 point2;
     ge_cached point3;
     ge_p1p1 point4;
     ge_p2 point5;
-    if (ge_frombytes_vartime(&point1, &out_key) != 0) {
+    if (ge_frombytes_vartime(&point1, &otk) != 0) {
       return false;
     }
     derivation_to_scalar(derivation, output_index, scalar);
@@ -291,8 +293,9 @@ namespace crypto {
     ec_point B;
   };
 
+
   void crypto_ops::generate_signature(const hash &prefix_hash, const public_key &pub, const secret_key &sec, signature &sig) {
-    ge_p3 tmp3;
+    ge_p3 kG;
     ec_scalar k;
     s_comm buf;
 
@@ -300,11 +303,11 @@ namespace crypto {
     buf.key = pub;
   try_again:
     random_scalar(k);
-    ge_scalarmult_base(&tmp3, &k);
+    ge_scalarmult_base(&kG, &k);
     //kg
-    ge_p3_tobytes(&buf.comm, &tmp3);
+    ge_p3_tobytes(&buf.comm, &kG);
     //c=H(m||kg)
-    hash_to_scalar(&buf, sizeof(s_comm), sig.c);
+    hash_to_scalar(&buf, sizeof(buf), sig.c);
     if (!sc_isnonzero((const unsigned char*)sig.c.data))
       goto try_again;
     //r=k-sc
@@ -317,23 +320,27 @@ namespace crypto {
   }
 
 // H(m||(rg+Sc))=c
+  ////  s= k- xH(m,kG)
+  //sG+eA=kG
   bool crypto_ops::check_signature(const hash &prefix_hash, const public_key &pub, const signature &sig) {
-    ge_p2 tmp2;
-    ge_p3 tmp3;
+    ge_p2 kG;
+    ge_p3 A;
     ec_scalar c;
     s_comm buf;
     assert(check_key(pub));
-    buf.h = prefix_hash;
-    buf.key = pub;
-    if (ge_frombytes_vartime(&tmp3, &pub) != 0) {
+ 
+    if (ge_frombytes_vartime(&A, &pub) != 0) {
       return false;
     }
     if (sc_check(&sig.c) != 0 || sc_check(&sig.r) != 0 || !sc_isnonzero(&sig.c)) {
       return false;
     }
-    //H(m||S||(c*S +r*g))=c
-    ge_double_scalarmult_base_vartime(&tmp2, &sig.c, &tmp3, &sig.r);
-    ge_tobytes(&buf.comm, &tmp2);
+    //eA+sG
+    ge_double_scalarmult_base_vartime(&kG, &sig.c, &A, &sig.r);
+    ge_tobytes(&buf.comm, &kG);
+    buf.h = prefix_hash;
+    buf.key = pub;
+
     static const ec_point infinity = {{ 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}};
     if (memcmp(&buf.comm, &infinity, 32) == 0)
       return false;
@@ -459,6 +466,7 @@ namespace crypto {
     }
 #endif
 
+    //k-xH(kG)  kG-xGH(kG) H(s+Ae)=e 
     // pick random k
     ec_scalar k;
     random_scalar(k);
@@ -601,9 +609,7 @@ namespace crypto {
     ec_scalar c2;
 
     // Hash depends on version
-    if (version == 1) hash_to_scalar(&buf, sizeof(s_comm_2) - 3*sizeof(ec_point) - sizeof(hash), c2);
-    else if (version == 2) hash_to_scalar(&buf, sizeof(s_comm_2), c2);
-    else return false;
+     hash_to_scalar(&buf, sizeof(s_comm_2), c2);
 
     // test if c2 == sig.c
     sc_sub(&c2, &c2, &sig.c);
@@ -712,8 +718,7 @@ POP_WARNINGS
   }
 
   bool crypto_ops::check_ring_signature(const hash &prefix_hash, const key_image &image,
-    const public_key *const *pubs, size_t pubs_count,
-    const signature *sig) {
+    const public_key *const *pubs, size_t pubs_count,const signature *sig) {
     size_t i;
     ge_p3 image_unp;
     ge_dsmp image_pre;

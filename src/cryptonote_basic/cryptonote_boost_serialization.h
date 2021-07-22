@@ -115,23 +115,6 @@ namespace boost
   }
 
   template <class Archive>
-  inline void serialize(Archive &a, cryptonote::txin_to_script &x, const boost::serialization::version_type ver)
-  {
-    a & x.prev;
-    a & x.prevout;
-    a & x.sigset;
-  }
-
-  template <class Archive>
-  inline void serialize(Archive &a, cryptonote::txin_to_scripthash &x, const boost::serialization::version_type ver)
-  {
-    a & x.prev;
-    a & x.prevout;
-    a & x.script;
-    a & x.sigset;
-  }
-
-  template <class Archive>
   inline void serialize(Archive &a, cryptonote::txin_to_key &x, const boost::serialization::version_type ver)
   {
     a & x.amount;
@@ -199,8 +182,8 @@ namespace boost
   template <class Archive>
   inline void serialize(Archive &a, rct::ctkey &x, const boost::serialization::version_type ver)
   {
-    a & x.dest;
-    a & x.mask;
+    a & x.otk;
+    a & x.commitment;
   }
 
   template <class Archive>
@@ -255,7 +238,6 @@ namespace boost
   template <class Archive>
   inline void serialize(Archive &a, rct::ecdhTuple &x, const boost::serialization::version_type ver)
   {
-    a & x.mask;
     a & x.amount;
   }
 
@@ -267,8 +249,8 @@ namespace boost
     outPk_.resize(outPk.size());
     for (size_t n = 0; n < outPk_.size(); ++n)
     {
-      outPk_[n].dest = rct::identity();
-      outPk_[n].mask = outPk[n];
+      outPk_[n].otk = rct::identity();
+      outPk_[n].commitment = outPk[n];
     }
   }
 
@@ -277,7 +259,7 @@ namespace boost
   {
     rct::keyV outPk(outPk_.size());
     for (size_t n = 0; n < outPk_.size(); ++n)
-      outPk[n] = outPk_[n].mask;
+      outPk[n] = outPk_[n].commitment;
     a & outPk;
   }
 

@@ -489,14 +489,14 @@ namespace cryptonote
     struct outkey
     {
       crypto::public_key key;
-      rct::key mask;
+      rct::key commitment;
       bool unlocked;
       uint64_t height;
       crypto::hash txid;
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE_VAL_POD_AS_BLOB(key)
-        KV_SERIALIZE_VAL_POD_AS_BLOB(mask)
+        KV_SERIALIZE_VAL_POD_AS_BLOB(commitment)
         KV_SERIALIZE(unlocked)
         KV_SERIALIZE(height)
         KV_SERIALIZE_VAL_POD_AS_BLOB(txid)
@@ -533,14 +533,14 @@ namespace cryptonote
     struct outkey
     {
       std::string key;
-      std::string mask;
+      std::string commitment;
       bool unlocked;
       uint64_t height;
       std::string txid;
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(key)
-        KV_SERIALIZE(mask)
+        KV_SERIALIZE(commitment)
         KV_SERIALIZE(unlocked)
         KV_SERIALIZE(height)
         KV_SERIALIZE(txid)

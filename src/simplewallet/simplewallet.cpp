@@ -192,13 +192,7 @@ namespace
   const char* USAGE_DONATE("donate [index=<N1>[,<N2>,...]] [<priority>] [<ring_size>] <amount> [<payment_id (obsolete)>]");
   const char* USAGE_SIGN_TRANSFER("sign_transfer [export_raw] [<filename>]");
   const char* USAGE_SET_LOG("set_log <level>|{+,-,}<categories>");
-  const char* USAGE_ACCOUNT("account\n"
-                            "  account new <label text with white spaces allowed>\n"
-                            "  account switch <index> \n"
-                            "  account label <index> <label text with white spaces allowed>\n"
-                            "  account tag <tag_name> <account_index_1> [<account_index_2> ...]\n"
-                            "  account untag <account_index_1> [<account_index_2> ...]\n"
-                            "  account tag_description <tag_name> <description>");
+ 
 
   const char* USAGE_INTEGRATED_ADDRESS("integrated_address [device] [<payment_id> | <address>]");
   const char* USAGE_SET_VARIABLE("set <option> [<value>]");
@@ -212,7 +206,6 @@ namespace
   const char* USAGE_GET_RESERVE_PROOF("get_reserve_proof (all|<amount>) [<message>]");
   const char* USAGE_CHECK_RESERVE_PROOF("check_reserve_proof <address> <signature_file> [<message>]");
   const char* USAGE_SHOW_TRANSFERS("show_transfers [in|out|all|pending|failed|pool|coinbase] [index=<N1>[,<N2>,...]] [<min_height> [<max_height>]]");
-  const char* USAGE_UNSPENT_OUTPUTS("unspent_outputs [index=<N1>[,<N2>,...]] [<min_amount> [<max_amount>]]");
   const char* USAGE_RESCAN_BC("rescan_bc [hard|soft|keep_ki] [start_height=0]");
   const char* USAGE_SET_TX_NOTE("set_tx_note <txid> [free text note]");
   const char* USAGE_GET_TX_NOTE("get_tx_note <txid>");
@@ -418,41 +411,6 @@ namespace
     return boost::lexical_cast<std::string>(version >> 16) + "." + boost::lexical_cast<std::string>(version & 0xffff);
   }
 
-  std::string oa_prompter(const std::string &url, const std::vector<std::string> &addresses, bool dnssec_valid)
-  {
-    if (addresses.empty())
-      return {};
-    // prompt user for confirmation.
-    // inform user of DNSSEC validation status as well.
-    std::string dnssec_str;
-    if (dnssec_valid)
-    {
-      dnssec_str = sw::tr("DNSSEC validation passed");
-    }
-    else
-    {
-      dnssec_str = sw::tr("WARNING: DNSSEC validation was unsuccessful, this address may not be correct!");
-    }
-    std::stringstream prompt;
-    prompt << sw::tr("For URL: ") << url
-           << ", " << dnssec_str << std::endl
-           << sw::tr(" Monero Address = ") << addresses[0]
-           << std::endl
-           << sw::tr("Is this OK?")
-    ;
-    // prompt the user for confirmation given the dns query and dnssec status
-    std::string confirm_dns_ok = input_line(prompt.str(), true);
-    if (std::cin.eof())
-    {
-      return {};
-    }
-    if (!command_line::is_yes(confirm_dns_ok))
-    {
-      std::cout << sw::tr("you have cancelled the transfer request") << std::endl;
-      return {};
-    }
-    return addresses[0];
-  }
 
   bool parse_subaddress_indices(const std::string& arg, std::set<uint32_t>& subaddr_indices)
   {
@@ -925,271 +883,6 @@ bool simple_wallet::print_fee_info(const std::vector<std::string> &args/* = std:
   return true;
 }
 
-
-bool simple_wallet::print_ring(const std::vector<std::string> &args)
-{
-  crypto::key_image key_image;
-  crypto::hash txid;
-  if (args.size() != 1)
-  {
-    PRINT_USAGE(USAGE_PRINT_RING);
-    return true;
-  }
-
-  if (!epee::string_tools::hex_to_pod(args[0], key_image))
-  {
-    fail_msg_writer() << tr("Invalid key image");
-    return true;
-  }
-  // this one will always work, they're all 32 byte hex
-  if (!epee::string_tools::hex_to_pod(args[0], txid))
-  {
-    fail_msg_writer() << tr("Invalid txid");
-    return true;
-  }
-
-  std::vector<uint64_t> ring;
-  std::vector<std::pair<crypto::key_image, std::vector<uint64_t>>> rings;
-  try
-  {
-    if (m_wallet->get_ring(key_image, ring))
-      rings.push_back({key_image, ring});
-    else if (!m_wallet->get_rings(txid, rings))
-    {
-      fail_msg_writer() << tr("Key image either not spent, or spent with ring size 1");
-      return true;
-    }
-
-    for (const auto &ring: rings)
-    {
-      std::stringstream str;
-      for (const auto &x: ring.second)
-        str << x<< " ";
-      // do NOT translate this "absolute" below, the lin can be used as input to set_ring
-      success_msg_writer() << epee::string_tools::pod_to_hex(ring.first) <<  " absolute " << str.str();
-    }
-  }
-  catch (const std::exception &e)
-  {
-    fail_msg_writer() << tr("Failed to get key image ring: ") << e.what();
-  }
-
-  return true;
-}
-
-bool simple_wallet::set_ring(const std::vector<std::string> &args)
-{
-  crypto::key_image key_image;
-
-  // try filename first
-  if (args.size() == 1)
-  {
-    if (!epee::file_io_utils::is_file_exist(args[0]))
-    {
-      fail_msg_writer() << tr("File doesn't exist");
-      return true;
-    }
-
-    char str[4096];
-    std::unique_ptr<FILE, tools::close_file> f(fopen(args[0].c_str(), "r"));
-    if (f)
-    {
-      while (!feof(f.get()))
-      {
-        if (!fgets(str, sizeof(str), f.get()))
-          break;
-        const size_t len = strlen(str);
-        if (len > 0 && str[len - 1] == '\n')
-          str[len - 1] = 0;
-        if (!str[0])
-          continue;
-        char key_image_str[65], type_str[9];
-        int read_after_key_image = 0, read = 0;
-        int fields = sscanf(str, "%64[abcdefABCDEF0123456789] %n%8s %n", key_image_str, &read_after_key_image, type_str, &read);
-        if (fields != 2)
-        {
-          fail_msg_writer() << tr("Invalid ring specification: ") << str;
-          continue;
-        }
-        key_image_str[64] = 0;
-        type_str[8] = 0;
-        crypto::key_image key_image;
-        if (read_after_key_image == 0 || !epee::string_tools::hex_to_pod(key_image_str, key_image))
-        {
-          fail_msg_writer() << tr("Invalid key image: ") << str;
-          continue;
-        }
-        if (read == read_after_key_image+8 || (strcmp(type_str, "absolute") && strcmp(type_str, "relative")))
-        {
-          fail_msg_writer() << tr("Invalid ring type, expected relative or abosolute: ") << str;
-          continue;
-        }
-        bool relative = !strcmp(type_str, "relative");
-        if (read < 0 || (size_t)read > strlen(str))
-        {
-          fail_msg_writer() << tr("Error reading line: ") << str;
-          continue;
-        }
-        bool valid = true;
-        std::vector<uint64_t> ring;
-        const char *ptr = str + read;
-        while (*ptr)
-        {
-          unsigned long offset;
-          int elements = sscanf(ptr, "%lu %n", &offset, &read);
-          if (elements == 0 || read <= 0 || (size_t)read > strlen(str))
-          {
-            fail_msg_writer() << tr("Error reading line: ") << str;
-            valid = false;
-            break;
-          }
-          ring.push_back(offset);
-          ptr += read;
-        }
-        if (!valid)
-          continue;
-        if (ring.empty())
-        {
-          fail_msg_writer() << tr("Invalid ring: ") << str;
-          continue;
-        }
-        if (relative)
-        {
-          for (size_t n = 1; n < ring.size(); ++n)
-          {
-            if (ring[n] <= 0)
-            {
-              fail_msg_writer() << tr("Invalid relative ring: ") << str;
-              valid = false;
-              break;
-            }
-          }
-        }
-        else
-        {
-          for (size_t n = 1; n < ring.size(); ++n)
-          {
-            if (ring[n] <= ring[n-1])
-            {
-              fail_msg_writer() << tr("Invalid absolute ring: ") << str;
-              valid = false;
-              break;
-            }
-          }
-        }
-        if (!valid)
-          continue;
-        if (!m_wallet->set_ring(key_image, ring, relative))
-          fail_msg_writer() << tr("Failed to set ring for key image: ") << key_image << ". " << tr("Continuing.");
-      }
-      f.reset();
-    }
-    return true;
-  }
-
-  if (args.size() < 3)
-  {
-    PRINT_USAGE(USAGE_SET_RING);
-    return true;
-  }
-
-  if (!epee::string_tools::hex_to_pod(args[0], key_image))
-  {
-    fail_msg_writer() << tr("Invalid key image");
-    return true;
-  }
-
-  bool relative;
-  if (args[1] == "absolute")
-  {
-    relative = false;
-  }
-  else if (args[1] == "relative")
-  {
-    relative = true;
-  }
-  else
-  {
-    fail_msg_writer() << tr("Missing absolute or relative keyword");
-    return true;
-  }
-
-  std::vector<uint64_t> ring;
-  for (size_t n = 2; n < args.size(); ++n)
-  {
-    ring.resize(ring.size() + 1);
-    if (!string_tools::get_xtype_from_string(ring.back(), args[n]))
-    {
-      fail_msg_writer() << tr("invalid index: must be a strictly positive unsigned integer");
-      return true;
-    }
-    if (relative)
-    {
-      if (ring.size() > 1 && !ring.back())
-      {
-        fail_msg_writer() << tr("invalid index: must be a strictly positive unsigned integer");
-        return true;
-      }
-      uint64_t sum = 0;
-      for (uint64_t out: ring)
-      {
-        if (out > std::numeric_limits<uint64_t>::max() - sum)
-        {
-          fail_msg_writer() << tr("invalid index: indices wrap");
-          return true;
-        }
-        sum += out;
-      }
-    }
-    else
-    {
-      if (ring.size() > 1 && ring[ring.size() - 2] >= ring[ring.size() - 1])
-      {
-        fail_msg_writer() << tr("invalid index: indices should be in strictly ascending order");
-        return true;
-      }
-    }
-  }
-  if (!m_wallet->set_ring(key_image, ring, relative))
-  {
-    fail_msg_writer() << tr("failed to set ring");
-    return true;
-  }
-
-  return true;
-}
-
-bool simple_wallet::unset_ring(const std::vector<std::string> &args)
-{
-  crypto::hash txid;
-  std::vector<crypto::key_image> key_images;
-
-  if (args.size() < 1)
-  {
-    PRINT_USAGE(USAGE_UNSET_RING);
-    return true;
-  }
-
-  key_images.resize(args.size());
-  for (size_t i = 0; i < args.size(); ++i)
-  {
-    if (!epee::string_tools::hex_to_pod(args[i], key_images[i]))
-    {
-      fail_msg_writer() << tr("Invalid key image or txid");
-      return true;
-    }
-  }
-  static_assert(sizeof(crypto::hash) == sizeof(crypto::key_image), "hash and key_image must have the same size");
-  memcpy(&txid, &key_images[0], sizeof(txid));
-
-  if (!m_wallet->unset_ring(key_images) && !m_wallet->unset_ring(txid))
-  {
-    fail_msg_writer() << tr("failed to unset ring");
-    return true;
-  }
-
-  return true;
-}
 
 
 bool simple_wallet::blackball(const std::vector<std::string> &args)
@@ -2055,18 +1748,7 @@ bool simple_wallet::set_ignore_outputs_below(const std::vector<std::string> &arg
   return true;
 }
 
-bool simple_wallet::set_track_uses(const std::vector<std::string> &args/* = std::vector<std::string>()*/)
-{
-  const auto pwd_container = get_and_verify_password();
-  if (pwd_container)
-  {
-    parse_bool_and_use(args[1], [&](bool r) {
-      m_wallet->track_uses(r);
-      m_wallet->rewrite(m_wallet_file, pwd_container->password());
-    });
-  }
-  return true;
-}
+
 
 bool simple_wallet::set_inactivity_lock_timeout(const std::vector<std::string> &args/* = std::vector<std::string>()*/)
 {
@@ -2263,14 +1945,6 @@ bool simple_wallet::scan_tx(const std::vector<std::string> &args)
   }
   std::vector<crypto::hash> txids_v(txids.begin(), txids.end());
 
-  if (!m_wallet->is_trusted_daemon()) {
-    message_writer(console_color_red, true) << tr("WARNING: this operation may reveal the txids to the remote node and affect your privacy");
-    if (!command_line::is_yes(input_line("Do you want to continue?", true))) {
-      message_writer() << tr("You have canceled the operation");
-      return true;
-    }
-  }
-
   LOCK_IDLE_SCOPE();
   m_in_manual_refresh.store(true);
   try {
@@ -2299,9 +1973,7 @@ simple_wallet::simple_wallet()
                            boost::bind(&simple_wallet::on_command, this, &simple_wallet::set_daemon, _1),
                            tr(USAGE_SET_DAEMON),
                            tr("Set another daemon to connect to. If it's not yours, it'll probably spy on you."));
-  m_cmd_binder.set_handler("save_bc",
-                           boost::bind(&simple_wallet::on_command, this, &simple_wallet::save_bc, _1),
-                           tr("Save the current blockchain data."));
+
   m_cmd_binder.set_handler("refresh",
                            boost::bind(&simple_wallet::on_command, this, &simple_wallet::refresh, _1),
                            tr("Synchronize the transactions and balance."));
@@ -2315,10 +1987,7 @@ simple_wallet::simple_wallet()
                            tr("Show the incoming transfers, all or filtered by availability and address index.\n\n"
                               "Output format:\n"
                               "Amount, Spent(\"T\"|\"F\"), \"frozen\"|\"locked\"|\"unlocked\", RingCT, Global Index, Transaction Hash, Address Index, [Public Key, Key Image] "));
-  m_cmd_binder.set_handler("payments",
-                           boost::bind(&simple_wallet::on_command, this, &simple_wallet::show_payments,_1),
-                           tr(USAGE_PAYMENTS),
-                           tr("Show the payments for the given payment IDs."));
+
   m_cmd_binder.set_handler("bc_height",
                            boost::bind(&simple_wallet::on_command, this, &simple_wallet::show_blockchain_height, _1),
                            tr("Show the blockchain height."));
@@ -2366,16 +2035,7 @@ simple_wallet::simple_wallet()
                            boost::bind(&simple_wallet::on_command, this, &simple_wallet::set_log, _1),
                            tr(USAGE_SET_LOG),
                            tr("Change the current log detail (level must be <0-4>)."));
-  m_cmd_binder.set_handler("account",
-                           boost::bind(&simple_wallet::on_command, this, &simple_wallet::account, _1),
-                           tr(USAGE_ACCOUNT),
-                           tr("If no arguments are specified, the wallet shows all the existing accounts along with their balances.\n"
-                              "If the \"new\" argument is specified, the wallet creates a new account with its label initialized by the provided label text (which can be empty).\n"
-                              "If the \"switch\" argument is specified, the wallet switches to the account specified by <index>.\n"
-                              "If the \"label\" argument is specified, the wallet sets the label of the account specified by <index> to the provided label text.\n"
-                              "If the \"tag\" argument is specified, a tag <tag_name> is assigned to the specified accounts <account_index_1>, <account_index_2>, ....\n"
-                              "If the \"untag\" argument is specified, the tags assigned to the specified accounts <account_index_1>, <account_index_2> ..., are removed.\n"
-                              "If the \"tag_description\" argument is specified, the tag <tag_name> is assigned an arbitrary text <description>."));
+
   m_cmd_binder.set_handler("address",
                            boost::bind(&simple_wallet::on_command, this, &simple_wallet::print_address, _1),
                            tr("If no arguments are specified or <index> is specified, the wallet shows the default or specified address. "));
@@ -2480,10 +2140,7 @@ simple_wallet::simple_wallet()
                            boost::bind(&simple_wallet::on_command, this, &simple_wallet::get_tx_key, _1),
                            tr(USAGE_GET_TX_KEY),
                            tr("Get the transaction key (r) for a given <txid>."));
-  m_cmd_binder.set_handler("set_tx_key",
-                           boost::bind(&simple_wallet::on_command, this, &simple_wallet::set_tx_key, _1),
-                           tr(USAGE_SET_TX_KEY),
-                           tr("Set the transaction key (r) for a given <txid> in case the tx was made by some other device or 3rd party wallet."));
+
   m_cmd_binder.set_handler("check_tx_key",
                            boost::bind(&simple_wallet::on_command, this, &simple_wallet::check_tx_key, _1),
                            tr(USAGE_CHECK_TX_KEY),
@@ -2526,14 +2183,7 @@ simple_wallet::simple_wallet()
                               "Pending or Failed:               \"failed\"|\"pending\", \"out\", Time, Amount*, Transaction Hash, Payment ID, Fee, Input addresses**,               \"-\", Note\n\n"
                               "* Excluding change and fee.\n"
                               "** Set of address indices used as inputs in this transfer."));
-  m_cmd_binder.set_handler("export_transfers",
-                           boost::bind(&simple_wallet::on_command, this, &simple_wallet::export_transfers, _1),
-                           tr("export_transfers [in|out|all|pending|failed|pool|coinbase] [index=<N1>[,<N2>,...]] [<min_height> [<max_height>]] [output=<filepath>]"),
-                           tr("Export to CSV the incoming/outgoing transfers within an optional height range."));
-  m_cmd_binder.set_handler("unspent_outputs",
-                           boost::bind(&simple_wallet::on_command, this, &simple_wallet::unspent_outputs, _1),
-                           tr(USAGE_UNSPENT_OUTPUTS),
-                           tr("Show the unspent outputs of a specified address within an optional amount range."));
+
   m_cmd_binder.set_handler("rescan_bc",
                            boost::bind(&simple_wallet::on_command, this, &simple_wallet::rescan_blockchain, _1),
                            tr(USAGE_RESCAN_BC),
@@ -2546,14 +2196,7 @@ simple_wallet::simple_wallet()
                            boost::bind(&simple_wallet::on_command, this, &simple_wallet::get_tx_note, _1),
                            tr(USAGE_GET_TX_NOTE),
                            tr("Get a string note for a txid."));
-  m_cmd_binder.set_handler("set_description",
-                           boost::bind(&simple_wallet::on_command, this, &simple_wallet::set_description, _1),
-                           tr(USAGE_SET_DESCRIPTION),
-                           tr("Set an arbitrary description for the wallet."));
-  m_cmd_binder.set_handler("get_description",
-                           boost::bind(&simple_wallet::on_command, this, &simple_wallet::get_description, _1),
-                           tr(USAGE_GET_DESCRIPTION),
-                           tr("Get the description of the wallet."));
+
   m_cmd_binder.set_handler("status",
                            boost::bind(&simple_wallet::on_command, this, &simple_wallet::status, _1),
                            tr("Show the wallet's status."));
@@ -2568,31 +2211,7 @@ simple_wallet::simple_wallet()
                            boost::bind(&simple_wallet::on_command, this, &simple_wallet::verify, _1),
                            tr(USAGE_VERIFY),
                            tr("Verify a signature on the contents of a file."));
-  m_cmd_binder.set_handler("export_key_images",
-                           boost::bind(&simple_wallet::on_command, this, &simple_wallet::export_key_images, _1),
-                           tr(USAGE_EXPORT_KEY_IMAGES),
-                           tr("Export a signed set of key images to a <filename>."));
-  m_cmd_binder.set_handler("import_key_images",
-                           boost::bind(&simple_wallet::on_command, this, &simple_wallet::import_key_images, _1),
-                           tr(USAGE_IMPORT_KEY_IMAGES),
-                           tr("Import a signed key images list and verify their spent status."));
-  m_cmd_binder.set_handler("hw_key_images_sync",
-                           boost::bind(&simple_wallet::on_command, this, &simple_wallet::hw_key_images_sync, _1),
-                           tr(USAGE_HW_KEY_IMAGES_SYNC),
-                           tr("Synchronizes key images with the hw wallet."));
-  m_cmd_binder.set_handler("hw_reconnect",
-                           boost::bind(&simple_wallet::on_command, this, &simple_wallet::hw_reconnect, _1),
-                           tr(USAGE_HW_RECONNECT),
-                           tr("Attempts to reconnect HW wallet."));
-  m_cmd_binder.set_handler("export_outputs",
-                           boost::bind(&simple_wallet::on_command, this, &simple_wallet::export_outputs, _1),
-                           tr(USAGE_EXPORT_OUTPUTS),
-                           tr("Export a set of outputs owned by this wallet."));
-  m_cmd_binder.set_handler("import_outputs",
-                           boost::bind(&simple_wallet::on_command, this, &simple_wallet::import_outputs, _1),
-                           tr(USAGE_IMPORT_OUTPUTS),
-                           tr("Import a set of outputs owned by this wallet."));
-  m_cmd_binder.set_handler("show_transfer",
+
                            boost::bind(&simple_wallet::on_command, this, &simple_wallet::show_transfer, _1),
                            tr(USAGE_SHOW_TRANSFER),
                            tr("Show information about a transfer to/from this address."));
@@ -2607,36 +2226,7 @@ simple_wallet::simple_wallet()
                            boost::bind(&simple_wallet::on_command, this, &simple_wallet::print_fee_info, _1),
                            tr("Print the information about the current fee and transaction backlog."));
 
-  m_cmd_binder.set_handler("print_ring",
-                           boost::bind(&simple_wallet::on_command, this, &simple_wallet::print_ring, _1),
-                           tr(USAGE_PRINT_RING),
-                           tr("Print the ring(s) used to spend a given key image or transaction (if the ring size is > 1)\n\n"
-                              "Output format:\n"
-                              "Key Image, \"absolute\", list of rings"));
-  m_cmd_binder.set_handler("set_ring",
-                           boost::bind(&simple_wallet::on_command, this, &simple_wallet::set_ring, _1),
-                           tr(USAGE_SET_RING),
-                           tr("Set the ring used for a given key image, so it can be reused in a fork"));
-  m_cmd_binder.set_handler("unset_ring",
-                           boost::bind(&simple_wallet::on_command, this, &simple_wallet::unset_ring, _1),
-                           tr(USAGE_UNSET_RING),
-                           tr("Unsets the ring used for a given key image or transaction"));
-  m_cmd_binder.set_handler("save_known_rings",
-                           boost::bind(&simple_wallet::on_command, this, &simple_wallet::save_known_rings, _1),
-                           tr(USAGE_SAVE_KNOWN_RINGS),
-                           tr("Save known rings to the shared rings database"));
-  m_cmd_binder.set_handler("mark_output_spent",
-                           boost::bind(&simple_wallet::on_command, this, &simple_wallet::blackball, _1),
-                           tr(USAGE_MARK_OUTPUT_SPENT),
-                           tr("Mark output(s) as spent so they never get selected as fake outputs in a ring"));
-  m_cmd_binder.set_handler("mark_output_unspent",
-                           boost::bind(&simple_wallet::on_command, this, &simple_wallet::unblackball, _1),
-                           tr(USAGE_MARK_OUTPUT_UNSPENT),
-                           tr("Marks an output as unspent so it may get selected as a fake output in a ring"));
-  m_cmd_binder.set_handler("is_output_spent",
-                           boost::bind(&simple_wallet::on_command, this, &simple_wallet::blackballed, _1),
-                           tr(USAGE_IS_OUTPUT_SPENT),
-                           tr("Checks whether an output is marked as spent"));
+ 
   m_cmd_binder.set_handler("freeze",
                            boost::bind(&simple_wallet::on_command, this, &simple_wallet::freeze, _1),
                            tr(USAGE_FREEZE),
@@ -2733,7 +2323,6 @@ bool simple_wallet::set_variable(const std::vector<std::string> &args)
     success_msg_writer() << "ignore-fractional-outputs = " << m_wallet->ignore_fractional_outputs();
     success_msg_writer() << "ignore-outputs-above = " << cryptonote::print_money(m_wallet->ignore_outputs_above());
     success_msg_writer() << "ignore-outputs-below = " << cryptonote::print_money(m_wallet->ignore_outputs_below());
-    success_msg_writer() << "track-uses = " << m_wallet->track_uses();
     success_msg_writer() << "device-name = " << m_wallet->device_name();
     success_msg_writer() << "export-format = " << (m_wallet->export_format() == tools::wallet2::ExportFormat::Ascii ? "ascii" : "binary");
     success_msg_writer() << "inactivity-lock-timeout = " << m_wallet->inactivity_lock_timeout()
@@ -2802,7 +2391,6 @@ bool simple_wallet::set_variable(const std::vector<std::string> &args)
     CHECK_SIMPLE_VARIABLE("ignore-fractional-outputs", set_ignore_fractional_outputs, tr("0 or 1"));
     CHECK_SIMPLE_VARIABLE("ignore-outputs-above", set_ignore_outputs_above, tr("amount"));
     CHECK_SIMPLE_VARIABLE("ignore-outputs-below", set_ignore_outputs_below, tr("amount"));
-    CHECK_SIMPLE_VARIABLE("track-uses", set_track_uses, tr("0 or 1"));
     CHECK_SIMPLE_VARIABLE("inactivity-lock-timeout", set_inactivity_lock_timeout, tr("unsigned integer (seconds, 0 to disable)"));
     CHECK_SIMPLE_VARIABLE("device-name", set_device_name, tr("<device_name[:device_spec]>"));
     CHECK_SIMPLE_VARIABLE("export-format", set_export_format, tr("\"binary\" or \"ascii\""));
@@ -4007,27 +3595,7 @@ bool simple_wallet::set_daemon(const std::vector<std::string>& args)
   }
   return true;
 }
-//----------------------------------------------------------------------------------------------------
-bool simple_wallet::save_bc(const std::vector<std::string>& args)
-{
-  if (!try_connect_to_daemon())
-    return true;
 
-  if (!m_wallet)
-  {
-    fail_msg_writer() << tr("wallet is null");
-    return true;
-  }
-  COMMAND_RPC_SAVE_BC::request req;
-  COMMAND_RPC_SAVE_BC::response res;
-  bool r = m_wallet->invoke_http_json("/save_bc", req, res);
-  std::string err = interpret_rpc_response(r, res.status);
-  if (err.empty())
-    success_msg_writer() << tr("Blockchain saved");
-  else
-    fail_msg_writer() << tr("blockchain can't be saved: ") << err;
-  return true;
-}
 //----------------------------------------------------------------------------------------------------
 void simple_wallet::on_new_block(uint64_t height, const cryptonote::block& block)
 {
@@ -4084,7 +3652,7 @@ void simple_wallet::on_money_received(uint64_t height, const crypto::hash &txid,
     m_refresh_progress_reporter.update(height, true);
 }
 //----------------------------------------------------------------------------------------------------
-void simple_wallet::on_unconfirmed_money_received(uint64_t height, const crypto::hash &txid, const cryptonote::transaction& tx, uint64_t amount, const cryptonote::subaddress_index& subaddr_index)
+void simple_wallet::on_unconfirmed_money_received(uint64_t height, const crypto::hash &txid, const cryptonote::transaction& tx, uint64_t amount)
 {
   if (m_locked)
     return;
@@ -4213,8 +3781,6 @@ bool simple_wallet::refresh_main(uint64_t start_height, enum ResetType reset, bo
   uint64_t height_pre = 0, height_post;
   if (reset != ResetNone)
   {
-    if (reset == ResetSoftKeepKI)
-      height_pre = m_wallet->hash_m_transfers(boost::none, transfer_hash_pre);
 
     m_wallet->rescan_blockchain(reset == ResetHard, false, reset == ResetSoftKeepKI);
   }
@@ -4233,23 +3799,11 @@ bool simple_wallet::refresh_main(uint64_t start_height, enum ResetType reset, bo
     epee::misc_utils::auto_scope_leave_caller scope_exit_handler = epee::misc_utils::create_scope_leave_handler([&](){m_in_manual_refresh.store(false, std::memory_order_relaxed);});
     m_wallet->refresh(m_wallet->is_trusted_daemon(), start_height, fetched_blocks, received_money);
 
-    if (reset == ResetSoftKeepKI)
-    {
-      m_wallet->finish_rescan_bc_keep_key_images(height_pre, transfer_hash_pre);
-
-      height_post = m_wallet->get_num_transfer_details();
-      if (height_pre != height_post)
-      {
-        message_writer() << tr("New transfer received since rescan was started. Key images are incomplete.");
-      }
-    }
 
     ok = true;
     // Clear line "Height xxx of xxx"
     std::cout << "\r                                                                \r";
     success_msg_writer(true) << tr("Refresh done, blocks received: ") << fetched_blocks;
-    if (is_init)
-      print_accounts();
     show_balance_unlocked();
     on_refresh_finished(start_height, fetched_blocks, is_init, received_money);
   }
@@ -4317,38 +3871,11 @@ bool simple_wallet::refresh(const std::vector<std::string>& args)
 //----------------------------------------------------------------------------------------------------
 bool simple_wallet::show_balance_unlocked(bool detailed)
 {
-  std::string extra;
-   if (m_wallet->has_unknown_key_images())
-    extra += tr(" (Some owned outputs have missing key images - export_outputs, import_outputs, export_key_images, and import_key_images needed)");
-  success_msg_writer() << tr("Currently selected account: [") << m_current_subaddress_account << tr("] ") << m_wallet->get_subaddress_label({m_current_subaddress_account, 0});
-  const std::string tag = m_wallet->get_account_tags().second[m_current_subaddress_account];
-  success_msg_writer() << tr("Tag: ") << (tag.empty() ? std::string{tr("(No tag assigned)")} : tag);
-  uint64_t blocks_to_unlock, time_to_unlock;
-  uint64_t unlocked_balance = m_wallet->unlocked_balance(m_current_subaddress_account, false, &blocks_to_unlock, &time_to_unlock);
-  std::string unlock_time_message;
-  if (blocks_to_unlock > 0 && time_to_unlock > 0)
-    unlock_time_message = (boost::format(" (%lu block(s) and %s to unlock)") % blocks_to_unlock % get_human_readable_timespan(time_to_unlock)).str();
-  else if (blocks_to_unlock > 0)
-    unlock_time_message = (boost::format(" (%lu block(s) to unlock)") % blocks_to_unlock).str();
-  else if (time_to_unlock > 0)
-    unlock_time_message = (boost::format(" (%s to unlock)") % get_human_readable_timespan(time_to_unlock)).str();
-  success_msg_writer() << tr("Balance: ") << print_money(m_wallet->balance(m_current_subaddress_account, false)) << ", "
-    << tr("unlocked balance: ") << print_money(unlocked_balance) << unlock_time_message << extra;
-  std::map<uint32_t, uint64_t> balance_per_subaddress = m_wallet->balance_per_subaddress(m_current_subaddress_account, false);
-  std::map<uint32_t, std::pair<uint64_t, std::pair<uint64_t, uint64_t>>> unlocked_balance_per_subaddress = m_wallet->unlocked_balance_per_subaddress(m_current_subaddress_account, false);
-  if (!detailed || balance_per_subaddress.empty())
-    return true;
-  success_msg_writer() << tr("Balance per address:");
-  success_msg_writer() << boost::format("%15s %21s %21s %7s %21s") % tr("Address") % tr("Balance") % tr("Unlocked balance") % tr("Outputs") % tr("Label");
-  std::vector<tools::wallet2::transfer_details> transfers;
-  m_wallet->get_transfers(transfers);
-  for (const auto& i : balance_per_subaddress)
-  {
-    cryptonote::subaddress_index subaddr_index = {m_current_subaddress_account, i.first};
-    std::string address_str = m_wallet->get_subaddress_as_str(subaddr_index).substr(0, 6);
-    uint64_t num_unspent_outputs = std::count_if(transfers.begin(), transfers.end(), [&subaddr_index](const tools::wallet2::transfer_details& td) { return !td.m_spent && td.m_subaddr_index == subaddr_index; });
-    success_msg_writer() << boost::format(tr("%8u %6s %21s %21s %7u %21s")) % i.first % address_str % print_money(i.second) % print_money(unlocked_balance_per_subaddress[i.first].first) % num_unspent_outputs % m_wallet->get_subaddress_label(subaddr_index);
-  }
+  uint64_t unlocked_balance = m_wallet->unlocked_balance(false);
+
+  success_msg_writer() << tr("Balance: ") << print_money(m_wallet->balance(false)) << ", "
+    << tr("unlocked balance: ") << print_money(unlocked_balance) ;
+
   return true;
 }
 //----------------------------------------------------------------------------------------------------
@@ -4377,7 +3904,6 @@ bool simple_wallet::show_incoming_transfers(const std::vector<std::string>& args
   bool filter = false;
   bool available = false;
   bool verbose = false;
-  bool uses = false;
   if (local_args.size() > 0)
   {
     if (local_args[0] == "available")
@@ -4397,8 +3923,6 @@ bool simple_wallet::show_incoming_transfers(const std::vector<std::string>& args
   {
     if (local_args[0] == "verbose")
       verbose = true;
-    else if (local_args[0] == "uses")
-      uses = true;
     else
     {
       fail_msg_writer() << tr("Invalid keyword: ") << local_args.front();
@@ -4411,13 +3935,7 @@ bool simple_wallet::show_incoming_transfers(const std::vector<std::string>& args
 
   PAUSE_READLINE();
 
-  std::set<uint32_t> subaddr_indices;
-  if (local_args.size() > 0 && local_args[0].substr(0, 6) == "index=")
-  {
-    if (!parse_subaddress_indices(local_args[0], subaddr_indices))
-      return true;
-    local_args.erase(local_args.begin());
-  }
+
 
   if (local_args.size() > 0)
   {
@@ -4433,8 +3951,6 @@ bool simple_wallet::show_incoming_transfers(const std::vector<std::string>& args
   {
     if (!filter || available != td.m_spent)
     {
-      if (m_current_subaddress_account != td.m_subaddr_index.major || (!subaddr_indices.empty() && subaddr_indices.count(td.m_subaddr_index.minor) == 0))
-        continue;
       if (!transfers_found)
       {
         std::string verbose_string;
@@ -4444,29 +3960,16 @@ bool simple_wallet::show_incoming_transfers(const std::vector<std::string>& args
       }
       std::string extra_string;
       if (verbose)
-        extra_string += (boost::format("%68s%68s") % td.get_public_key() % (td.m_key_image_known ? epee::string_tools::pod_to_hex(td.m_key_image) : td.m_key_image_partial ? (epee::string_tools::pod_to_hex(td.m_key_image) + "/p") : std::string(64, '?'))).str();
-      if (uses)
-      {
-        std::vector<uint64_t> heights;
-        uint64_t idx = 0;
-        for (const auto &e: td.m_uses)
-        {
-          heights.push_back(e.first);
-          if (e.first < td.m_spent_height)
-            ++idx;
-        }
-        const std::pair<std::string, std::string> line = show_outputs_line(heights, blockchain_height, idx);
-        extra_string += std::string("\n    ") + tr("Used at heights: ") + line.first + "\n    " + line.second;
-      }
+        extra_string += boost::format("%68s%68s") % td.get_public_key() %  epee::string_tools::pod_to_hex(td.m_key_image) ;
+
       message_writer(td.m_spent ? console_color_magenta : console_color_green, false) <<
         boost::format("%21s%8s%12s%8s%16u%68s%16u%s") %
         print_money(td.amount()) %
         (td.m_spent ? tr("T") : tr("F")) %
         (m_wallet->frozen(td) ? tr("[frozen]") : m_wallet->is_transfer_unlocked(td) ? tr("unlocked") : tr("locked")) %
-        (td.is_rct() ? tr("RingCT") : tr("-")) %
+        tr("RingCT") %
         td.m_global_output_index %
         td.m_txid %
-        td.m_subaddr_index.minor %
         extra_string;
       ++transfers_found;
     }
@@ -4536,8 +4039,7 @@ bool simple_wallet::show_payments(const std::vector<std::string> &args)
           pd.m_tx_hash %
           pd.m_block_height %
           print_money(pd.m_amount) %
-          pd.m_unlock_time %
-          pd.m_subaddr_index.minor;
+          pd.m_unlock_time;
       }
     }
     else
@@ -4937,29 +4439,13 @@ bool simple_wallet::transfer_main(int transfer_type, const std::vector<std::stri
     bool r = true;
 
     // check for a URI
-    std::string address_uri, payment_id_uri, tx_description, recipient_name, error;
+    std::string tx_description, recipient_name, error;
     std::vector<std::string> unknown_parameters;
     uint64_t amount = 0;
-    bool has_uri = m_wallet->parse_uri(local_args[i], address_uri, payment_id_uri, amount, tx_description, recipient_name, unknown_parameters, error);
-    if (has_uri)
+
+    if (i + 1 < local_args.size())
     {
-      r = cryptonote::get_account_address_from_str_or_url(info, m_wallet->nettype(), address_uri, oa_prompter);
-      if (payment_id_uri.size() == 16)
-      {
-        if (!tools::wallet2::parse_short_payment_id(payment_id_uri, info.payment_id))
-        {
-          fail_msg_writer() << tr("failed to parse short payment ID from URI");
-          return false;
-        }
-        info.has_payment_id = true;
-      }
-      de.amount = amount;
-      de.original = local_args[i];
-      ++i;
-    }
-    else if (i + 1 < local_args.size())
-    {
-      r = cryptonote::get_account_address_from_str_or_url(info, m_wallet->nettype(), local_args[i], oa_prompter);
+      r = cryptonote::get_account_address_from_str(info, m_wallet->nettype(), local_args[i]);
       bool ok = cryptonote::parse_amount(de.amount, local_args[i + 1]);
       if(!ok || 0 == de.amount)
       {
@@ -5000,10 +4486,6 @@ bool simple_wallet::transfer_main(int transfer_type, const std::vector<std::stri
       if (info.has_payment_id)
       {
         set_encrypted_payment_id_to_tx_extra_nonce(extra_nonce, info.payment_id);
-      }
-      else if (tools::wallet2::parse_payment_id(payment_id_uri, payment_id))
-      {
-        LONG_PAYMENT_ID_SUPPORT_CHECK();
       }
       else
       {
@@ -5056,52 +4538,6 @@ bool simple_wallet::transfer_main(int transfer_type, const std::vector<std::stri
       return false;
     }
 
-    // if we need to check for backlog, check the worst case tx
-    if (m_wallet->confirm_backlog())
-    {
-      std::stringstream prompt;
-      double worst_fee_per_byte = std::numeric_limits<double>::max();
-      for (size_t n = 0; n < ptx_vector.size(); ++n)
-      {
-        const uint64_t blob_size = cryptonote::tx_to_blob(ptx_vector[n].tx).size();
-        const double fee_per_byte = ptx_vector[n].fee / (double)blob_size;
-        if (fee_per_byte < worst_fee_per_byte)
-        {
-          worst_fee_per_byte = fee_per_byte;
-        }
-      }
-      try
-      {
-        std::vector<std::pair<uint64_t, uint64_t>> nblocks = m_wallet->estimate_backlog({std::make_pair(worst_fee_per_byte, worst_fee_per_byte)});
-        if (nblocks.size() != 1)
-        {
-          prompt << "Internal error checking for backlog. " << tr("Is this okay anyway?");
-        }
-        else
-        {
-          if (nblocks[0].first > m_wallet->get_confirm_backlog_threshold())
-            prompt << (boost::format(tr("There is currently a %u block backlog at that fee level. Is this okay?")) % nblocks[0].first).str();
-        }
-      }
-      catch (const std::exception &e)
-      {
-        prompt << tr("Failed to check for backlog: ") << e.what() << ENDL << tr("Is this okay anyway?");
-      }
-
-      std::string prompt_str = prompt.str();
-      if (!prompt_str.empty())
-      {
-        std::string accepted = input_line(prompt_str, true);
-        if (std::cin.eof())
-          return false;
-        if (!command_line::is_yes(accepted))
-        {
-          fail_msg_writer() << tr("transaction cancelled.");
-
-          return false; 
-        }
-      }
-    }
 
     if (!prompt_if_old(ptx_vector))
     {
@@ -5484,7 +4920,7 @@ bool simple_wallet::sweep_main(uint32_t account, uint64_t below, bool locked, co
   }
 
   cryptonote::address_parse_info info;
-  if (!cryptonote::get_account_address_from_str_or_url(info, m_wallet->nettype(), local_args[0], oa_prompter))
+  if (!cryptonote::get_account_address_from_str(info, m_wallet->nettype(), local_args[0]))
   {
     fail_msg_writer() << tr("failed to parse address");
     print_usage();
@@ -5730,7 +5166,7 @@ bool simple_wallet::sweep_single(const std::vector<std::string> &args_)
   }
 
   cryptonote::address_parse_info info;
-  if (!cryptonote::get_account_address_from_str_or_url(info, m_wallet->nettype(), local_args[1], oa_prompter))
+  if (!cryptonote::get_account_address_from_str(info, m_wallet->nettype(), local_args[1]))
   {
     fail_msg_writer() << tr("failed to parse address");
     return true;
@@ -6271,52 +5707,7 @@ bool simple_wallet::get_tx_key(const std::vector<std::string> &args_)
   }
 }
 //----------------------------------------------------------------------------------------------------
-bool simple_wallet::set_tx_key(const std::vector<std::string> &args_)
-{
-  std::vector<std::string> local_args = args_;
 
-  if(local_args.size() != 2 && local_args.size() != 3) {
-    PRINT_USAGE(USAGE_SET_TX_KEY);
-    return true;
-  }
-
-  crypto::hash txid;
-  if (!epee::string_tools::hex_to_pod(local_args[0], txid))
-  {
-    fail_msg_writer() << tr("failed to parse txid");
-    return true;
-  }
-
-  crypto::secret_key tx_key;
-  try
-  {
-    if (!epee::string_tools::hex_to_pod(local_args[1].substr(0, 64), tx_key))
-    {
-      fail_msg_writer() << tr("failed to parse tx_key");
-      return true;
-    }
-  
-  }
-  catch (const std::out_of_range &e)
-  {
-    fail_msg_writer() << tr("failed to parse tx_key");
-    return true;
-  }
-
-  LOCK_IDLE_SCOPE();
-
-  try
-  {
-    m_wallet->set_tx_key(txid, tx_key);
-    success_msg_writer() << tr("Tx key successfully stored.");
-  }
-  catch (const std::exception &e)
-  {
-    fail_msg_writer() << tr("Failed to store tx key: ") << e.what();
-   
-  }
-  return true;
-}
 //----------------------------------------------------------------------------------------------------
 bool simple_wallet::get_tx_proof(const std::vector<std::string> &args)
 {
@@ -6334,7 +5725,7 @@ bool simple_wallet::get_tx_proof(const std::vector<std::string> &args)
   }
 
   cryptonote::address_parse_info info;
-  if(!cryptonote::get_account_address_from_str_or_url(info, m_wallet->nettype(), args[1], oa_prompter))
+  if(!cryptonote::get_account_address_from_str(info, m_wallet->nettype(), args[1]))
   {
     fail_msg_writer() << tr("failed to parse address");
     return true;
@@ -6392,7 +5783,7 @@ bool simple_wallet::check_tx_key(const std::vector<std::string> &args_)
 
 
   cryptonote::address_parse_info info;
-  if(!cryptonote::get_account_address_from_str_or_url(info, m_wallet->nettype(), local_args[2], oa_prompter))
+  if(!cryptonote::get_account_address_from_str(info, m_wallet->nettype(), local_args[2]))
   {
     fail_msg_writer() << tr("failed to parse address");
     return true;
@@ -6456,7 +5847,7 @@ bool simple_wallet::check_tx_proof(const std::vector<std::string> &args)
 
   // parse address
   cryptonote::address_parse_info info;
-  if(!cryptonote::get_account_address_from_str_or_url(info, m_wallet->nettype(), args[1], oa_prompter))
+  if(!cryptonote::get_account_address_from_str(info, m_wallet->nettype(), args[1]))
   {
     fail_msg_writer() << tr("failed to parse address");
     return true;
@@ -6610,11 +6001,6 @@ bool simple_wallet::get_reserve_proof(const std::vector<std::string> &args)
     return true;
   }
 
-  if (m_wallet->watch_only() )
-  {
-    fail_msg_writer() << tr("The reserve proof can be generated only by a full wallet");
-    return true;
-  }
 
   boost::optional<std::pair<uint32_t, uint64_t>> account_minreserve;
   if (args[0] != "all")
@@ -6660,7 +6046,7 @@ bool simple_wallet::check_reserve_proof(const std::vector<std::string> &args)
     return true;
 
   cryptonote::address_parse_info info;
-  if(!cryptonote::get_account_address_from_str_or_url(info, m_wallet->nettype(), args[0], oa_prompter))
+  if(!cryptonote::get_account_address_from_str(info, m_wallet->nettype(), args[0]))
   {
     fail_msg_writer() << tr("failed to parse address");
     return true;
@@ -6759,14 +6145,6 @@ bool simple_wallet::get_transfers(std::vector<std::string>& local_args, std::vec
     }
   }
 
-  // subaddr_index
-  std::set<uint32_t> subaddr_indices;
-  if (local_args.size() > 0 && local_args[0].substr(0, 6) == "index=")
-  {
-    if (!parse_subaddress_indices(local_args[0], subaddr_indices))
-      return false;
-    local_args.erase(local_args.begin());
-  }
 
   // min height
   if (local_args.size() > 0 && local_args[0].find('=') == std::string::npos) {
@@ -6796,16 +6174,16 @@ bool simple_wallet::get_transfers(std::vector<std::string>& local_args, std::vec
 
   if (in || coinbase) {
     std::list<std::pair<crypto::hash, tools::wallet2::payment_details>> payments;
-    m_wallet->get_payments(payments, min_height, max_height, m_current_subaddress_account, subaddr_indices);
-    for (std::list<std::pair<crypto::hash, tools::wallet2::payment_details>>::const_iterator i = payments.begin(); i != payments.end(); ++i) {
-      const tools::wallet2::payment_details &pd = i->second;
+    m_wallet->get_payments(payments, min_height, max_height);
+    for (auto & kv : payments) {
+      const tools::wallet2::payment_details &pd = kv.second;
       if (!pd.m_coinbase && !in)
         continue;
       std::string payment_id = string_tools::pod_to_hex(i->first);
       if (payment_id.substr(16).find_first_not_of('0') == std::string::npos)
         payment_id = payment_id.substr(0,16);
       std::string note = m_wallet->get_tx_note(pd.m_tx_hash);
-      std::string destination = m_wallet->get_subaddress_as_str({m_current_subaddress_account, pd.m_subaddr_index.minor});
+
       const std::string type = pd.m_coinbase ? tr("block") : tr("in");
       const bool unlocked = m_wallet->is_transfer_unlocked(pd.m_unlock_time, pd.m_block_height);
       std::string locked_msg = "unlocked";
@@ -6836,8 +6214,6 @@ bool simple_wallet::get_transfers(std::vector<std::string>& local_args, std::vec
         pd.m_tx_hash,
         payment_id,
         0,
-        {{destination, pd.m_amount}},
-        {pd.m_subaddr_index.minor},
         note,
         locked_msg
       });
@@ -6889,14 +6265,15 @@ bool simple_wallet::get_transfers(std::vector<std::string>& local_args, std::vec
         m_wallet->process_pool_state(process_txs);
 
       std::list<std::pair<crypto::hash, tools::wallet2::pool_payment_details>> payments;
-      m_wallet->get_unconfirmed_payments(payments, m_current_subaddress_account, subaddr_indices);
-      for (std::list<std::pair<crypto::hash, tools::wallet2::pool_payment_details>>::const_iterator i = payments.begin(); i != payments.end(); ++i) {
-        const tools::wallet2::payment_details &pd = i->second.m_pd;
-        std::string payment_id = string_tools::pod_to_hex(i->first);
+      m_wallet->get_unconfirmed_payments(payments);
+      for (auto & kv: payments) {
+
+        const tools::wallet2::payment_details &pd = kv.second.m_pd;
+        std::string payment_id = string_tools::pod_to_hex(kv.first);
         if (payment_id.substr(16).find_first_not_of('0') == std::string::npos)
           payment_id = payment_id.substr(0,16);
         std::string note = m_wallet->get_tx_note(pd.m_tx_hash);
-        std::string destination = m_wallet->get_subaddress_as_str({m_current_subaddress_account, pd.m_subaddr_index.minor});
+        std::string destination = m_wallet->get_address_as_str();
         std::string double_spend_note;
         if (i->second.m_double_spend_seen)
           double_spend_note = tr("[Double spend seen on the network: this transaction may or may not end up being mined] ");
@@ -6911,7 +6288,6 @@ bool simple_wallet::get_transfers(std::vector<std::string>& local_args, std::vec
           payment_id,
           0,
           {{destination, pd.m_amount}},
-          {pd.m_subaddr_index.minor},
           note + double_spend_note,
           "locked"
         });
@@ -6926,11 +6302,11 @@ bool simple_wallet::get_transfers(std::vector<std::string>& local_args, std::vec
   // print unconfirmed last
   if (pending || failed) {
     std::list<std::pair<crypto::hash, tools::wallet2::unconfirmed_transfer_details>> upayments;
-    m_wallet->get_unconfirmed_payments_out(upayments, m_current_subaddress_account, subaddr_indices);
-    for (std::list<std::pair<crypto::hash, tools::wallet2::unconfirmed_transfer_details>>::const_iterator i = upayments.begin(); i != upayments.end(); ++i) {
-      const tools::wallet2::unconfirmed_transfer_details &pd = i->second;
+    m_wallet->get_unconfirmed_payments_out(upayments);
+    for (auto & kv : upayments) {
+      const tools::wallet2::unconfirmed_transfer_details &pd = kv.second;
       uint64_t amount = pd.m_amount_in;
-      uint64_t fee = amount - pd.m_amount_out;
+      uint64_t fee = pd.fee();
       std::vector<std::pair<std::string, uint64_t>> destinations;
       for (const auto &d: pd.m_dests) {
         destinations.push_back({d.address(m_wallet->nettype(), pd.m_payment_id), d.amount});
@@ -7023,233 +6399,8 @@ bool simple_wallet::show_transfers(const std::vector<std::string> &args_)
 
   return true;
 }
-//----------------------------------------------------------------------------------------------------
-bool simple_wallet::export_transfers(const std::vector<std::string>& args_)
-{
-  std::vector<std::string> local_args = args_;
 
-  if(local_args.size() > 5) {
-    fail_msg_writer() << tr("usage: export_transfers [in|out|all|pending|failed|pool|coinbase] [index=<N1>[,<N2>,...]] [<min_height> [<max_height>]] [output=<path>]");
-    return true;
-  }
 
-  LOCK_IDLE_SCOPE();
-
-  std::vector<transfer_view> all_transfers;
-
-  // might consumes arguments in local_args
-  if (!get_transfers(local_args, all_transfers))
-    return true;
-
-  // output filename
-  std::string filename = (boost::format("output%u.csv") % m_current_subaddress_account).str();
-  if (local_args.size() > 0 && local_args[0].substr(0, 7) == "output=")
-  {
-    filename = local_args[0].substr(7, -1);
-    local_args.erase(local_args.begin());
-  }
-
-  std::ofstream file(filename);
-
-  // header
-  file <<
-      boost::format("%8.8s,%9.9s,%8.8s,%25.25s,%20.20s,%20.20s,%64.64s,%16.16s,%14.14s,%100.100s,%20.20s,%s,%s") %
-      tr("block") % tr("direction") % tr("unlocked") % tr("timestamp") % tr("amount") % tr("running balance") % tr("hash") % tr("payment ID") % tr("fee") % tr("destination") % tr("amount") % tr("index") % tr("note")
-      << std::endl;
-
-  uint64_t running_balance = 0;
-  auto formatter = boost::format("%8.8llu,%9.9s,%8.8s,%25.25s,%20.20s,%20.20s,%64.64s,%16.16s,%14.14s,%100.100s,%20.20s,\"%s\",%s");
-
-  for (const auto& transfer : all_transfers)
-  {
-    // ignore unconfirmed transfers in running balance
-    if (transfer.confirmed)
-    {
-      if (transfer.direction == "in" || transfer.direction == "block")
-        running_balance += transfer.amount;
-      else
-        running_balance -= transfer.amount + transfer.fee;
-    }
-
-    file << formatter
-      % transfer.block
-      % transfer.direction
-      % transfer.unlocked
-      % tools::get_human_readable_timestamp(transfer.timestamp)
-      % print_money(transfer.amount)
-      % print_money(running_balance)
-      % string_tools::pod_to_hex(transfer.hash)
-      % transfer.payment_id
-      % print_money(transfer.fee)
-      % (transfer.outputs.size() ? transfer.outputs[0].first : "-")
-      % (transfer.outputs.size() ? print_money(transfer.outputs[0].second) : "")
-      % boost::algorithm::join(transfer.index | boost::adaptors::transformed([](uint32_t i) { return std::to_string(i); }), ", ")
-      % transfer.note
-      << std::endl;
-
-    for (size_t i = 1; i < transfer.outputs.size(); ++i)
-    {
-      file << formatter
-        % ""
-        % ""
-        % ""
-        % ""
-        % ""
-        % ""
-        % ""
-        % ""
-        % ""
-        % transfer.outputs[i].first
-        % print_money(transfer.outputs[i].second)
-        % ""
-        % ""
-        << std::endl;
-    }
-  }
-  file.close();
-
-  success_msg_writer() << tr("CSV exported to ") << filename;
-
-  return true;
-}
-//----------------------------------------------------------------------------------------------------
-bool simple_wallet::unspent_outputs(const std::vector<std::string> &args_)
-{
-  if(args_.size() > 3)
-  {
-    PRINT_USAGE(USAGE_UNSPENT_OUTPUTS);
-    return true;
-  }
-  auto local_args = args_;
-
-  std::set<uint32_t> subaddr_indices;
-  if (local_args.size() > 0 && local_args[0].substr(0, 6) == "index=")
-  {
-    if (!parse_subaddress_indices(local_args[0], subaddr_indices))
-      return true;
-    local_args.erase(local_args.begin());
-  }
-
-  uint64_t min_amount = 0;
-  uint64_t max_amount = std::numeric_limits<uint64_t>::max();
-  if (local_args.size() > 0)
-  {
-    if (!cryptonote::parse_amount(min_amount, local_args[0]))
-    {
-      fail_msg_writer() << tr("amount is wrong: ") << local_args[0];
-      return true;
-    }
-    local_args.erase(local_args.begin());
-    if (local_args.size() > 0)
-    {
-      if (!cryptonote::parse_amount(max_amount, local_args[0]))
-      {
-        fail_msg_writer() << tr("amount is wrong: ") << local_args[0];
-        return true;
-      }
-      local_args.erase(local_args.begin());
-    }
-    if (min_amount > max_amount)
-    {
-      fail_msg_writer() << tr("<min_amount> should be smaller than <max_amount>");
-      return true;
-    }
-  }
-  tools::wallet2::transfer_container transfers;
-  m_wallet->get_transfers(transfers);
-  std::map<uint64_t, tools::wallet2::transfer_container> amount_to_tds;
-  uint64_t min_height = std::numeric_limits<uint64_t>::max();
-  uint64_t max_height = 0;
-  uint64_t found_min_amount = std::numeric_limits<uint64_t>::max();
-  uint64_t found_max_amount = 0;
-  uint64_t count = 0;
-  for (const auto& td : transfers)
-  {
-    uint64_t amount = td.amount();
-    if (td.m_spent || amount < min_amount || amount > max_amount || td.m_subaddr_index.major != m_current_subaddress_account || (subaddr_indices.count(td.m_subaddr_index.minor) == 0 && !subaddr_indices.empty()))
-      continue;
-    amount_to_tds[amount].push_back(td);
-    if (min_height > td.m_block_height) min_height = td.m_block_height;
-    if (max_height < td.m_block_height) max_height = td.m_block_height;
-    if (found_min_amount > amount) found_min_amount = amount;
-    if (found_max_amount < amount) found_max_amount = amount;
-    ++count;
-  }
-  if (amount_to_tds.empty())
-  {
-    success_msg_writer() << tr("There is no unspent output in the specified address");
-    return true;
-  }
-  for (const auto& amount_tds : amount_to_tds)
-  {
-    auto& tds = amount_tds.second;
-    success_msg_writer() << tr("\nAmount: ") << print_money(amount_tds.first) << tr(", number of keys: ") << tds.size();
-    for (size_t i = 0; i < tds.size(); )
-    {
-      std::ostringstream oss;
-      for (size_t j = 0; j < 8 && i < tds.size(); ++i, ++j)
-        oss << tds[i].m_block_height << tr(" ");
-      success_msg_writer() << oss.str();
-    }
-  }
-  success_msg_writer()
-    << tr("\nMin block height: ") << min_height
-    << tr("\nMax block height: ") << max_height
-    << tr("\nMin amount found: ") << print_money(found_min_amount)
-    << tr("\nMax amount found: ") << print_money(found_max_amount)
-    << tr("\nTotal count: ") << count;
-  const size_t histogram_height = 10;
-  const size_t histogram_width  = 50;
-  double bin_size = (max_height - min_height + 1.0) / histogram_width;
-  size_t max_bin_count = 0;
-  std::vector<size_t> histogram(histogram_width, 0);
-  for (const auto& amount_tds : amount_to_tds)
-  {
-    for (auto& td : amount_tds.second)
-    {
-      uint64_t bin_index = (td.m_block_height - min_height + 1) / bin_size;
-      if (bin_index >= histogram_width)
-        bin_index = histogram_width - 1;
-      histogram[bin_index]++;
-      if (max_bin_count < histogram[bin_index])
-        max_bin_count = histogram[bin_index];
-    }
-  }
-  for (size_t x = 0; x < histogram_width; ++x)
-  {
-    double bin_count = histogram[x];
-    if (max_bin_count > histogram_height)
-      bin_count *= histogram_height / (double)max_bin_count;
-    if (histogram[x] > 0 && bin_count < 1.0)
-      bin_count = 1.0;
-    histogram[x] = bin_count;
-  }
-  std::vector<std::string> histogram_line(histogram_height, std::string(histogram_width, ' '));
-  for (size_t y = 0; y < histogram_height; ++y)
-  {
-    for (size_t x = 0; x < histogram_width; ++x)
-    {
-      if (y < histogram[x])
-        histogram_line[y][x] = '*';
-    }
-  }
-  double count_per_star = max_bin_count / (double)histogram_height;
-  if (count_per_star < 1)
-    count_per_star = 1;
-  success_msg_writer()
-    << tr("\nBin size: ") << bin_size
-    << tr("\nOutputs per *: ") << count_per_star;
-  ostringstream histogram_str;
-  histogram_str << tr("count\n  ^\n");
-  for (size_t y = histogram_height; y > 0; --y)
-    histogram_str << tr("  |") << histogram_line[y - 1] << tr("|\n");
-  histogram_str
-    << tr("  +") << std::string(histogram_width, '-') << tr("+--> block height\n")
-    << tr("   ^") << std::string(histogram_width - 2, ' ') << tr("^\n")
-    << tr("  ") << min_height << std::string(histogram_width - 8, ' ') << max_height;
-  success_msg_writer() << histogram_str.str();
-  return true;
-}
 //----------------------------------------------------------------------------------------------------
 bool simple_wallet::rescan_blockchain(const std::vector<std::string> &args_)
 {
@@ -7265,10 +6416,6 @@ bool simple_wallet::rescan_blockchain(const std::vector<std::string> &args_)
     else if (args_[0] == "soft")
     {
       reset_type = ResetSoft;
-    }
-    else if (args_[0] == "keep_ki")
-    {
-      reset_type = ResetSoftKeepKI;
     }
     else
     {
@@ -7426,209 +6573,7 @@ void simple_wallet::stop()
 {
   m_cmd_binder.stop_handling();
 }
-//----------------------------------------------------------------------------------------------------
-bool simple_wallet::account(const std::vector<std::string> &args/* = std::vector<std::string>()*/)
-{
-  // Usage:
-  //   account
-  //   account new <label text with white spaces allowed>
-  //   account switch <index>
-  //   account label <index> <label text with white spaces allowed>
-  //   account tag <tag_name> <account_index_1> [<account_index_2> ...]
-  //   account untag <account_index_1> [<account_index_2> ...]
-  //   account tag_description <tag_name> <description>
 
-  if (args.empty())
-  {
-    // print all the existing accounts
-    LOCK_IDLE_SCOPE();
-    print_accounts();
-    return true;
-  }
-
-  std::vector<std::string> local_args = args;
-  std::string command = local_args[0];
-  local_args.erase(local_args.begin());
-  if (command == "new")
-  {
-    // create a new account and switch to it
-    std::string label = boost::join(local_args, " ");
-    if (label.empty())
-      label = tr("(Untitled account)");
-    m_wallet->add_subaddress_account(label);
-    m_current_subaddress_account = m_wallet->get_num_subaddress_accounts() - 1;
-    // update_prompt();
-    LOCK_IDLE_SCOPE();
-    print_accounts();
-  }
-  else if (command == "switch" && local_args.size() == 1)
-  {
-    // switch to the specified account
-    uint32_t index_major;
-    if (!epee::string_tools::get_xtype_from_string(index_major, local_args[0]))
-    {
-      fail_msg_writer() << tr("failed to parse index: ") << local_args[0];
-      return true;
-    }
-    if (index_major >= m_wallet->get_num_subaddress_accounts())
-    {
-      fail_msg_writer() << tr("specify an index between 0 and ") << (m_wallet->get_num_subaddress_accounts() - 1);
-      return true;
-    }
-    m_current_subaddress_account = index_major;
-    // update_prompt();
-    show_balance();
-  }
-  else if (command == "label" && local_args.size() >= 1)
-  {
-    // set label of the specified account
-    uint32_t index_major;
-    if (!epee::string_tools::get_xtype_from_string(index_major, local_args[0]))
-    {
-      fail_msg_writer() << tr("failed to parse index: ") << local_args[0];
-      return true;
-    }
-    local_args.erase(local_args.begin());
-    std::string label = boost::join(local_args, " ");
-    try
-    {
-      m_wallet->set_subaddress_label({index_major, 0}, label);
-      LOCK_IDLE_SCOPE();
-      print_accounts();
-    }
-    catch (const std::exception& e)
-    {
-      fail_msg_writer() << e.what();
-    }
-  }
-  else if (command == "tag" && local_args.size() >= 2)
-  {
-    const std::string tag = local_args[0];
-    std::set<uint32_t> account_indices;
-    for (size_t i = 1; i < local_args.size(); ++i)
-    {
-      uint32_t account_index;
-      if (!epee::string_tools::get_xtype_from_string(account_index, local_args[i]))
-      {
-        fail_msg_writer() << tr("failed to parse index: ") << local_args[i];
-        return true;
-      }
-      account_indices.insert(account_index);
-    }
-    try
-    {
-      m_wallet->set_account_tag(account_indices, tag);
-      print_accounts(tag);
-    }
-    catch (const std::exception& e)
-    {
-      fail_msg_writer() << e.what();
-    }
-  }
-  else if (command == "untag" && local_args.size() >= 1)
-  {
-    std::set<uint32_t> account_indices;
-    for (size_t i = 0; i < local_args.size(); ++i)
-    {
-      uint32_t account_index;
-      if (!epee::string_tools::get_xtype_from_string(account_index, local_args[i]))
-      {
-        fail_msg_writer() << tr("failed to parse index: ") << local_args[i];
-        return true;
-      }
-      account_indices.insert(account_index);
-    }
-    try
-    {
-      m_wallet->set_account_tag(account_indices, "");
-      print_accounts();
-    }
-    catch (const std::exception& e)
-    {
-      fail_msg_writer() << e.what();
-    }
-  }
-  else if (command == "tag_description" && local_args.size() >= 1)
-  {
-    const std::string tag = local_args[0];
-    std::string description;
-    if (local_args.size() > 1)
-    {
-      local_args.erase(local_args.begin());
-      description = boost::join(local_args, " ");
-    }
-    try
-    {
-      m_wallet->set_account_tag_description(tag, description);
-      print_accounts(tag);
-    }
-    catch (const std::exception& e)
-    {
-      fail_msg_writer() << e.what();
-    }
-  }
-  else
-  {
-    PRINT_USAGE(USAGE_ACCOUNT);
-  }
-  return true;
-}
-//----------------------------------------------------------------------------------------------------
-void simple_wallet::print_accounts()
-{
-  const std::pair<std::map<std::string, std::string>, std::vector<std::string>>& account_tags = m_wallet->get_account_tags();
-  size_t num_untagged_accounts = m_wallet->get_num_subaddress_accounts();
-  for (const std::pair<const std::string, std::string>& p : account_tags.first)
-  {
-    const std::string& tag = p.first;
-    print_accounts(tag);
-    num_untagged_accounts -= std::count(account_tags.second.begin(), account_tags.second.end(), tag);
-    success_msg_writer() << "";
-  }
-
-  if (num_untagged_accounts > 0)
-    print_accounts("");
-
-  if (num_untagged_accounts < m_wallet->get_num_subaddress_accounts())
-    success_msg_writer() << tr("\nGrand total:\n  Balance: ") << print_money(m_wallet->balance_all(false)) << tr(", unlocked balance: ") << print_money(m_wallet->unlocked_balance_all(false));
-}
-//----------------------------------------------------------------------------------------------------
-void simple_wallet::print_accounts(const std::string& tag)
-{
-  const std::pair<std::map<std::string, std::string>, std::vector<std::string>>& account_tags = m_wallet->get_account_tags();
-  if (tag.empty())
-  {
-    success_msg_writer() << tr("Untagged accounts:");
-  }
-  else
-  {
-    if (account_tags.first.count(tag) == 0)
-    {
-      fail_msg_writer() << boost::format(tr("Tag %s is unregistered.")) % tag;
-      return;
-    }
-    success_msg_writer() << tr("Accounts with tag: ") << tag;
-    success_msg_writer() << tr("Tag's description: ") << account_tags.first.find(tag)->second;
-  }
-  success_msg_writer() << boost::format("  %15s %21s %21s %21s") % tr("Account") % tr("Balance") % tr("Unlocked balance") % tr("Label");
-  uint64_t total_balance = 0, total_unlocked_balance = 0;
-  for (uint32_t account_index = 0; account_index < m_wallet->get_num_subaddress_accounts(); ++account_index)
-  {
-    if (account_tags.second[account_index] != tag)
-      continue;
-    success_msg_writer() << boost::format(tr(" %c%8u %6s %21s %21s %21s"))
-      % (m_current_subaddress_account == account_index ? '*' : ' ')
-      % account_index
-      % m_wallet->get_subaddress_as_str({account_index, 0}).substr(0, 6)
-      % print_money(m_wallet->balance(account_index, false))
-      % print_money(m_wallet->unlocked_balance(account_index, false))
-      % m_wallet->get_subaddress_label({account_index, 0});
-    total_balance += m_wallet->balance(account_index, false);
-    total_unlocked_balance += m_wallet->unlocked_balance(account_index, false);
-  }
-  success_msg_writer() << tr("----------------------------------------------------------------------------------");
-  success_msg_writer() << boost::format(tr("%15s %21s %21s")) % "Total" % print_money(total_balance) % print_money(total_unlocked_balance);
-}
 //----------------------------------------------------------------------------------------------------
 bool simple_wallet::print_address(const std::vector<std::string> &args/* = std::vector<std::string>()*/)
 {
@@ -7706,92 +6651,6 @@ bool simple_wallet::print_integrated_address(const std::vector<std::string> &arg
   return true;
 }
 
-//----------------------------------------------------------------------------------------------------
-bool simple_wallet::set_tx_note(const std::vector<std::string> &args)
-{
-  if (args.size() == 0)
-  {
-    PRINT_USAGE(USAGE_SET_TX_NOTE);
-    return true;
-  }
-
-  cryptonote::blobdata txid_data;
-  if(!epee::string_tools::parse_hexstr_to_binbuff(args.front(), txid_data) || txid_data.size() != sizeof(crypto::hash))
-  {
-    fail_msg_writer() << tr("failed to parse txid");
-    return true;
-  }
-  crypto::hash txid = *reinterpret_cast<const crypto::hash*>(txid_data.data());
-
-  std::string note = "";
-  for (size_t n = 1; n < args.size(); ++n)
-  {
-    if (n > 1)
-      note += " ";
-    note += args[n];
-  }
-  m_wallet->set_tx_note(txid, note);
-
-  return true;
-}
-//----------------------------------------------------------------------------------------------------
-bool simple_wallet::get_tx_note(const std::vector<std::string> &args)
-{
-  if (args.size() != 1)
-  {
-    PRINT_USAGE(USAGE_GET_TX_NOTE);
-    return true;
-  }
-
-  cryptonote::blobdata txid_data;
-  if(!epee::string_tools::parse_hexstr_to_binbuff(args.front(), txid_data) || txid_data.size() != sizeof(crypto::hash))
-  {
-    fail_msg_writer() << tr("failed to parse txid");
-    return true;
-  }
-  crypto::hash txid = *reinterpret_cast<const crypto::hash*>(txid_data.data());
-
-  std::string note = m_wallet->get_tx_note(txid);
-  if (note.empty())
-    success_msg_writer() << "no note found";
-  else
-    success_msg_writer() << "note found: " << note;
-
-  return true;
-}
-//----------------------------------------------------------------------------------------------------
-bool simple_wallet::set_description(const std::vector<std::string> &args)
-{
-  // 0 arguments allowed, for setting the description to empty string
-
-  std::string description = "";
-  for (size_t n = 0; n < args.size(); ++n)
-  {
-    if (n > 0)
-      description += " ";
-    description += args[n];
-  }
-  m_wallet->set_description(description);
-
-  return true;
-}
-//----------------------------------------------------------------------------------------------------
-bool simple_wallet::get_description(const std::vector<std::string> &args)
-{
-  if (args.size() != 0)
-  {
-    PRINT_USAGE(USAGE_GET_DESCRIPTION);
-    return true;
-  }
-
-  std::string description = m_wallet->get_description();
-  if (description.empty())
-    success_msg_writer() << tr("no description found");
-  else
-    success_msg_writer() << tr("description found: ") << description;
-
-  return true;
-}
 //----------------------------------------------------------------------------------------------------
 bool simple_wallet::status(const std::vector<std::string> &args)
 {
@@ -7909,20 +6768,13 @@ bool simple_wallet::verify(const std::vector<std::string> &args)
     PRINT_USAGE(USAGE_VERIFY);
     return true;
   }
-  std::string filename = args[0];
+  std::string data = args[0];
   std::string address_string = args[1];
   std::string signature= args[2];
 
-  std::string data;
-  bool r = m_wallet->load_from_file(filename, data);
-  if (!r)
-  {
-    fail_msg_writer() << tr("failed to read file ") << filename;
-    return true;
-  }
 
   cryptonote::address_parse_info info;
-  if(!cryptonote::get_account_address_from_str_or_url(info, m_wallet->nettype(), address_string, oa_prompter))
+  if(!cryptonote::get_account_address_from_str(info, m_wallet->nettype(), address_string))
   {
     fail_msg_writer() << tr("failed to parse address");
     return true;
@@ -7937,253 +6789,6 @@ bool simple_wallet::verify(const std::vector<std::string> &args)
   {
     success_msg_writer() << tr("Good signature from ") << address_string << (result.old ? " (using old signature algorithm)" : "") << " with " << (result.type == tools::wallet2::sign_with_spend_key ? "spend key" : result.type == tools::wallet2::sign_with_view_key ? "view key" : "unknown key combination (suspicious)");
   }
-  return true;
-}
-//----------------------------------------------------------------------------------------------------
-bool simple_wallet::export_key_images(const std::vector<std::string> &args_)
-{
-  if (m_wallet->key_on_device())
-  {
-    fail_msg_writer() << tr("command not supported by HW wallet");
-    return true;
-  }
-  auto args = args_;
-
-  if (m_wallet->watch_only())
-  {
-    fail_msg_writer() << tr("wallet is watch-only and cannot export key images");
-    return true;
-  }
-
-  bool all = false;
-  if (args.size() >= 2 && args[0] == "all")
-  {
-    all = true;
-    args.erase(args.begin());
-  }
-
-  if (args.size() != 1)
-  {
-    PRINT_USAGE(USAGE_EXPORT_KEY_IMAGES);
-    return true;
-  }
-
-  std::string filename = args[0];
-  if (m_wallet->confirm_export_overwrite() && !check_file_overwrite(filename))
-    return true;
-
-  SCOPED_WALLET_UNLOCK();
-
-  try
-  {
-    if (!m_wallet->export_key_images(filename, all))
-    {
-      fail_msg_writer() << tr("failed to save file ") << filename;
-      return true;
-    }
-  }
-  catch (const std::exception &e)
-  {
-    LOG_ERROR("Error exporting key images: " << e.what());
-    fail_msg_writer() << "Error exporting key images: " << e.what();
-    return true;
-  }
-
-  success_msg_writer() << tr("Signed key images exported to ") << filename;
-  return true;
-}
-//----------------------------------------------------------------------------------------------------
-bool simple_wallet::import_key_images(const std::vector<std::string> &args)
-{
-  if (m_wallet->key_on_device())
-  {
-    fail_msg_writer() << tr("command not supported by HW wallet");
-    return true;
-  }
-  if (!m_wallet->is_trusted_daemon())
-  {
-    fail_msg_writer() << tr("this command requires a trusted daemon. Enable with --trusted-daemon");
-    return true;
-  }
-
-  if (args.size() != 1)
-  {
-    PRINT_USAGE(USAGE_IMPORT_KEY_IMAGES);
-    return true;
-  }
-  std::string filename = args[0];
-
-  LOCK_IDLE_SCOPE();
-  try
-  {
-    uint64_t spent = 0, unspent = 0;
-    uint64_t height = m_wallet->import_key_images(filename, spent, unspent);
-    success_msg_writer() << "Signed key images imported to height " << height << ", "
-        << print_money(spent) << " spent, " << print_money(unspent) << " unspent"; 
-  }
-  catch (const std::exception &e)
-  {
-    fail_msg_writer() << "Failed to import key images: " << e.what();
-    return true;
-  }
-
-  return true;
-}
-//----------------------------------------------------------------------------------------------------
-bool simple_wallet::hw_key_images_sync(const std::vector<std::string> &args)
-{
-  if (!m_wallet->key_on_device())
-  {
-    fail_msg_writer() << tr("command only supported by HW wallet");
-    return true;
-  }
-  if (!m_wallet->get_account().get_device().has_ki_cold_sync())
-  {
-    fail_msg_writer() << tr("hw wallet does not support cold KI sync");
-    return true;
-  }
-
-  LOCK_IDLE_SCOPE();
-  key_images_sync_intern();
-  return true;
-}
-//----------------------------------------------------------------------------------------------------
-void simple_wallet::key_images_sync_intern(){
-  try
-  {
-    message_writer(console_color_white, false) << tr("Please confirm the key image sync on the device");
-
-    uint64_t spent = 0, unspent = 0;
-    uint64_t height = m_wallet->cold_key_image_sync(spent, unspent);
-    if (height > 0)
-    {
-      success_msg_writer() << tr("Key images synchronized to height ") << height;
-      if (!m_wallet->is_trusted_daemon())
-      {
-        message_writer() << tr("Running untrusted daemon, cannot determine which transaction output is spent. Use a trusted daemon with --trusted-daemon and run rescan_spent");
-      } else
-      {
-        success_msg_writer() << print_money(spent) << tr(" spent, ") << print_money(unspent) << tr(" unspent");
-      }
-    }
-    else {
-      fail_msg_writer() << tr("Failed to import key images");
-    }
-  }
-  catch (const std::exception &e)
-  {
-    fail_msg_writer() << tr("Failed to import key images: ") << e.what();
-  }
-}
-//----------------------------------------------------------------------------------------------------
-bool simple_wallet::hw_reconnect(const std::vector<std::string> &args)
-{
-  if (!m_wallet->key_on_device())
-  {
-    fail_msg_writer() << tr("command only supported by HW wallet");
-    return true;
-  }
-
-  LOCK_IDLE_SCOPE();
-  try
-  {
-    bool r = m_wallet->reconnect_device();
-    if (!r){
-      fail_msg_writer() << tr("Failed to reconnect device");
-    }
-  }
-  catch (const std::exception &e)
-  {
-    fail_msg_writer() << tr("Failed to reconnect device: ") << tr(e.what());
-    return true;
-  }
-
-  return true;
-}
-//----------------------------------------------------------------------------------------------------
-bool simple_wallet::export_outputs(const std::vector<std::string> &args_)
-{
-  if (m_wallet->key_on_device())
-  {
-    fail_msg_writer() << tr("command not supported by HW wallet");
-    return true;
-  }
-  auto args = args_;
-
-  bool all = false;
-  if (args.size() >= 2 && args[0] == "all")
-  {
-    all = true;
-    args.erase(args.begin());
-  }
-
-  if (args.size() != 1)
-  {
-    PRINT_USAGE(USAGE_EXPORT_OUTPUTS);
-    return true;
-  }
-
-  std::string filename = args[0];
-  if (m_wallet->confirm_export_overwrite() && !check_file_overwrite(filename))
-    return true;
-
-  SCOPED_WALLET_UNLOCK();
-
-  try
-  {
-    std::string data = m_wallet->export_outputs_to_str(all);
-    bool r = m_wallet->save_to_file(filename, data);
-    if (!r)
-    {
-      fail_msg_writer() << tr("failed to save file ") << filename;
-      return true;
-    }
-  }
-  catch (const std::exception &e)
-  {
-    LOG_ERROR("Error exporting outputs: " << e.what());
-    fail_msg_writer() << "Error exporting outputs: " << e.what();
-    return true;
-  }
-
-  success_msg_writer() << tr("Outputs exported to ") << filename;
-  return true;
-}
-//----------------------------------------------------------------------------------------------------
-bool simple_wallet::import_outputs(const std::vector<std::string> &args)
-{
-  if (m_wallet->key_on_device())
-  {
-    fail_msg_writer() << tr("command not supported by HW wallet");
-    return true;
-  }
-  if (args.size() != 1)
-  {
-    PRINT_USAGE(USAGE_IMPORT_OUTPUTS);
-    return true;
-  }
-  std::string filename = args[0];
-
-  std::string data;
-  bool r = m_wallet->load_from_file(filename, data);
-  if (!r)
-  {
-    fail_msg_writer() << tr("failed to read file ") << filename;
-    return true;
-  }
-
-  try
-  {
-    SCOPED_WALLET_UNLOCK();
-    size_t n_outputs = m_wallet->import_outputs_from_str(data);
-    success_msg_writer() << boost::lexical_cast<std::string>(n_outputs) << " outputs imported";
-  }
-  catch (const std::exception &e)
-  {
-    fail_msg_writer() << "Failed to import outputs " << filename << ": " << e.what();
-    return true;
-  }
-
   return true;
 }
 //----------------------------------------------------------------------------------------------------
@@ -8222,12 +6827,8 @@ bool simple_wallet::show_transfer(const std::vector<std::string> &args)
       if (pd.m_unlock_time < CRYPTONOTE_MAX_BLOCK_NUMBER)
       {
         uint64_t bh = std::max(pd.m_unlock_time, pd.m_block_height + CRYPTONOTE_DEFAULT_TX_SPENDABLE_AGE);
-        uint64_t last_block_reward = m_wallet->get_last_block_reward();
-        uint64_t suggested_threshold = last_block_reward ? (pd.m_amount + last_block_reward - 1) / last_block_reward : 0;
         if (bh >= last_block_height)
           success_msg_writer() << "Locked: " << (bh - last_block_height) << " blocks to unlock";
-        else if (suggested_threshold > 0)
-          success_msg_writer() << std::to_string(last_block_height - bh) << " confirmations (" << suggested_threshold << " suggested threshold)";
         else
           success_msg_writer() << std::to_string(last_block_height - bh) << " confirmations";
       }
@@ -8285,7 +6886,7 @@ bool simple_wallet::show_transfer(const std::vector<std::string> &args)
       m_wallet->process_pool_state(process_txs);
 
     std::list<std::pair<crypto::hash, tools::wallet2::pool_payment_details>> pool_payments;
-    m_wallet->get_unconfirmed_payments(pool_payments, m_current_subaddress_account);
+    m_wallet->get_unconfirmed_payments(pool_payments);
     for (std::list<std::pair<crypto::hash, tools::wallet2::pool_payment_details>>::const_iterator i = pool_payments.begin(); i != pool_payments.end(); ++i) {
       const tools::wallet2::payment_details &pd = i->second.m_pd;
       if (pd.m_tx_hash == txid)

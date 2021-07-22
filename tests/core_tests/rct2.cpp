@@ -159,8 +159,6 @@ bool gen_rct2_tx_validation_base::generate_with(std::vector<test_event_entry>& e
       const uint8_t type = rct_txes.back().rct_signatures.type;
       if (type == rct::RCTTypeSimple || type == rct::RCTTypeBulletproof || type == rct::RCTTypeBulletproof2 || type == rct::RCTTypeCLSAG)
         rct::decodeRctSimple(rct_txes.back().rct_signatures, rct::sk2rct(amount_key), o, rct_tx_mask, hw::get_device("default"));
-      else
-        rct::decodeRct(rct_txes.back().rct_signatures, rct::sk2rct(amount_key), o, rct_tx_mask, hw::get_device("default"));
     }
 
     while (amounts_paid[0] != (size_t)-1)

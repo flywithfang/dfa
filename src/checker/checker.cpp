@@ -204,7 +204,7 @@ keyV print_out(const public_key & tx_key, const transaction & tx){
       rct::d2h(a2,a);
      rct::addKeys2(xGbH,x,a2,H);
      cout<<"outC="<<xGbH<<endl;
-     const auto outC=outPk[t].mask;
+     const auto outC=outPk[t].commitment;
      cout<<"outC="<<outC<<endl;
      out.push_back(outC);
     ++t;

@@ -593,7 +593,7 @@ TEST(Serialization, serializes_ringct_types)
   rct::skpkGen(Sk, Pk);
   destinations.push_back(Pk);
   //compute rct data with mixin 3
-  const rct::RCTConfig rct_config{ rct::RangeProofPaddedBulletproof, 2 };
+  const rct::RCTConfig rct_config{ rct::RangeProofPaddedBulletproof, 3 };
   s0 = rct::genRctSimple(rct::zero(), sc, pc, destinations, inamounts, amounts, amount_keys, NULL, NULL, 0, 3, rct_config, hw::get_device("default"));
 
   ASSERT_TRUE(s0.p.CLSAGs.empty());
@@ -645,15 +645,14 @@ TEST(Serialization, portability_wallet)
   /*
   fields of tools::wallet2 to be checked: 
     std::vector<crypto::hash>                                       m_blockchain
-    std::vector<transfer_details>                                   m_transfers               // TODO
+    std::vector<transfer_details>                                   m_transfers_in               // TODO
     cryptonote::account_public_address                              m_account_public_address
     std::unordered_map<crypto::key_image, size_t>                   m_key_images
     std::unordered_map<crypto::hash, unconfirmed_transfer_details>  m_unconfirmed_txs
-    std::unordered_multimap<crypto::hash, payment_details>          m_payments
     std::unordered_map<crypto::hash, crypto::secret_key>            m_tx_keys
     std::unordered_map<crypto::hash, confirmed_transfer_details>    m_confirmed_txs
     std::unordered_map<crypto::hash, std::string>                   m_tx_notes
-    std::unordered_map<crypto::hash, payment_details>               m_unconfirmed_payments
+    std::unordered_map<crypto::hash, payment_details>               m_pool_transfers_in
     std::unordered_map<crypto::public_key, size_t>                  m_pub_keys
     std::vector<tools::wallet2::address_book_row>                   m_address_book
   */
@@ -661,7 +660,7 @@ TEST(Serialization, portability_wallet)
   ASSERT_TRUE(w.m_blockchain.size() == 1);
   ASSERT_TRUE(epee::string_tools::pod_to_hex(w.m_blockchain[0]) == "48ca7cd3c8de5b6a4d53d2861fbdaedca141553559f9be9520068053cda8430b");
   // transfers (TODO)
-  ASSERT_TRUE(w.m_transfers.size() == 3);
+  ASSERT_TRUE(w.m_transfers_in.size() == 3);
   // account public address
   ASSERT_TRUE(epee::string_tools::pod_to_hex(w.m_account_public_address.m_view_public_key) == "e47d4b6df6ab7339539148c2a03ad3e2f3434e5ab2046848e1f21369a3937cad");
   ASSERT_TRUE(epee::string_tools::pod_to_hex(w.m_account_public_address.m_spend_public_key) == "13daa2af00ad26a372d317195de0bdd716f7a05d33bc4d7aff1664b6ee93c060");
@@ -678,27 +677,7 @@ TEST(Serialization, portability_wallet)
   }
   // unconfirmed txs
   ASSERT_TRUE(w.m_unconfirmed_txs.size() == 0);
-  // payments
-  ASSERT_TRUE(w.m_payments.size() == 2);
-  {
-    auto pd0 = w.m_payments.begin();
-    auto pd1 = pd0;
-    ++pd1;
-    ASSERT_TRUE(epee::string_tools::pod_to_hex(pd0->first) == "0000000000000000000000000000000000000000000000000000000000000000");
-    ASSERT_TRUE(epee::string_tools::pod_to_hex(pd1->first) == "0000000000000000000000000000000000000000000000000000000000000000");
-    if (epee::string_tools::pod_to_hex(pd0->second.m_tx_hash) == "ec34c9bb12b99af33d49691384eee5bed9171498ff04e59516505f35d1fc5efc")
-      swap(pd0, pd1);
-    ASSERT_TRUE(epee::string_tools::pod_to_hex(pd0->second.m_tx_hash) == "15024343b38e77a1a9860dfed29921fa17e833fec837191a6b04fa7cb9605b8e");
-    ASSERT_TRUE(epee::string_tools::pod_to_hex(pd1->second.m_tx_hash) == "ec34c9bb12b99af33d49691384eee5bed9171498ff04e59516505f35d1fc5efc");
-    ASSERT_TRUE(pd0->second.m_amount == 13400845012231);
-    ASSERT_TRUE(pd1->second.m_amount == 1200000000000);
-    ASSERT_TRUE(pd0->second.m_block_height == 818424);
-    ASSERT_TRUE(pd1->second.m_block_height == 818522);
-    ASSERT_TRUE(pd0->second.m_unlock_time == 818484);
-    ASSERT_TRUE(pd1->second.m_unlock_time == 0);
-    ASSERT_TRUE(pd0->second.m_timestamp == 1483263366);
-    ASSERT_TRUE(pd1->second.m_timestamp == 1483272963);
-  }
+
   // tx keys
   ASSERT_TRUE(w.m_tx_keys.size() == 2);
   {
@@ -728,7 +707,7 @@ TEST(Serialization, portability_wallet)
     ASSERT_EQ_MAP("sample note 2", w.m_tx_notes, h[1]);
   }
   // unconfirmed payments
-  ASSERT_TRUE(w.m_unconfirmed_payments.size() == 0);
+  ASSERT_TRUE(w.m_pool_transfers_in.size() == 0);
   // pub keys
   ASSERT_TRUE(w.m_pub_keys.size() == 3);
   {
@@ -822,7 +801,6 @@ TEST(Serialization, portability_outputs)
     uint64_t                        m_amount
     bool                            m_rct
     bool                            m_key_image_known
-    size_t                          m_pk_index
   */
   ASSERT_TRUE(outputs.size() == 3);
   auto& td0 = outputs[0];
@@ -861,9 +839,6 @@ TEST(Serialization, portability_outputs)
   ASSERT_TRUE(td0.m_key_image_known);
   ASSERT_TRUE(td1.m_key_image_known);
   ASSERT_TRUE(td2.m_key_image_known);
-  ASSERT_TRUE(td0.m_pk_index == 0);
-  ASSERT_TRUE(td1.m_pk_index == 0);
-  ASSERT_TRUE(td2.m_pk_index == 0);
 }
 
 struct unsigned_tx_set
@@ -903,7 +878,7 @@ TEST(Serialization, portability_unsigned_tx)
   /*
   fields of tools::wallet2::unsigned_tx_set to be checked:
     std::vector<tx_construction_data> txes
-    std::vector<wallet2::transfer_details> m_transfers
+    std::vector<wallet2::transfer_details> m_transfers_in
 
   fields of toolw::wallet2::tx_construction_data to be checked:
     std::vector<cryptonote::tx_source_entry>      sources
@@ -1020,9 +995,6 @@ TEST(Serialization, portability_unsigned_tx)
   ASSERT_TRUE(td0.m_key_image_known);
   ASSERT_TRUE(td1.m_key_image_known);
   ASSERT_TRUE(td2.m_key_image_known);
-  ASSERT_TRUE(td0.m_pk_index == 0);
-  ASSERT_TRUE(td1.m_pk_index == 0);
-  ASSERT_TRUE(td2.m_pk_index == 0);
 }
 
 #define SIGNED_TX_PREFIX "Monero signed tx set\003"

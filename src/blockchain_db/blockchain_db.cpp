@@ -238,7 +238,7 @@ void BlockchainDB::add_transaction(const crypto::hash& blk_hash, const std::pair
   {
     // miner v2 txes have their coinbase output in one single out to save space,
     // and we store them as rct outputs with an identity mask
-    if (miner_tx && tx.version == 2)
+    if (miner_tx )
     {
       cryptonote::tx_out vout = tx.vout[oi];
       rct::key commitment = rct::zeroCommit(vout.amount);
@@ -249,7 +249,7 @@ void BlockchainDB::add_transaction(const crypto::hash& blk_hash, const std::pair
     else
     {
       amount_output_indices[oi] = add_output(tx_hash, tx.vout[oi], oi, tx.unlock_time,
-        tx.version > 1 ? &tx.rct_signatures.outPk[oi].mask : NULL);
+         &tx.rct_signatures.outPk[oi].commitment );
     }
   }
   add_tx_amount_output_indices(tx_id, amount_output_indices);

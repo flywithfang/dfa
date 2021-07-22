@@ -32,6 +32,7 @@
 #include "misc_log_ex.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "rctOps.h"
+#include <cstring>
 using namespace crypto;
 using namespace std;
 
@@ -301,11 +302,11 @@ namespace rct {
     //generates a <secret , public> / Pedersen commitment to the amount
     tuple<ctkey, ctkey> ctskpkGen(xmr_amount amount) {
         ctkey sk, pk;
-        skpkGen(sk.dest, pk.dest);
-        skpkGen(sk.mask, pk.mask);
+        skpkGen(sk.otk_sec, pk.otk);
+        skpkGen(sk.noise, pk.commitment);
         key am = d2h(amount);
         key bH = scalarmultH(am);
-        addKeys(pk.mask, pk.mask, bH);
+        addKeys(pk.commitment, pk.commitment, bH);
         return make_tuple(sk, pk);
     }
     
@@ -313,9 +314,9 @@ namespace rct {
     //generates a <secret , public> / Pedersen commitment but takes bH as input 
     tuple<ctkey, ctkey> ctskpkGen(const key &bH) {
         ctkey sk, pk;
-        skpkGen(sk.dest, pk.dest);
-        skpkGen(sk.mask, pk.mask);
-        addKeys(pk.mask, pk.mask, bH);
+        skpkGen(sk.otk_sec, pk.otk);
+        skpkGen(sk.noise, pk.commitment);
+        addKeys(pk.commitment, pk.commitment, bH);
         return make_tuple(sk, pk);
     }
     
@@ -333,9 +334,10 @@ namespace rct {
         return addKeys(G, bH);
     }
 
-    key commit(xmr_amount amount, const key &mask) {
+    key commit(xmr_amount amount, const key &noise) {
         key c;
-        genC(c, mask, amount);
+        //aG+bH
+        genC(c, noise, amount);
         return c;
     }
 
@@ -546,13 +548,9 @@ namespace rct {
     //checks if A, B are equal in terms of bytes (may say no if one is a non-reduced scalar)
     //without doing curve operations
     bool equalKeys(const key & a, const key & b) {
-        bool rv = true;
-        for (int i = 0; i < 32; ++i) {
-          if (a.bytes[i] != b.bytes[i]) {
-            rv = false;
-          }
-        }
-        return rv;
+      
+        auto rv =std::memcmp(a.bytes,b.bytes,sizeof(a.bytes));
+        return rv==0;
     }
 
     //Hashing - cn_fast_hash
@@ -685,44 +683,32 @@ namespace rct {
         for (int i = 0; i < 8; ++i)
             v.bytes[i] ^= k.bytes[i];
     }
-    key genCommitmentMask(const key &sk)
+    key genCommitmentMask(const key &shared_sec)
     {
         char data[15 + sizeof(key)];
         memcpy(data, "commitment_mask", 15);
-        memcpy(data + 15, &sk, sizeof(sk));
+        memcpy(data + 15, &shared_sec, sizeof(shared_sec));
         key scalar;
         hash_to_scalar(scalar, data, sizeof(data));
         return scalar;
     }
 
-    void ecdhEncode(ecdhTuple & unmasked, const key & sharedSec, bool v2) {
+    uint64_t ecdhEncode(const uint64_t & amount, const key & sharedSec) {
         //encode
-        if (v2)
-        {
-          unmasked.mask = zero();
-          xor8(unmasked.amount, ecdhHash(sharedSec));
-        }
-        else
-        {
-          key sharedSec1 = hash_to_scalar(sharedSec);
-          key sharedSec2 = hash_to_scalar(sharedSec1);
-          sc_add(unmasked.mask.bytes, unmasked.mask.bytes, sharedSec1.bytes);
-          sc_add(unmasked.amount.bytes, unmasked.amount.bytes, sharedSec2.bytes);
-        }
+          uint64_t a=amount;
+          const key k= ecdhHash(sharedSec)
+          const uint64_t M = rct::h2d(k);
+
+          a ^= M;
+          return a;
     }
-    void ecdhDecode(ecdhTuple & masked, const key & sharedSec, bool v2) {
+      uint64_t ecdhDecode(const uint64_t & amount, const key & shared_sec) {
         //decode
-        if (v2)
-        {
-          masked.mask = genCommitmentMask(sharedSec);
-          xor8(masked.amount, ecdhHash(sharedSec));
-        }
-        else
-        {
-          key sharedSec1 = hash_to_scalar(sharedSec);
-          key sharedSec2 = hash_to_scalar(sharedSec1);
-          sc_sub(masked.mask.bytes, masked.mask.bytes, sharedSec1.bytes);
-          sc_sub(masked.amount.bytes, masked.amount.bytes, sharedSec2.bytes);
-        }
+          uint64_t a=amount;
+          const key k= ecdhHash(shared_sec)
+          const uint64_t M = rct::h2d(k);
+            a ^= M;
+          return  a;
+       
     }
 }

@@ -4195,19 +4195,11 @@ void BlockchainLMDB::get_output_key(const epee::span<const uint64_t> &amounts, c
     else if (get_result)
       throw0(DB_ERROR(lmdb_error("Error attempting to retrieve an output pubkey from the db", get_result).c_str()));
 
-    if (amount == 0)
     {
       const outkey *okp = (const outkey *)v.mv_data;
       outputs.push_back(okp->data);
     }
-    else
-    {
-      const pre_rct_outkey *okp = (const pre_rct_outkey *)v.mv_data;
-      outputs.resize(outputs.size() + 1);
-      output_data_t &data = outputs.back();
-      memcpy(&data, &okp->data, sizeof(pre_rct_output_data_t));
-      data.commitment = rct::zeroCommit(amount);
-    }
+   
   }
 
   TXN_POSTFIX_RDONLY();

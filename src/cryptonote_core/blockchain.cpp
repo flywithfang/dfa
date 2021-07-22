@@ -1962,7 +1962,10 @@ bool Blockchain::get_outs(const COMMAND_RPC_GET_OUTPUTS_BIN::request& req, COMMA
     }
     const uint8_t hf_version = m_hardfork->get_current_version();
     for (const auto &t: data)
-      res.outs.push_back({t.pubkey, t.commitment, is_tx_spendtime_unlocked(t.unlock_time, hf_version), t.height, crypto::null_hash});
+    {
+      const auto & otk=t.pubkey;
+      res.outs.push_back({otk, t.commitment, is_tx_spendtime_unlocked(t.unlock_time, hf_version), t.height, crypto::null_hash});
+    }
 
     if (req.get_txid)
     {
@@ -2550,14 +2553,7 @@ bool Blockchain::check_for_double_spend(const transaction& tx, key_images_contai
     {
       return true;
     }
-    bool operator()(const txin_to_script& tx) const
-    {
-      return false;
-    }
-    bool operator()(const txin_to_scripthash& tx) const
-    {
-      return false;
-    }
+   
   };
 
   for (const txin_v& in : tx.vin)

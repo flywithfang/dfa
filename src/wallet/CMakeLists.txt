@@ -42,7 +42,7 @@ set(wallet_sources
   transaction_out.cpp
   transaction_refresh.cpp
   transaction_proof.cpp
-  transaction_history.cpp
+  transaction_pool.cpp
   wallet_load.cpp
 )
 

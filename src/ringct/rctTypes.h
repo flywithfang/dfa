@@ -95,8 +95,18 @@ namespace rct {
     // (store b, the amount, separately
     //if it's representing a public ctkey, then "dest" = P the address, mask = C the commitment
     struct ctkey {
-        key dest;
-        key mask; //C here if public
+      //otk,commit=aG+bH
+      //otk.sec ,noise
+      union{
+        key dest; 
+        key otk;
+        key otk_sec;
+      }
+        union{
+        key mask; 
+        key noise;
+        key commitment;
+      }
     };
     typedef std::vector<ctkey> ctkeyV;
     typedef std::vector<ctkeyV> ctkeyM;
@@ -108,11 +118,9 @@ namespace rct {
     // "amount" contains a hex representation (in 32 bytes) of a 64 bit number
     // the purpose of the ECDH exchange
     struct ecdhTuple {
-        key mask;
-        key amount;
+        uint64_t amount;
 
         BEGIN_SERIALIZE_OBJECT()
-          FIELD(mask) // not saved from v2 BPs
           FIELD(amount)
         END_SERIALIZE()
     };
@@ -149,7 +157,7 @@ namespace rct {
 
     // CLSAG signature
     struct clsag {
-        keyV s; // scalars
+        std::vector<key> s; // scalars
         key c1;
 
         key I; // signing key image
@@ -181,10 +189,10 @@ namespace rct {
 
     struct Bulletproof
     {
-      rct::keyV V;
+      std::vector<key> V;
       rct::key A, S, T1, T2;
       rct::key taux, mu;
-      rct::keyV L, R;
+      std::vector<key> L, R;
       rct::key a, b, t;
 
       Bulletproof():
@@ -251,13 +259,14 @@ namespace rct {
         VARINT_FIELD(bp_version)
       END_SERIALIZE()
     };
+
     struct rctSigBase {
         uint8_t type;
         key message;
-        ctkeyM mixRing; //the set of all pubkeys / copy
+        std::vector<std:vector<ctkey>> mixRing; //the set of all pubkeys / copy
         //pairs that you mix with
         std::vector<ecdhTuple> ecdhInfo;
-        ctkeyV outPk;
+        std:vector<ctkey> outPk;
         xmr_amount txnFee; // contains b
 
         template<bool W, template <bool> class Archive>
@@ -279,21 +288,12 @@ namespace rct {
           PREPARE_CUSTOM_VECTOR_SERIALIZATION(outputs, ecdhInfo);
           if (ecdhInfo.size() != outputs)
             return false;
-          for (size_t i = 0; i < outputs; ++i)
+          for (size_t i = 0; i < ecdhInfo.size(); ++i)
           {
-            if (type == RCTTypeBulletproof2 || type == RCTTypeCLSAG)
-            {
               ar.begin_object();
-              if (!typename Archive<W>::is_saving())
-                memset(ecdhInfo[i].amount.bytes, 0, sizeof(ecdhInfo[i].amount.bytes));
-              crypto::hash8 &amount = (crypto::hash8&)ecdhInfo[i].amount;
-              FIELD(amount);
+              FIELD(ecdhInfo[i].amount);
               ar.end_object();
-            }
-            else
-            {
-              FIELDS(ecdhInfo[i])
-            }
+
             if (outputs - i > 1)
               ar.delimit_array();
           }
@@ -301,12 +301,15 @@ namespace rct {
 
           ar.tag("outPk");
           ar.begin_array();
-          PREPARE_CUSTOM_VECTOR_SERIALIZATION(outputs, outPk);
+          ::serialization::detail::prepare_custom_vector_serialization(outputs, outPk, typename Archive<W>::is_saving())
           if (outPk.size() != outputs)
             return false;
           for (size_t i = 0; i < outputs; ++i)
           {
-            FIELDS(outPk[i].mask)
+            do {                  
+              bool r = ::do_serialize(ar, outPk[i].commitment);         
+              if (!r || !ar.stream().good()) return false;      
+            } while(0);
             if (outputs - i > 1)
               ar.delimit_array();
           }
@@ -326,7 +329,7 @@ namespace rct {
     struct rctSigPrunable {
         std::vector<Bulletproof> bulletproofs;
         std::vector<clsag> CLSAGs;
-        keyV pseudoOuts; //C - for simple rct
+        std::vector<key> pseudoOuts; //C - for simple rct
 
         // when changing this function, update cryptonote::get_pruned_transaction_weight
         template<bool W, template <bool> class Archive>
@@ -404,8 +407,6 @@ namespace rct {
 
             ar.end_array();
           }
-    
-
           {
             ar.tag("pseudoOuts");
             ar.begin_array();

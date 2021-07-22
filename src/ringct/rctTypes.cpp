@@ -119,7 +119,8 @@ namespace rct {
     //uint long long to 32 byte key
     void d2h(key & amounth, const xmr_amount in) {
         sc_0(amounth.bytes);
-        memcpy_swap64le(amounth.bytes, &in, 1);
+       // memcpy_swap64le(amounth.bytes, &in, 1);
+        (*(uint64_t*)amounth.bytes)=in;
     }
     
     //uint long long to 32 byte key
@@ -142,11 +143,7 @@ namespace rct {
     // if the key holds a value > 2^64
     // then the value in the first 8 bytes is returned    
     xmr_amount h2d(const key & test) {
-        xmr_amount vali = 0;
-        int j = 0;
-        for (j = 7; j >= 0; j--) {
-            vali = (xmr_amount)(vali * 256 + (unsigned char)test.bytes[j]);
-        }
+        xmr_amount vali = *(uint64_t*)(key.bytes);
         return vali;
     }
     

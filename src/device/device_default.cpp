@@ -120,69 +120,13 @@ namespace hw {
         /*                               SUB ADDRESS                               */
         /* ======================================================================= */
 
-        bool device_default::derive_subaddress_public_key(const crypto::public_key &out_key, const crypto::key_derivation &derivation, const std::size_t output_index, crypto::public_key &derived_key) {
-            return crypto::wallet::derive_subaddress_public_key(out_key, derivation, output_index,derived_key);
+        bool device_default::derive_subaddress_public_key(const crypto::public_key &otk, const crypto::key_derivation &derivation, const std::size_t output_index, crypto::public_key &derived_key) {
+            return crypto::derive_subaddress_public_key(otk, derivation, output_index,derived_key);
         }
 
-        crypto::public_key device_default::get_subaddress_spend_public_key(const cryptonote::account_keys& keys, const cryptonote::subaddress_index &index) {
-            if (index.is_zero())
-              return keys.m_account_address.m_spend_public_key;
+      
 
-            // m = Hs(a || index_major || index_minor)
-            crypto::secret_key m = get_subaddress_secret_key(keys.m_view_secret_key, index);
-
-            // M = m*G
-            crypto::public_key M;
-            crypto::secret_key_to_public_key(m, M);
-
-            // D = B + M
-            crypto::public_key D = rct::rct2pk(rct::addKeys(rct::pk2rct(keys.m_account_address.m_spend_public_key), rct::pk2rct(M)));
-            return D;
-        }
-
-        std::vector<crypto::public_key>  device_default::get_subaddress_spend_public_keys(const cryptonote::account_keys &keys, uint32_t account, uint32_t begin, uint32_t end) {
-            CHECK_AND_ASSERT_THROW_MES(begin <= end, "begin > end");
-
-            std::vector<crypto::public_key> pkeys;
-            pkeys.reserve(end - begin);
-            cryptonote::subaddress_index index = {account, begin};
-
-            ge_p3 p3;
-            ge_cached cached;
-            CHECK_AND_ASSERT_THROW_MES(ge_frombytes_vartime(&p3, (const unsigned char*)keys.m_account_address.m_spend_public_key.data) == 0,
-                "ge_frombytes_vartime failed to convert spend public key");
-            ge_p3_to_cached(&cached, &p3);
-
-            for (uint32_t idx = begin; idx < end; ++idx)
-            {
-                index.minor = idx;
-                if (index.is_zero())
-                {
-                    pkeys.push_back(keys.m_account_address.m_spend_public_key);
-                    continue;
-                }
-                crypto::secret_key m = get_subaddress_secret_key(keys.m_view_secret_key, index);
-
-                // M = m*G
-                ge_scalarmult_base(&p3, (const unsigned char*)m.data);
-
-                // D = B + M
-                crypto::public_key D;
-                ge_p1p1 p1p1;
-                ge_add(&p1p1, &p3, &cached);
-                ge_p1p1_to_p3(&p3, &p1p1);
-                ge_p3_tobytes((unsigned char*)D.data, &p3);
-
-                pkeys.push_back(D);
-            }
-            return pkeys;
-        }
-
-        cryptonote::account_public_address device_default::get_subaddress(const cryptonote::account_keys& keys, const cryptonote::subaddress_index &index) {
-              return keys.m_account_address;
-        }
-
-        crypto::secret_key  device_default::get_subaddress_secret_key(const crypto::secret_key &a, const cryptonote::subaddress_index &index) {
+           crypto::secret_key  device_default::get_subaddress_secret_key(const crypto::secret_key &a, const cryptonote::subaddress_index &index) {
             char data[sizeof(config::HASH_KEY_SUBADDRESS) + sizeof(crypto::secret_key) + 2 * sizeof(uint32_t)];
             memcpy(data, config::HASH_KEY_SUBADDRESS, sizeof(config::HASH_KEY_SUBADDRESS));
             memcpy(data + sizeof(config::HASH_KEY_SUBADDRESS), &a, sizeof(crypto::secret_key));
@@ -225,7 +169,7 @@ namespace hw {
         }
 
         bool device_default::generate_key_derivation(const crypto::public_key &key1, const crypto::secret_key &key2, crypto::key_derivation &derivation) {
-            return crypto::wallet::generate_key_derivation(key1, key2, derivation);
+            return crypto::generate_key_derivation(key1, key2, derivation);
         }
 
         bool device_default::derivation_to_scalar(const crypto::key_derivation &derivation, const size_t output_index, crypto::ec_scalar &res){
@@ -274,35 +218,22 @@ namespace hw {
             cryptonote::get_transaction_prefix_hash(tx, h);
         }
 
-        bool device_default::generate_output_ephemeral_keys(const size_t tx_version,
-                                                            const cryptonote::account_keys &sender_account_keys, const crypto::public_key &txkey_pub,  const crypto::secret_key &tx_key,
-                                                            const cryptonote::tx_destination_entry &dst_entr, const boost::optional<cryptonote::account_public_address> &change_addr, const size_t output_index,
-                                                            std::vector<rct::key> &amount_keys,  crypto::public_key &out_eph_public_key) {
+        bool device_default::generate_otk(const crypto::secret_key &tx_sec,const cryptonote::tx_destination_entry &dst_entr, const size_t output_index,rct::key & shared_sec,  crypto::public_key &otk) {
 
             crypto::key_derivation derivation;
-
-            bool r;
-            if (change_addr && dst_entr.addr == *change_addr)
+                //H(kA,i)G+B=H(Ra,i)G+B
+            const auto & A=dst_entr.addr.m_view_public_key;
+            const auto & B=dst_entr.addr.m_spend_public_key;
+            bool r = generate_key_derivation(A,  tx_sec, derivation);
+            CHECK_AND_ASSERT_MES(r, false, "at creation outs: failed to generate_key_derivation(" << dst_entr.addr.m_view_public_key << ", " << ( tx_sec) << ")");
             {
-            // sending change to yourself; derivation = a*R
-                r = generate_key_derivation(txkey_pub, sender_account_keys.m_view_secret_key, derivation);
-                CHECK_AND_ASSERT_MES(r, false, "at creation outs: failed to generate_key_derivation(" << txkey_pub << ", " << sender_account_keys.m_view_secret_key << ")");
+                //shared secret H(kA,i)=H(Ra,i)
+                crypto::secret_key otk_a;
+                derivation_to_scalar(derivation, output_index, otk_a);
+                shared_sec = rct::sk2rct(otk_a);
             }
-            else
-            {
-            // sending to the recipient; derivation = r*A (or s*C in the subaddress scheme)
-                r = generate_key_derivation(dst_entr.addr.m_view_public_key,  tx_key, derivation);
-                CHECK_AND_ASSERT_MES(r, false, "at creation outs: failed to generate_key_derivation(" << dst_entr.addr.m_view_public_key << ", " << ( tx_key) << ")");
-            }
-
-        if (tx_version > 1)
-            {
-                crypto::secret_key scalar1;
-                derivation_to_scalar(derivation, output_index, scalar1);
-                amount_keys.push_back(rct::sk2rct(scalar1));
-            }
-            r = derive_public_key(derivation, output_index, dst_entr.addr.m_spend_public_key, out_eph_public_key);
-            CHECK_AND_ASSERT_MES(r, false, "at creation outs: failed to derive_public_key(" << derivation << ", " << output_index << ", "<< dst_entr.addr.m_spend_public_key << ")");
+            r = derive_public_key(derivation, output_index, dst_entr.addr.m_spend_public_key, otk);
+            CHECK_AND_ASSERT_MES(r, false, "at creation outs: failed to derive_public_key(" << derivation << ", " << output_index << ", "<< B << ")");
 
             return r;
         }
@@ -311,7 +242,7 @@ namespace hw {
             crypto::key_derivation derivation;
             crypto::hash hash;
             char data[33]; /* A hash, and an extra byte */
-
+            //
             if (!generate_key_derivation(public_key, secret_key, derivation))
                 return false;
 
@@ -322,20 +253,6 @@ namespace hw {
             for (size_t b = 0; b < 8; ++b)
                 payment_id.data[b] ^= hash.data[b];
 
-            return true;
-        }
-
-        rct::key device_default::genCommitmentMask(const rct::key &amount_key) {
-            return rct::genCommitmentMask(amount_key);
-        }
-
-        bool  device_default::ecdhEncode(rct::ecdhTuple & unmasked, const rct::key & sharedSec, bool short_amount) {
-            rct::ecdhEncode(unmasked, sharedSec, short_amount);
-            return true;
-        }
-
-        bool  device_default::ecdhDecode(rct::ecdhTuple & masked, const rct::key & sharedSec, bool short_amount) {
-            rct::ecdhDecode(masked, sharedSec, short_amount);
             return true;
         }
 

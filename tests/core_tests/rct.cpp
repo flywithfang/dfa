@@ -134,8 +134,6 @@ bool gen_rct_tx_validation_base::generate_with_full(std::vector<test_event_entry
       const uint8_t type = rct_txes[n].rct_signatures.type;
       if (type == rct::RCTTypeSimple || type == rct::RCTTypeBulletproof || type == rct::RCTTypeBulletproof2 || type == rct::RCTTypeCLSAG)
         rct::decodeRctSimple(rct_txes[n].rct_signatures, rct::sk2rct(amount_key), o, rct_tx_masks[o+n*4], hw::get_device("default"));
-      else
-        rct::decodeRct(rct_txes[n].rct_signatures, rct::sk2rct(amount_key), o, rct_tx_masks[o+n*4], hw::get_device("default"));
     }
 
     CHECK_AND_ASSERT_MES(generator.construct_block_manually(blk_txes[n], blk_last, miner_account,

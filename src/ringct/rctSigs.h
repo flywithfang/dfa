@@ -102,10 +102,8 @@ namespace rct {
     bool verRctSemanticsSimple(const std::vector<const rctSig*> & rv);
     bool verRctNonSemanticsSimple(const rctSig & rv);
     static inline bool verRctSimple(const rctSig & rv) { return verRctSemanticsSimple(rv) && verRctNonSemanticsSimple(rv); }
-    xmr_amount decodeRct(const rctSig & rv, const key & sk, unsigned int i, key & mask, hw::device &hwdev);
-    xmr_amount decodeRct(const rctSig & rv, const key & sk, unsigned int i, hw::device &hwdev);
-    xmr_amount decodeRctSimple(const rctSig & rv, const key & sk, unsigned int i, key & mask, hw::device &hwdev);
-    xmr_amount decodeRctSimple(const rctSig & rv, const key & sk, unsigned int i, hw::device &hwdev);
+    std::tuple<xmr_amount,key> decodeRctSimple(const rctSig & rv, const key & shared_sec, unsigned int i);
+    xmr_amount decodeRctSimple(const rctSig & rv, const key & sk, unsigned int i);
     key get_pre_mlsag_hash(const rctSig &rv, hw::device &hwdev);
 }
 #endif  /* RCTSIGS_H */

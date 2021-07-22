@@ -23,8 +23,6 @@ void wallet_accessor_test::set_account(tools::wallet2 * wallet, cryptonote::acco
   wallet->m_multisig_signers.clear();
   wallet->m_device_name = account.get_device().get_name();
 
-  wallet->m_subaddress_lookahead_major = 5;
-  wallet->m_subaddress_lookahead_minor = 20;
 
   wallet->setup_new_blockchain();  // generates also subadress register
 }
@@ -181,7 +179,7 @@ void wallet_tools::gen_tx_src(size_t mixin, uint64_t cur_height, const tools::wa
   cryptonote::tx_source_entry::output_entry &real_oe = src.outputs[real_idx];
   real_oe.first = td.m_global_output_index;
   real_oe.second.dest = rct::pk2rct(boost::get<txout_to_key>(td.m_tx.vout[td.m_internal_output_index].target).key);
-  real_oe.second.mask = rct::commit(td.amount(), td.m_mask);
+  real_oe.second.commitment = rct::commit(td.amount(), td.m_noise);
 
   std::sort(src.outputs.begin(), src.outputs.end(), [&](const cryptonote::tx_source_entry::output_entry i0, const cryptonote::tx_source_entry::output_entry i1) {
     return i0.first < i1.first;
@@ -194,8 +192,8 @@ void wallet_tools::gen_tx_src(size_t mixin, uint64_t cur_height, const tools::wa
     }
   }
 
-  src.mask = td.m_mask;
-  src.real_out_tx_key = get_tx_pub_key_from_extra(td.m_tx, td.m_pk_index);
+  src.noise = td.m_noise;
+  src.real_out_tx_key = get_tx_pub_key_from_extra(td.m_tx);
   
   src.real_output_in_tx_index = td.m_internal_output_index;
 
@@ -236,16 +234,6 @@ void wallet_tools::gen_block_data(block_tracker &bt, const cryptonote::block *bl
         }
 }
 
-void wallet_tools::compute_subaddresses(std::unordered_map<crypto::public_key, cryptonote::subaddress_index> &subaddresses, cryptonote::account_base & creds, size_t account, size_t minors)
-{
-  auto &hwdev = hw::get_device("default");
-  const std::vector<crypto::public_key> pkeys = hwdev.get_subaddress_spend_public_keys(creds.get_keys(), account, 0, minors);
-
-  for(uint32_t c = 0; c < pkeys.size(); ++c){
-    cryptonote::subaddress_index sidx{(uint32_t)account, c};
-    subaddresses[pkeys[c]] = sidx;
-  }
-}
 
 cryptonote::account_public_address get_address(const tools::wallet2* inp)
 {

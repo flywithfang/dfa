@@ -275,12 +275,6 @@ bool gen_tx_input_is_not_txin_to_key::generate(std::vector<test_event_entry>& ev
     return builder.m_tx;
   };
 
-  DO_CALLBACK(events, "mark_invalid_tx");
-  events.push_back(make_tx_with_input(txin_to_script()));
-
-  DO_CALLBACK(events, "mark_invalid_tx");
-  events.push_back(make_tx_with_input(txin_to_scripthash()));
-
   return true;
 }
 

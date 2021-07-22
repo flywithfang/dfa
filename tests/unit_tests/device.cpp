@@ -119,12 +119,10 @@ TEST(device, ecdh32)
   hw::core::device_default dev;
   rct::ecdhTuple tuple, tuple2;
   rct::key key = rct::skGen();
-  tuple.mask = rct::skGen();
-  tuple.amount = rct::skGen();
+  tuple.amount = rct::h2d(rct::skGen());
   tuple2 = tuple;
-  dev.ecdhEncode(tuple, key, false);
-  dev.ecdhDecode(tuple, key, false);
-  ASSERT_EQ(tuple2.mask, tuple.mask);
-  ASSERT_EQ(tuple2.amount, tuple.amount);
+  auto a1=dev.ecdhEncode(tuple.amount, key);
+  auto a2=dev.ecdhDecode(a1, key);
+  ASSERT_EQ(a1,a2);
 }
 

@@ -266,13 +266,14 @@ bool test_generator::construct_block(cryptonote::block& blk, uint64_t height, co
     txs_weight += get_transaction_weight(tx);
   }
 
-  blk.miner_tx = AUTO_VAL_INIT(blk.miner_tx);
+  blk.miner_tx=transaction{}
   size_t target_block_weight = txs_weight + get_transaction_weight(blk.miner_tx);
   while (true)
   {
     std::cout<<"construct_miner_tx "<<height<<","<< miner_acc.get_public_address_str(network_type::MAINNET)<<std::endl;
-    
-    if (!construct_miner_tx(height, misc_utils::median(block_weights), already_generated_coins, target_block_weight, total_fee, miner_acc.get_keys().m_account_address, blk.miner_tx, blobdata(), 10, hf_ver ? hf_ver.get() : 1))
+    bool r =false;
+    std::tie(r,blk.miner_tx,)=construct_miner_tx(height, misc_utils::median(block_weights), already_generated_coins, target_block_weight, total_fee, miner_acc.get_keys().m_account_address,  blobdata(),  hf_ver ? hf_ver.get() : 1);
+    if(!r)
       return false;
 
     auto tx_w =  get_transaction_weight(blk.miner_tx);
@@ -377,7 +378,10 @@ bool test_generator::construct_block_manually(block& blk, const block& prev_bloc
   {
     size_t current_block_weight = txs_weight + get_transaction_weight(blk.miner_tx);
     // TODO: This will work, until size of constructed block is less then CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE
-    if (!construct_miner_tx(height, misc_utils::median(block_weights), already_generated_coins, current_block_weight, fees, miner_acc.get_keys().m_account_address, blk.miner_tx, blobdata(), max_outs, hf_version))
+    bool r =false;
+    std::tie(r,blk.miner_tx) = construct_miner_tx(height, misc_utils::median(block_weights), already_generated_coins, current_block_weight, fees, miner_acc.get_keys().m_account_address, blk.miner_tx, blobdata(),  hf_version);
+
+    if(!r)
       return false;
   }
 
@@ -494,13 +498,11 @@ bool init_spent_output_indices(map_output_idx_t& outs, map_output_t& outs_mine, 
             keypair in_ephemeral;
             crypto::public_key out_key = boost::get<txout_to_key>(oi.out).key;
             const account_keys& acc_keys= from.get_keys();
-            std::unordered_map<crypto::public_key, cryptonote::subaddress_index> subaddresses;
-            subaddresses[acc_keys.m_account_address.m_spend_public_key] = {0,0};
             const auto tx_key=get_tx_pub_key_from_extra(*oi.p_tx); 
             
              
              auto &  dev=hw::get_device(("default"));
-            generate_key_image_helper(acc_keys, subaddresses, out_key,tx_key ,tx_keys, oi.out_no, in_ephemeral, img,dev );
+            generate_key_image_helper(acc_keys, tx_key ,tx_keys, oi.out_no, in_ephemeral, img,dev );
 
             // lookup for this key image in the events vector
             BOOST_FOREACH(auto& tx_pair, mtx) {

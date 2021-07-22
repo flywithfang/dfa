@@ -75,8 +75,8 @@ void wallet2::transfer_selected_rct(std::vector<cryptonote::tx_destination_entry
 
   uint64_t upper_transaction_weight_limit = get_upper_transaction_weight_limit();
   uint64_t needed_money = fee;
-  LOG_PRINT_L2("transfer_selected_rct: starting with fee " << print_money (needed_money));
-  LOG_PRINT_L2("selected transfers: " << strjoin(selected_transfers, " "));
+  MINFO("transfer_selected_rct: starting with fee " << print_money (needed_money));
+  MINFO("selected transfers: " << strjoin(selected_transfers, " "));
 
   // calculate total amount being sent to all destinations
   // throw if total amount overflows uint64_t
@@ -84,7 +84,7 @@ void wallet2::transfer_selected_rct(std::vector<cryptonote::tx_destination_entry
   {
     THROW_WALLET_EXCEPTION_IF(0 == dt.amount, error::zero_amount);
     needed_money += dt.amount;
-    LOG_PRINT_L2("transfer: adding " << print_money(dt.amount) << ", for a total of " << print_money (needed_money));
+    MINFO("transfer: adding " << print_money(dt.amount) << ", for a total of " << print_money (needed_money));
     THROW_WALLET_EXCEPTION_IF(needed_money < dt.amount, error::tx_sum_overflow, dsts, fee, m_nettype);
   }
 
@@ -95,103 +95,84 @@ void wallet2::transfer_selected_rct(std::vector<cryptonote::tx_destination_entry
   uint64_t found_money = 0;
   for(size_t idx: selected_transfers)
   {
-    found_money += m_transfers[idx].amount();
-    all_rct &= m_transfers[idx].is_rct();
+    found_money += m_transfers_in[idx].amount();
   }
 
-  LOG_PRINT_L2("wanted " << print_money(needed_money) << ", found " << print_money(found_money) << ", fee " << print_money(fee));
+  MINFO("wanted " << print_money(needed_money) << ", found " << print_money(found_money) << ", fee " << print_money(fee));
   THROW_WALLET_EXCEPTION_IF(found_money < needed_money, error::not_enough_unlocked_money, found_money, needed_money - fee, fee);
 
-  uint32_t subaddr_account = m_transfers[*selected_transfers.begin()].m_subaddr_index.major;
-  for (auto i = ++selected_transfers.begin(); i != selected_transfers.end(); ++i)
-    THROW_WALLET_EXCEPTION_IF(subaddr_account != m_transfers[*i].m_subaddr_index.major, error::wallet_internal_error, "the tx uses funds from multiple accounts");
-
+  
   if (outs.empty())
     get_outs(outs, selected_transfers, fake_outputs_count, all_rct); // may throw
 
 
   //prepare inputs
-  LOG_PRINT_L2("preparing outputs");
-  size_t i = 0, out_index = 0;
+  MINFO("preparing outputs");
+  size_t dst_index = 0;
   std::vector<cryptonote::tx_source_entry> sources;
-  std::unordered_set<rct::key> used_L;
   for(size_t idx: selected_transfers)
   {
     sources.resize(sources.size()+1);
     cryptonote::tx_source_entry& src = sources.back();
-    const transfer_details& td = m_transfers[idx];
+    const transfer_details& td = m_transfers_in[idx];
     src.amount = td.amount();
-    src.rct = td.is_rct();
     //paste mixin transaction
 
-    THROW_WALLET_EXCEPTION_IF(outs.size() < out_index + 1 ,  error::wallet_internal_error, "outs.size() < out_index + 1"); 
-    THROW_WALLET_EXCEPTION_IF(outs[out_index].size() < fake_outputs_count ,  error::wallet_internal_error, "fake_outputs_count > random outputs found");
+    THROW_WALLET_EXCEPTION_IF(outs.size() < dst_index + 1 ,  error::wallet_internal_error, "outs.size() < dst_index + 1"); 
+    THROW_WALLET_EXCEPTION_IF(outs[dst_index].size() < fake_outputs_count ,  error::wallet_internal_error, "fake_outputs_count > random outputs found");
       
     typedef cryptonote::tx_source_entry::output_entry tx_output_entry;
-    for (size_t n = 0; n < fake_outputs_count + 1; ++n)
+    for (size_t i = 0; i < fake_outputs_count + 1; ++i)
     {
-      tx_output_entry oe;
-      oe.first = std::get<0>(outs[out_index][n]);
-      oe.second.dest = rct::pk2rct(std::get<1>(outs[out_index][n]));
-      oe.second.mask = std::get<2>(outs[out_index][n]);
-      src.outputs.push_back(oe);
+      tx_output_entry decoy;
+      auto [oindex,otk,commit]=outs[dst_index][i];
+      decoy.first = oindex;
+      rct::ctkey &ct=  decoy.second;
+      ct.dest = rct::pk2rct(otk);
+      ct.mask = commit;
+      src.decoys.push_back(decoy);
     }
-    ++i;
 
     //paste real transaction to the random index
-    auto it_to_replace = std::find_if(src.outputs.begin(), src.outputs.end(), [&](const tx_output_entry& a)
+    auto it_real = std::find_if(src.outputs.begin(), src.outputs.end(), [&](const tx_output_entry& a)
     {
       return a.first == td.m_global_output_index;
     });
-    THROW_WALLET_EXCEPTION_IF(it_to_replace == src.outputs.end(), error::wallet_internal_error,
+    THROW_WALLET_EXCEPTION_IF(it_real == src.outputs.end(), error::wallet_internal_error,
         "real output not found");
 
     tx_output_entry real_oe;
     real_oe.first = td.m_global_output_index;
     real_oe.second.dest = rct::pk2rct(td.get_public_key());
-    real_oe.second.mask = rct::commit(td.amount(), td.m_mask);
+    const auto & noise=td.m_noise;
+    real_oe.second.mask = rct::commit(td.amount(), noise);
     *it_to_replace = real_oe;
-    src.real_out_tx_key = get_tx_pub_key_from_extra(td.m_tx, td.m_pk_index);
-    src.real_output = it_to_replace - src.outputs.begin();
+
+    src.real_out_tx_key = get_tx_pub_key_from_extra(td.m_tx);
+    src.real_output = it_real - src.outputs.begin();
     src.real_output_in_tx_index = td.m_internal_output_index;
-    src.mask = td.m_mask;
+    src.mask = td.m_noise;
    
     detail::print_source_entry(src);
-    ++out_index;
+    ++dst_index;
   }
-  LOG_PRINT_L2("outputs prepared");
+  MINFO("outputs prepared");
 
   // we still keep a copy, since we want to keep dsts free of change for user feedback purposes
   std::vector<cryptonote::tx_destination_entry> splitted_dsts = dsts;
   cryptonote::tx_destination_entry change_dts {};
   change_dts.amount = found_money - needed_money;
-  if (change_dts.amount == 0)
-  {
-    if (splitted_dsts.size() == 1)
-    {
-      // If the change is 0, send it to a random address, to avoid confusing
-      // the sender with a 0 amount output. We send a 0 amount in order to avoid
-      // letting the destination be able to work out which of the inputs is the
-      // real one in our rings
-      LOG_PRINT_L2("generating dummy address for 0 change");
-      cryptonote::account_base dummy;
-      dummy.generate();
-      change_dts.addr = dummy.get_keys().m_account_address;
-      LOG_PRINT_L2("generated dummy address for 0 change");
-      splitted_dsts.push_back(change_dts);
-    }
-  }
-  else
+  if (change_dts.amount > 0)
   {
     change_dts.addr = m_account.get_keys().m_account_address;
     splitted_dsts.push_back(change_dts);
   }
 
   crypto::secret_key tx_key;
-  LOG_PRINT_L2("constructing tx");
+  MINFO("constructing tx");
   auto sources_copy = sources;
-  bool r = cryptonote::construct_tx_and_get_tx_key(m_account.get_keys(), m_subaddresses, sources, splitted_dsts, change_dts.addr, extra, tx, unlock_time, tx_key,  true, rct_config);
-  LOG_PRINT_L2("constructed tx, r="<<r);
+  bool r = cryptonote::construct_tx_and_get_tx_key(m_account.get_keys(),  sources, splitted_dsts, change_dts.addr, extra, tx, unlock_time, tx_key);
+  MINFO("constructed tx, r="<<r);
   THROW_WALLET_EXCEPTION_IF(!r, error::tx_not_constructed, sources, dsts, unlock_time, m_nettype);
   THROW_WALLET_EXCEPTION_IF(upper_transaction_weight_limit <= get_transaction_weight(tx), error::tx_too_big, tx, upper_transaction_weight_limit);
 
@@ -199,17 +180,19 @@ void wallet2::transfer_selected_rct(std::vector<cryptonote::tx_destination_entry
   std::vector<size_t> ins_order;
   for (size_t n = 0; n < sources.size(); ++n)
   {
-    for (size_t idx = 0; idx < sources_copy.size(); ++idx)
+     const auto & ne =sources[n];
+    for (size_t j = 0; j < sources_copy.size(); ++j)
     {
-      THROW_WALLET_EXCEPTION_IF((size_t)sources_copy[idx].real_output >= sources_copy[idx].outputs.size(),
-          error::wallet_internal_error, "Invalid real_output");
-      if (sources_copy[idx].outputs[sources_copy[idx].real_output].second.dest == sources[n].outputs[sources[n].real_output].second.dest)
-        ins_order.push_back(idx);
+        const auto & old=sources_copy[j];
+      THROW_WALLET_EXCEPTION_IF((size_t)old.real_output >= old.outputs.size(),error::wallet_internal_error, "Invalid real_output");
+    
+      if (old.outputs[old.real_output].second.dest == ne.outputs[ne.real_output].second.dest)
+        ins_order.push_back(j);
     }
   }
   THROW_WALLET_EXCEPTION_IF(ins_order.size() != sources.size(), error::wallet_internal_error, "Failed to work out sources permutation");
 
-  LOG_PRINT_L2("gathering key images");
+  MINFO("gathering key images");
   std::string key_images;
   bool all_are_txin_to_key = std::all_of(tx.vin.begin(), tx.vin.end(), [&](const txin_v& s_e) -> bool
   {
@@ -218,7 +201,7 @@ void wallet2::transfer_selected_rct(std::vector<cryptonote::tx_destination_entry
     return true;
   });
   THROW_WALLET_EXCEPTION_IF(!all_are_txin_to_key, error::unexpected_txin_type, tx);
-  LOG_PRINT_L2("gathered key images " + std::to_string(tx.vin.size()));
+  MINFO("gathered key images " + std::to_string(tx.vin.size()));
 
   ptx.key_images = key_images;
   ptx.fee = fee;
@@ -238,16 +221,11 @@ void wallet2::transfer_selected_rct(std::vector<cryptonote::tx_destination_entry
   ptx.construction_data.unlock_time = unlock_time;
   ptx.construction_data.use_rct = true;
   ptx.construction_data.rct_config = {
-    tx.rct_signatures.p.bulletproofs.empty() ? rct::RangeProofBorromean : rct::RangeProofPaddedBulletproof,
-    use_fork_rules(HF_VERSION_CLSAG, -10) ? 3 : use_fork_rules(HF_VERSION_SMALLER_BP, -10) ? 2 : 1
+     rct::RangeProofPaddedBulletproof,3
   };
   ptx.construction_data.dests = dsts;
   // record which subaddress indices are being used as inputs
-  ptx.construction_data.subaddr_account = subaddr_account;
-  ptx.construction_data.subaddr_indices.clear();
-  for (size_t idx: selected_transfers)
-    ptx.construction_data.subaddr_indices.insert(m_transfers[idx].m_subaddr_index.minor);
-  LOG_PRINT_L2("transfer_selected_rct done");
+  MINFO("transfer_selected_rct done");
 }
 
 }

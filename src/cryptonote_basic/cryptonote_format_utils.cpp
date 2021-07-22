@@ -153,17 +153,17 @@ namespace cryptonote
         return true;
       if (rv.outPk.size() != tx.vout.size())
       {
-        LOG_PRINT_L1("Failed to parse transaction from blob, bad outPk size in tx " << get_transaction_hash(tx));
+        MINFO("Failed to parse transaction from blob, bad outPk size in tx " << get_transaction_hash(tx));
         return false;
       }
       for (size_t n = 0; n < tx.rct_signatures.outPk.size(); ++n)
       {
         if (tx.vout[n].target.type() != typeid(txout_to_key))
         {
-          LOG_PRINT_L1("Unsupported output type in tx " << get_transaction_hash(tx));
+          MINFO("Unsupported output type in tx " << get_transaction_hash(tx));
           return false;
         }
-        rv.outPk[n].dest = rct::pk2rct(boost::get<txout_to_key>(tx.vout[n].target).key);
+        rv.outPk[n].otk = rct::pk2rct(boost::get<txout_to_key>(tx.vout[n].target).key);
       }
 
       if (!base_only)
@@ -173,18 +173,18 @@ namespace cryptonote
         {
           if (rv.p.bulletproofs.size() != 1)
           {
-            LOG_PRINT_L1("Failed to parse transaction from blob, bad bulletproofs size in tx " << get_transaction_hash(tx));
+            MINFO("Failed to parse transaction from blob, bad bulletproofs size in tx " << get_transaction_hash(tx));
             return false;
           }
           if (rv.p.bulletproofs[0].L.size() < 6)
           {
-            LOG_PRINT_L1("Failed to parse transaction from blob, bad bulletproofs L size in tx " << get_transaction_hash(tx));
+            MINFO("Failed to parse transaction from blob, bad bulletproofs L size in tx " << get_transaction_hash(tx));
             return false;
           }
           const size_t max_outputs = 1 << (rv.p.bulletproofs[0].L.size() - 6);
           if (max_outputs < tx.vout.size())
           {
-            LOG_PRINT_L1("Failed to parse transaction from blob, bad bulletproofs max outputs in tx " << get_transaction_hash(tx));
+            MINFO("Failed to parse transaction from blob, bad bulletproofs max outputs in tx " << get_transaction_hash(tx));
             return false;
           }
           const size_t n_amounts = tx.vout.size();
@@ -271,70 +271,27 @@ namespace cryptonote
     return is_v1_tx(blobdata_ref{tx_blob.data(), tx_blob.size()});
   }
   //---------------------------------------------------------------
-  bool generate_key_image_helper(const account_keys& ack, const std::unordered_map<crypto::public_key, subaddress_index>& subaddresses, const crypto::public_key& out_key, const crypto::public_key& tx_public_key,  size_t real_output_index, keypair& in_ephemeral, crypto::key_image& ki, hw::device &hwdev)
+  bool generate_key_image_helper(const account_keys& ack,   const crypto::public_key& tx_public_key,  size_t real_output_index, keypair& otk_p, crypto::key_image& ki, hw::device &hwdev)
   {
-    crypto::key_derivation recv_derivation = AUTO_VAL_INIT(recv_derivation);
+    crypto::key_derivation kA{};
     //rGa=rA
     //H(rA)+b
-    bool r = hwdev.generate_key_derivation(tx_public_key, ack.m_view_secret_key, recv_derivation);
+    const auto & a= ack.m_view_secret_key;
+    const auto & b= ack.m_spend_secret_key;
+    bool r = crypto::generate_key_derivation(tx_public_key, a, kA);
     if (!r)
     {
       MWARNING("key image helper: failed to generate_key_derivation(" << tx_public_key << ", " << ack.m_view_secret_key << ")");
       memcpy(&recv_derivation, rct::identity().bytes, sizeof(recv_derivation));
     }
 
-    boost::optional<subaddress_receive_info> subaddr_recv_info = is_out_to_acc_precomp(subaddresses, out_key, recv_derivation,  real_output_index,hwdev);
-    CHECK_AND_ASSERT_MES(subaddr_recv_info, false, "key image helper: given output pubkey doesn't seem to belong to this address");
-    //H(rA)G+B
-    return generate_key_image_helper_precomp(ack, out_key, subaddr_recv_info->derivation, real_output_index, subaddr_recv_info->index, in_ephemeral, ki, hwdev);
-  }
-  //---------------------------------------------------------------
-  bool generate_key_image_helper_precomp(const account_keys& ack, const crypto::public_key& out_key, const crypto::key_derivation& recv_derivation, size_t real_output_index, const subaddress_index& received_index, keypair& in_ephemeral, crypto::key_image& ki, hw::device &hwdev)
-  {
-    if (hwdev.compute_key_image(ack, out_key, recv_derivation, real_output_index, received_index, in_ephemeral, ki))
-    {
-      return true;
-    }
-
-    if (ack.m_spend_secret_key == crypto::null_skey)
-    {
-      // for watch-only wallet, simply copy the known output pubkey
-      in_ephemeral.pub = out_key;
-      in_ephemeral.sec = crypto::null_skey;
-    }
-    else
-    {
-      // derive secret key with subaddress - step 1: original CN derivation
-      crypto::secret_key scalar_step1;
-      hwdev.derive_secret_key(recv_derivation, real_output_index, ack.m_spend_secret_key, scalar_step1); // computes Hs(a*R || idx) + b
-
-      // step 2: add Hs(a || index_major || index_minor)
-      crypto::secret_key subaddr_sk;
-      crypto::secret_key scalar_step2;
-      if (received_index.is_zero())
-      {
-        scalar_step2 = scalar_step1;    // treat index=(0,0) as a special case representing the main address
-      }
-      else
-      {
-        subaddr_sk = hwdev.get_subaddress_secret_key(ack.m_view_secret_key, received_index);
-        hwdev.sc_secret_add(scalar_step2, scalar_step1,subaddr_sk);
-      }
-
-      in_ephemeral.sec = scalar_step2;
-
-      {
-        // when not in multisig, we know the full spend secret key, so the output pubkey can be obtained by scalarmultBase
-        CHECK_AND_ASSERT_MES(hwdev.secret_key_to_public_key(in_ephemeral.sec, in_ephemeral.pub), false, "Failed to derive public key");
-      }
-  
-
-      CHECK_AND_ASSERT_MES(in_ephemeral.pub == out_key,
-           false, "key image helper precomp: given output pubkey doesn't match the derived one");
-    }
-
-    hwdev.generate_key_image(in_ephemeral.pub, in_ephemeral.sec, ki);
+ //computes Hs(a*R || idx) + b
+      crypto::derive_secret_key(kA, real_output_index, b, otk_p.sec); // 
+    
+      CHECK_AND_ASSERT_MES(hwdev.secret_key_to_public_key(otk_p.sec, otk_p.pub), false, "Failed to derive public key");
+    crypto::generate_key_image(otk_p.pub, otk_p.sec, ki);
     return true;
+
   }
   //---------------------------------------------------------------
   uint64_t power_integral(uint64_t a, uint64_t b)
@@ -893,16 +850,14 @@ public:
     return false;
   }
   //---------------------------------------------------------------
-  boost::optional<subaddress_receive_info> is_out_to_acc_precomp(const std::unordered_map<crypto::public_key, subaddress_index>& subaddresses, const crypto::public_key& out_key, const crypto::key_derivation& derivation, size_t output_index, hw::device &hwdev)
+  bool is_out_to_acc_precomp(const crypto::public_key& B, const crypto::public_key& otk, const crypto::key_derivation& derivation, size_t output_index, hw::device &hwdev)
   {
     // try the shared tx pubkey
-    crypto::public_key subaddress_spendkey;
-    hwdev.derive_subaddress_public_key(out_key, derivation, output_index, subaddress_spendkey);
-    auto found = subaddresses.find(subaddress_spendkey);
-    if (found != subaddresses.end())
-      return subaddress_receive_info{ found->second, derivation };
-
-    return boost::none;
+    crypto::public_key B2;
+    //B=otk - H(kG,a,oi)*G
+    hwdev.derive_subaddress_public_key(otk, derivation, output_index, B2);
+    auto found = B==B2;
+    return found;
   }
   //---------------------------------------------------------------
   bool lookup_acc_outs(const account_keys& acc, const transaction& tx, std::vector<size_t>& outs, uint64_t& money_transfered)
@@ -1121,13 +1076,6 @@ public:
   bool calculate_transaction_hash(const transaction& t, crypto::hash& res, size_t* blob_size)
   {
     CHECK_AND_ASSERT_MES(!t.pruned, false, "Cannot calculate the hash of a pruned transaction");
-
-    // v1 transactions hash the entire blob
-    if (t.version == 1)
-    {
-      size_t ignored_blob_size, &blob_size_ref = blob_size ? *blob_size : ignored_blob_size;
-      return get_object_hash(t, res, blob_size_ref);
-    }
 
     // v2 transactions hash different parts together, than hash the set of those hashes
     crypto::hash hashes[3];

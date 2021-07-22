@@ -70,11 +70,12 @@ namespace tools{
 
 //----------------------------------------------------------------------------------------------------
 
-void wallet2::check_tx_key(const crypto::hash &txid, const crypto::secret_key &tx_key, const cryptonote::account_public_address &address, uint64_t &received, bool &in_pool, uint64_t &confirmations)
+void wallet2::check_tx_key(const crypto::hash &txid, const crypto::secret_key &tx_sec, const cryptonote::account_public_address &address, uint64_t &received, bool &in_pool, uint64_t &confirmations)
 {
   crypto::key_derivation derivation;
-  //tx_key*A OK= H(kA,oi)G+B  tx_key=kG
-  THROW_WALLET_EXCEPTION_IF(!crypto::generate_key_derivation(address.m_view_public_key, tx_key, derivation), error::wallet_internal_error,
+  //tx_sec*A OK= H(kA,oi)G+B  tx_sec=k
+  const auto & A=address.m_view_public_key;
+  THROW_WALLET_EXCEPTION_IF(!crypto::generate_key_derivation(A, tx_sec, derivation), error::wallet_internal_error,
     "Failed to generate key derivation from supplied parameters");
 
   check_tx_key_helper(txid, derivation,  address, received, in_pool, confirmations);
@@ -134,40 +135,39 @@ void wallet2::check_tx_key_helper(const crypto::hash &txid, const crypto::key_de
 void wallet2::check_tx_key_helper(const cryptonote::transaction &tx, const crypto::key_derivation &derivation,  const cryptonote::account_public_address &address, uint64_t &received) const
 {
   received = 0;
-
   for (size_t n = 0; n < tx.vout.size(); ++n)
   {
     const cryptonote::txout_to_key* const out_key = boost::get<cryptonote::txout_to_key>(std::addressof(tx.vout[n].target));
     if (!out_key)
       continue;
 
-    crypto::public_key derived_out_key;
+    crypto::public_key otk;
     //H(kA,oi)G  kG
-    bool r = crypto::derive_public_key(derivation, n, address.m_spend_public_key, derived_out_key);
+    bool r = crypto::derive_public_key(derivation, n, address.m_spend_public_key, otk);
     THROW_WALLET_EXCEPTION_IF(!r, error::wallet_internal_error, "Failed to derive public key");
-    bool found = out_key->key == derived_out_key;
-    crypto::key_derivation found_derivation = derivation;
+    bool found = out_key->key == otk;
 
     if (found)
     {
-      uint64_t amount;
-      if (tx.version == 1 || tx.rct_signatures.type == rct::RCTTypeNull)
+      uint64_t amount{};
+      if (tx.rct_signatures.type == rct::RCTTypeNull)
       {
         amount = tx.vout[n].amount;
       }
       else
       {
-        crypto::secret_key scalar1;
-        crypto::derivation_to_scalar(found_derivation, n, scalar1);
-        rct::ecdhTuple ecdh_info = tx.rct_signatures.ecdhInfo[n];
-        rct::ecdhDecode(ecdh_info, rct::sk2rct(scalar1), tx.rct_signatures.type == rct::RCTTypeBulletproof2 || tx.rct_signatures.type == rct::RCTTypeCLSAG);
+        crypto::secret_key ss;
+        crypto::derivation_to_scalar(derivation, n, ss);
+        rct::key shared_sec=rct::sk2rct(ss);
+        const rct::ecdhTuple & ecdh_info = tx.rct_signatures.ecdhInfo[n];
+        const auto a= rct::ecdhDecode(ecdh_info.amount, shared_sec);
         const rct::key C = tx.rct_signatures.outPk[n].mask;
-        rct::key Ctmp;
-        THROW_WALLET_EXCEPTION_IF(sc_check(ecdh_info.mask.bytes) != 0, error::wallet_internal_error, "Bad ECDH input mask");
-        THROW_WALLET_EXCEPTION_IF(sc_check(ecdh_info.amount.bytes) != 0, error::wallet_internal_error, "Bad ECDH input amount");
-        rct::addKeys2(Ctmp, ecdh_info.mask, ecdh_info.amount, rct::H);
-        if (rct::equalKeys(C, Ctmp))
-          amount = rct::h2d(ecdh_info.amount);
+        rct::key C2;
+        THROW_WALLET_EXCEPTION_IF(sc_check(a.bytes) != 0, error::wallet_internal_error, "Bad ECDH input amount");
+        const noise= rct::genCommitmentMask(shared_sec);
+        rct::addKeys2(C2, noise, a, rct::H);
+        if (rct::equalKeys(C, C2))
+          amount = rct::h2d(a);
         else
           amount = 0;
       }
@@ -182,37 +182,31 @@ bool wallet2::check_tx_proof(const cryptonote::transaction &tx, const cryptonote
   const bool is_out = sig_str.substr(0, 3) == "Out";
   const std::string header = is_out ? sig_str.substr(0,10) : sig_str.substr(0,9);
   int version = 2; // InProofV2
-  if (is_out && sig_str.substr(8,2) == "V1") version = 1; // OutProofV1
   else if (is_out) version = 2; // OutProofV2
-  else if (sig_str.substr(7,2) == "V1") version = 1; // InProofV1
 
   const size_t header_len = header.size();
   THROW_WALLET_EXCEPTION_IF(sig_str.size() < header_len || sig_str.substr(0, header_len) != header, error::wallet_internal_error,
     "Signature header check error");
 
   // decode base58
-  std::vector<crypto::public_key> shared_secret(1);
-  std::vector<crypto::signature> sig(1);
-  const size_t pk_len = tools::base58::encode(std::string((const char *)&shared_secret[0], sizeof(crypto::public_key))).size();
-  const size_t sig_len = tools::base58::encode(std::string((const char *)&sig[0], sizeof(crypto::signature))).size();
-  const size_t num_sigs = (sig_str.size() - header_len) / (pk_len + sig_len);
+  crypto::public_key kA{};
+  crypto::signature sig{};
+  const size_t pk_len = tools::base58::encode(std::string((const char *)&kA, sizeof(crypto::public_key))).size();
+  const size_t sig_len = tools::base58::encode(std::string((const char *)&sig, sizeof(crypto::signature))).size();
   THROW_WALLET_EXCEPTION_IF(sig_str.size() != header_len + num_sigs * (pk_len + sig_len), error::wallet_internal_error,
     "Wrong signature size");
-  shared_secret.resize(num_sigs);
-  sig.resize(num_sigs);
-  for (size_t i = 0; i < num_sigs; ++i)
   {
     std::string pk_decoded;
     std::string sig_decoded;
-    const size_t offset = header_len + i * (pk_len + sig_len);
+    const size_t offset = header_len +  (pk_len + sig_len);
     THROW_WALLET_EXCEPTION_IF(!tools::base58::decode(sig_str.substr(offset, pk_len), pk_decoded), error::wallet_internal_error,
       "Signature decoding error");
     THROW_WALLET_EXCEPTION_IF(!tools::base58::decode(sig_str.substr(offset + pk_len, sig_len), sig_decoded), error::wallet_internal_error,
       "Signature decoding error");
     THROW_WALLET_EXCEPTION_IF(sizeof(crypto::public_key) != pk_decoded.size() || sizeof(crypto::signature) != sig_decoded.size(), error::wallet_internal_error,
       "Signature decoding error");
-    memcpy(&shared_secret[i], pk_decoded.data(), sizeof(crypto::public_key));
-    memcpy(&sig[i], sig_decoded.data(), sizeof(crypto::signature));
+    memcpy(&kA, pk_decoded.data(), sizeof(crypto::public_key));
+    memcpy(&sig, sig_decoded.data(), sizeof(crypto::signature));
   }
 
   crypto::public_key tx_pub_key = get_tx_pub_key_from_extra(tx);
@@ -227,23 +221,22 @@ bool wallet2::check_tx_proof(const cryptonote::transaction &tx, const cryptonote
   crypto::cn_fast_hash(prefix_data.data(), prefix_data.size(), prefix_hash);
 
   // check signature
-  std::vector<int> good_signature(num_sigs, 0);
+  bool good_signature{};
   if (is_out)
   {
-    good_signature[0] =crypto::check_tx_proof(prefix_hash, tx_pub_key, address.m_view_public_key, boost::none, shared_secret[0], sig[0], version);
+    good_signature=crypto::check_tx_proof(prefix_hash, tx_pub_key, address.m_view_public_key, boost::none, kA, sig, version);
 
   }
   else
   {
-    good_signature[0] = crypto::check_tx_proof(prefix_hash, address.m_view_public_key, tx_pub_key, boost::none, shared_secret[0], sig[0], version);
+    good_signature= crypto::check_tx_proof(prefix_hash, address.m_view_public_key, tx_pub_key, boost::none, kA, sig, version);
   }
 
-  if (std::any_of(good_signature.begin(), good_signature.end(), [](int i) { return i > 0; }))
+  if (good_signature)
   {
     // obtain key derivation by multiplying scalar 1 to the shared secret
     crypto::key_derivation derivation;
-    if (good_signature[0])
-      THROW_WALLET_EXCEPTION_IF(!crypto::generate_key_derivation(shared_secret[0], rct::rct2sk(rct::I), derivation), error::wallet_internal_error, "Failed to generate key derivation");
+      THROW_WALLET_EXCEPTION_IF(!crypto::generate_key_derivation(kA, rct::rct2sk(rct::I), derivation), error::wallet_internal_error, "Failed to generate key derivation");
 
     check_tx_key_helper(tx, derivation,  address, received);
     return true;
@@ -264,7 +257,6 @@ bool wallet2::check_tx_proof(const crypto::hash &txid, const cryptonote::account
   {
     const boost::lock_guard<boost::recursive_mutex> lock{m_daemon_rpc_mutex};
 
-
     ok = net_utils::invoke_http_json("/gettransactions", req, res, *m_http_client);
     THROW_WALLET_EXCEPTION_IF(!ok || (res.txs.size() != 1 && res.txs_as_hex.size() != 1),
       error::wallet_internal_error, "Failed to get transaction from daemon");
@@ -273,19 +265,9 @@ bool wallet2::check_tx_proof(const crypto::hash &txid, const cryptonote::account
 
   cryptonote::transaction tx;
   crypto::hash tx_hash;
-  if (res.txs.size() == 1)
   {
     ok = get_pruned_tx(res.txs.front(), tx, tx_hash);
     THROW_WALLET_EXCEPTION_IF(!ok, error::wallet_internal_error, "Failed to parse transaction from daemon");
-  }
-  else
-  {
-    cryptonote::blobdata tx_data;
-    ok = string_tools::parse_hexstr_to_binbuff(res.txs_as_hex.front(), tx_data);
-    THROW_WALLET_EXCEPTION_IF(!ok, error::wallet_internal_error, "Failed to parse transaction from daemon");
-    THROW_WALLET_EXCEPTION_IF(!cryptonote::parse_and_validate_tx_from_blob(tx_data, tx),
-        error::wallet_internal_error, "Failed to validate transaction from daemon");
-    tx_hash = cryptonote::get_transaction_hash(tx);
   }
 
   THROW_WALLET_EXCEPTION_IF(tx_hash != txid, error::wallet_internal_error, "Failed to get the right transaction from daemon");
@@ -306,78 +288,6 @@ bool wallet2::check_tx_proof(const crypto::hash &txid, const cryptonote::account
   return true;
 }
 
-
-std::string wallet2::get_tx_proof(const cryptonote::transaction &tx, const crypto::secret_key &tx_key, const cryptonote::account_public_address &address,  const std::string &message) const
-{
-  hw::device &hwdev = m_account.get_device();
-  rct::key  aP;
-  // determine if the address is found in the subaddress hash table (i.e. whether the proof is outbound or inbound)
-  const bool is_out = m_subaddresses.count(address.m_spend_public_key) == 0;
-
-  const crypto::hash txid = cryptonote::get_transaction_hash(tx);
-  std::string prefix_data((const char*)&txid, sizeof(crypto::hash));
-  prefix_data += message;
-  crypto::hash prefix_hash;
-  crypto::cn_fast_hash(prefix_data.data(), prefix_data.size(), prefix_hash);
-
-  std::vector<crypto::public_key> shared_secret;
-  std::vector<crypto::signature> sig;
-  std::string sig_str;
-  if (is_out)
-  {
-    const size_t num_sigs = 1 ;
-    shared_secret.resize(num_sigs);
-    sig.resize(num_sigs);
-
-    hwdev.scalarmultKey(aP, rct::pk2rct(address.m_view_public_key), rct::sk2rct(tx_key));
-    shared_secret[0] = rct::rct2pk(aP);
-    crypto::public_key tx_pub_key;
-
-    {
-      hwdev.secret_key_to_public_key(tx_key, tx_pub_key);
-      hwdev.generate_tx_proof(prefix_hash, tx_pub_key, address.m_view_public_key, boost::none, shared_secret[0], tx_key, sig[0]);
-    }
-   
-    sig_str = std::string("OutProofV2");
-  }
-  else
-  {
-    crypto::public_key tx_pub_key = get_tx_pub_key_from_extra(tx);
-    THROW_WALLET_EXCEPTION_IF(tx_pub_key == null_pkey, error::wallet_internal_error, "Tx pubkey was not found");
-
-  
-    const size_t num_sigs = 1 ;
-    shared_secret.resize(num_sigs);
-    sig.resize(num_sigs);
-
-    const crypto::secret_key& a = m_account.get_keys().m_view_secret_key;
-    hwdev.scalarmultKey(aP, rct::pk2rct(tx_pub_key), rct::sk2rct(a));
-    shared_secret[0] =  rct2pk(aP);
- 
-    {
-      hwdev.generate_tx_proof(prefix_hash, address.m_view_public_key, tx_pub_key, boost::none, shared_secret[0], a, sig[0]);
-    }
-   
-    sig_str = std::string("InProofV2");
-  }
-  const size_t num_sigs = shared_secret.size();
-
-  // check if this address actually received any funds
-  crypto::key_derivation derivation;
-  THROW_WALLET_EXCEPTION_IF(!crypto::generate_key_derivation(shared_secret[0], rct::rct2sk(rct::I), derivation), error::wallet_internal_error, "Failed to generate key derivation");
-  
-  uint64_t received;
-  check_tx_key_helper(tx, derivation,  address, received);
-  THROW_WALLET_EXCEPTION_IF(!received, error::wallet_internal_error, tr("No funds received in this tx."));
-
-  // concatenate all signature strings
-  for (size_t i = 0; i < num_sigs; ++i)
-    sig_str +=
-      tools::base58::encode(std::string((const char *)&shared_secret[i], sizeof(crypto::public_key))) +
-      tools::base58::encode(std::string((const char *)&sig[i], sizeof(crypto::signature)));
-  return sig_str;
-}
-
 std::string wallet2::get_tx_proof(const crypto::hash &txid, const cryptonote::account_public_address &address,  const std::string &message)
 {
     // fetch tx pubkey from the daemon
@@ -390,42 +300,92 @@ std::string wallet2::get_tx_proof(const crypto::hash &txid, const cryptonote::ac
     bool ok;
     {
       const boost::lock_guard<boost::recursive_mutex> lock{m_daemon_rpc_mutex};
-
-
       ok = net_utils::invoke_http_json("/gettransactions", req, res, *m_http_client);
       THROW_WALLET_EXCEPTION_IF(!ok || (res.txs.size() != 1 && res.txs_as_hex.size() != 1),
         error::wallet_internal_error, "Failed to get transaction from daemon");
-      
     }
 
     cryptonote::transaction tx;
     crypto::hash tx_hash;
-    if (res.txs.size() == 1)
     {
       ok = get_pruned_tx(res.txs.front(), tx, tx_hash);
       THROW_WALLET_EXCEPTION_IF(!ok, error::wallet_internal_error, "Failed to parse transaction from daemon");
     }
-    else
-    {
-      cryptonote::blobdata tx_data;
-      ok = string_tools::parse_hexstr_to_binbuff(res.txs_as_hex.front(), tx_data);
-      THROW_WALLET_EXCEPTION_IF(!ok, error::wallet_internal_error, "Failed to parse transaction from daemon");
-      THROW_WALLET_EXCEPTION_IF(!cryptonote::parse_and_validate_tx_from_blob(tx_data, tx),
-          error::wallet_internal_error, "Failed to validate transaction from daemon");
-      tx_hash = cryptonote::get_transaction_hash(tx);
-    }
-
+ 
     THROW_WALLET_EXCEPTION_IF(tx_hash != txid, error::wallet_internal_error, "Failed to get the right transaction from daemon");
 
     // determine if the address is found in the subaddress hash table (i.e. whether the proof is outbound or inbound)
-    crypto::secret_key tx_key = crypto::null_skey;
-    const bool is_out = m_subaddresses.count(address.m_spend_public_key) == 0;
+    crypto::secret_key tx_sec = crypto::null_skey;
+    const bool is_out = m_account.get_spend_public_key()!=address.m_spend_public_key;
     if (is_out)
     {
-      THROW_WALLET_EXCEPTION_IF(!get_tx_key(txid, tx_key), error::wallet_internal_error, "Tx secret key wasn't found in the wallet file.");
+      THROW_WALLET_EXCEPTION_IF(!get_tx_key(txid, tx_sec), error::wallet_internal_error, "Tx secret key wasn't found in the wallet file.");
     }
 
-    return get_tx_proof(tx, tx_key,  address, message);
+    return get_tx_proof(tx, tx_sec,  address, message);
+}
+
+std::string wallet2::get_tx_proof(const cryptonote::transaction &tx, const crypto::secret_key &tx_sec, const cryptonote::account_public_address &address,  const std::string &message) const
+{
+  hw::device &hwdev = m_account.get_device();
+  
+  const auto & A=address.m_view_public_key;
+  const auto & B=address.m_spend_public_key;
+  // determine if the address is found in the subaddress hash table (i.e. whether the proof is outbound or inbound)
+  const bool is_out = m_account.get_spend_public_key()!=B;
+
+  const crypto::hash txid = cryptonote::get_transaction_hash(tx);
+  std::string prefix_data((const char*)&txid, sizeof(crypto::hash));
+  prefix_data += message;
+  crypto::hash prefix_hash;
+  crypto::cn_fast_hash(prefix_data.data(), prefix_data.size(), prefix_hash);
+
+  crypto::signature sig{};
+  std::string sig_str;
+  crypto::public_key kA{};
+  if (is_out)
+  {
+     rct::key  aP;
+    hwdev.scalarmultKey(aP, rct::pk2rct(A), rct::sk2rct(tx_sec));
+    kA = rct::rct2pk(aP);
+    crypto::public_key tx_pub_key;
+
+    {
+      crypto::secret_key_to_public_key(tx_sec, tx_pub_key);
+      crypto::generate_tx_proof(prefix_hash, tx_pub_key, A, boost::none, kA, tx_sec, sig);
+    }
+   
+    sig_str = std::string("OutProofV2");
+  }
+  else
+  {
+    rct::key  aP;
+    crypto::public_key tx_pub_key = get_tx_pub_key_from_extra(tx);
+    THROW_WALLET_EXCEPTION_IF(tx_pub_key == null_pkey, error::wallet_internal_error, "Tx pubkey was not found");
+
+    const crypto::secret_key& a = m_account.get_keys().m_view_secret_key;
+    hwdev.scalarmultKey(aP, rct::pk2rct(tx_pub_key), rct::sk2rct(a));
+    kA =  rct2pk(aP);
+ 
+    {
+      hwdev.generate_tx_proof(prefix_hash,A, tx_pub_key, boost::none, kA, a, sig);
+    }
+   
+    sig_str = std::string("InProofV2");
+  }
+  // check if this address actually received any funds
+  crypto::key_derivation derivation;
+  THROW_WALLET_EXCEPTION_IF(!crypto::generate_key_derivation(kA, rct::rct2sk(rct::I), derivation), error::wallet_internal_error, "Failed to generate key derivation");
+  
+  uint64_t received;
+  check_tx_key_helper(tx, derivation,  address, received);
+  THROW_WALLET_EXCEPTION_IF(!received, error::wallet_internal_error, tr("No funds received in this tx."));
+
+  // concatenate all signature strings
+    sig_str +=
+      tools::base58::encode(std::string((const char *)&kA, sizeof(kA))) +
+      tools::base58::encode(std::string((const char *)&sig, sizeof(sig)));
+  return sig_str;
 }
 
 //----------------------------------------------------------------------------------------------------
@@ -480,13 +440,13 @@ std::string wallet2::get_spend_proof(const crypto::hash &txid, const std::string
     }
 
     // derive the real output keypair
-    const transfer_details& in_td = m_transfers[found->second];
+    const transfer_details& in_td = m_transfers_in[found->second];
     const txout_to_key* const in_tx_out_pkey = boost::get<txout_to_key>(std::addressof(in_td.m_tx.vout[in_td.m_internal_output_index].target));
     THROW_WALLET_EXCEPTION_IF(in_tx_out_pkey == nullptr, error::wallet_internal_error, "Output is not txout_to_key");
-    const crypto::public_key in_tx_pub_key = get_tx_pub_key_from_extra(in_td.m_tx, in_td.m_pk_index);
+    const crypto::public_key in_tx_pub_key = get_tx_pub_key_from_extra(in_td.m_tx);
     keypair in_ephemeral;
     crypto::key_image in_img;
-    THROW_WALLET_EXCEPTION_IF(!generate_key_image_helper(m_account.get_keys(), m_subaddresses, in_tx_out_pkey->key, in_tx_pub_key,  in_td.m_internal_output_index, in_ephemeral, in_img, m_account.get_device()),
+    THROW_WALLET_EXCEPTION_IF(!generate_key_image_helper(m_account.get_keys(),in_tx_pub_key,  in_td.m_internal_output_index, in_ephemeral, in_img, m_account.get_device()),
       error::wallet_internal_error, "failed to generate key image");
     THROW_WALLET_EXCEPTION_IF(in_key->k_image != in_img, error::wallet_internal_error, "key image mismatch");
 
@@ -661,15 +621,15 @@ bool wallet2::check_spend_proof(const crypto::hash &txid, const std::string &mes
 std::string wallet2::get_reserve_proof(const boost::optional<std::pair<uint32_t, uint64_t>> &account_minreserve, const std::string &message)
 {
   THROW_WALLET_EXCEPTION_IF(m_watch_only, error::wallet_internal_error, "Reserve proof can only be generated by a full wallet");
-  THROW_WALLET_EXCEPTION_IF(balance_all(true) == 0, error::wallet_internal_error, "Zero balance");
+  THROW_WALLET_EXCEPTION_IF(balance(true) == 0, error::wallet_internal_error, "Zero balance");
   THROW_WALLET_EXCEPTION_IF(account_minreserve && balance(account_minreserve->first, true) < account_minreserve->second, error::wallet_internal_error,
     "Not enough balance in this account for the requested minimum reserve amount");
 
   // determine which outputs to include in the proof
   std::vector<size_t> selected_transfers;
-  for (size_t i = 0; i < m_transfers.size(); ++i)
+  for (size_t i = 0; i < m_transfers_in.size(); ++i)
   {
-    const transfer_details &td = m_transfers[i];
+    const transfer_details &td = m_transfers_in[i];
     if (!is_spent(td, true) && !td.m_frozen && (!account_minreserve || account_minreserve->first == td.m_subaddr_index.major))
       selected_transfers.push_back(i);
   }
@@ -679,14 +639,14 @@ std::string wallet2::get_reserve_proof(const boost::optional<std::pair<uint32_t,
     THROW_WALLET_EXCEPTION_IF(account_minreserve->second == 0, error::wallet_internal_error, "Proved amount must be greater than 0");
     // minimize the number of outputs included in the proof, by only picking the N largest outputs that can cover the requested min reserve amount
     std::sort(selected_transfers.begin(), selected_transfers.end(), [&](const size_t a, const size_t b)
-      { return m_transfers[a].amount() > m_transfers[b].amount(); });
-    while (selected_transfers.size() >= 2 && m_transfers[selected_transfers[1]].amount() >= account_minreserve->second)
+      { return m_transfers_in[a].amount() > m_transfers_in[b].amount(); });
+    while (selected_transfers.size() >= 2 && m_transfers_in[selected_transfers[1]].amount() >= account_minreserve->second)
       selected_transfers.erase(selected_transfers.begin());
     size_t sz = 0;
     uint64_t total = 0;
     while (total < account_minreserve->second)
     {
-      total += m_transfers[selected_transfers[sz]].amount();
+      total += m_transfers_in[selected_transfers[sz]].amount();
       ++sz;
     }
     selected_transfers.resize(sz);
@@ -697,81 +657,63 @@ std::string wallet2::get_reserve_proof(const boost::optional<std::pair<uint32_t,
   prefix_data.append((const char*)&m_account.get_keys().m_account_address, sizeof(cryptonote::account_public_address));
   for (size_t i = 0; i < selected_transfers.size(); ++i)
   {
-    prefix_data.append((const char*)&m_transfers[selected_transfers[i]].m_key_image, sizeof(crypto::key_image));
+    prefix_data.append((const char*)&m_transfers_in[selected_transfers[i]].m_key_image, sizeof(crypto::key_image));
   }
   crypto::hash prefix_hash;
   crypto::cn_fast_hash(prefix_data.data(), prefix_data.size(), prefix_hash);
 
   // generate proof entries
   std::vector<reserve_proof_entry> proofs(selected_transfers.size());
-  std::unordered_set<cryptonote::subaddress_index> subaddr_indices = { {0,0} };
   for (size_t i = 0; i < selected_transfers.size(); ++i)
   {
-    const transfer_details &td = m_transfers[selected_transfers[i]];
+    const transfer_details &td = m_transfers_in[selected_transfers[i]];
     reserve_proof_entry& proof = proofs[i];
     proof.txid = td.m_txid;
     proof.index_in_tx = td.m_internal_output_index;
     proof.key_image = td.m_key_image;
-    subaddr_indices.insert(td.m_subaddr_index);
 
     // get tx pub key 
-    const crypto::public_key tx_pub_key = get_tx_pub_key_from_extra(td.m_tx, td.m_pk_index);
+    const crypto::public_key tx_pub_key = get_tx_pub_key_from_extra(td.m_tx);
     THROW_WALLET_EXCEPTION_IF(tx_pub_key == crypto::null_pkey, error::wallet_internal_error, "The tx public key isn't found");
 
-    // determine which tx pub key was used for deriving the output key
-    const crypto::public_key *tx_pub_key_used = &tx_pub_key;
-    for (int i = 0; i < 2; ++i)
     {
-      proof.shared_secret = rct::rct2pk(rct::scalarmultKey(rct::pk2rct(*tx_pub_key_used), rct::sk2rct(m_account.get_keys().m_view_secret_key)));
+      //Ra=kA
+      proof.shared_secret = rct::rct2pk(rct::scalarmultKey(rct::pk2rct(tx_pub_key), rct::sk2rct(m_account.get_keys().m_view_secret_key)));
       crypto::key_derivation derivation;
-      THROW_WALLET_EXCEPTION_IF(!crypto::generate_key_derivation(proof.shared_secret, rct::rct2sk(rct::I), derivation),
-        error::wallet_internal_error, "Failed to generate key derivation");
-      crypto::public_key subaddress_spendkey;
-      THROW_WALLET_EXCEPTION_IF(!derive_subaddress_public_key(td.get_public_key(), derivation, proof.index_in_tx, subaddress_spendkey),
+      THROW_WALLET_EXCEPTION_IF(!crypto::generate_key_derivation(proof.shared_secret, rct::rct2sk(rct::I), derivation),        error::wallet_internal_error, "Failed to generate key derivation");
+      crypto::public_key B;
+      THROW_WALLET_EXCEPTION_IF(!derive_subaddress_public_key(td.otk(), derivation, proof.index_in_tx, B),
         error::wallet_internal_error, "Failed to derive subaddress public key");
-      if (m_subaddresses.count(subaddress_spendkey) == 1)
-        break;
-    
-      THROW_WALLET_EXCEPTION_IF(i == 1, error::wallet_internal_error,
-        "Neither normal tx pub key nor additional tx pub key derive the expected output key");
     }
 
     // generate signature for shared secret
-    crypto::generate_tx_proof(prefix_hash, m_account.get_keys().m_account_address.m_view_public_key, *tx_pub_key_used, boost::none, proof.shared_secret, m_account.get_keys().m_view_secret_key, proof.shared_secret_sig);
+    crypto::generate_tx_proof(prefix_hash, m_account.get_keys().m_account_address.m_view_public_key, tx_pub_key, boost::none, proof.shared_secret, m_account.get_keys().m_view_secret_key, proof.shared_secret_sig);
 
     // derive ephemeral secret key
     crypto::key_image ki;
     cryptonote::keypair ephemeral;
-    const bool r = cryptonote::generate_key_image_helper(m_account.get_keys(), m_subaddresses, td.get_public_key(), tx_pub_key,   td.m_internal_output_index, ephemeral, ki, m_account.get_device());
+    const bool r = cryptonote::generate_key_image_helper(m_account.get_keys(), tx_pub_key,   td.m_internal_output_index, ephemeral, ki, m_account.get_device());
     THROW_WALLET_EXCEPTION_IF(!r, error::wallet_internal_error, "Failed to generate key image");
-    THROW_WALLET_EXCEPTION_IF(ephemeral.pub != td.get_public_key(), error::wallet_internal_error, "Derived public key doesn't agree with the stored one");
+    THROW_WALLET_EXCEPTION_IF(ephemeral.pub != td.otk(), error::wallet_internal_error, "Derived public key doesn't agree with the stored one");
 
     // generate signature for key image
-    const std::vector<const crypto::public_key*> pubs = { &ephemeral.pub };
-    crypto::generate_ring_signature(prefix_hash, td.m_key_image, &pubs[0], 1, ephemeral.sec, 0, &proof.key_image_sig);
+    crypto::generate_ring_signature(prefix_hash, td.m_key_image, &ephemeral.pub, 1, ephemeral.sec, 0, &proof.key_image_sig);
   }
 
   // collect all subaddress spend keys that received those outputs and generate their signatures
-  serializable_unordered_map<crypto::public_key, crypto::signature> subaddr_spendkeys;
-  for (const cryptonote::subaddress_index &index : subaddr_indices)
+    crypto::signature  sig;
   {
-    crypto::secret_key subaddr_spend_skey = m_account.get_keys().m_spend_secret_key;
-    if (!index.is_zero())
-    {
-      crypto::secret_key m = m_account.get_device().get_subaddress_secret_key(m_account.get_keys().m_view_secret_key, index);
-      crypto::secret_key tmp = subaddr_spend_skey;
-      sc_add((unsigned char*)&subaddr_spend_skey, (unsigned char*)&m, (unsigned char*)&tmp);
-    }
-    crypto::public_key subaddr_spend_pkey;
-    secret_key_to_public_key(subaddr_spend_skey, subaddr_spend_pkey);
-    crypto::generate_signature(prefix_hash, subaddr_spend_pkey, subaddr_spend_skey, subaddr_spendkeys[subaddr_spend_pkey]);
+    crypto::secret_key spend_skey = m_account.get_keys().m_spend_secret_key;
+
+    crypto::public_key spend_pkey = m_account.get_spend_public_key();
+    crypto::generate_signature(prefix_hash, spend_pkey, spend_skey, sig);
   }
 
   // serialize & encode
   std::ostringstream oss;
   binary_archive<true> ar(oss);
   THROW_WALLET_EXCEPTION_IF(!::serialization::serialize(ar, proofs), error::wallet_internal_error, "Failed to serialize proof");
-  THROW_WALLET_EXCEPTION_IF(!::serialization::serialize(ar, subaddr_spendkeys), error::wallet_internal_error, "Failed to serialize proof");
+  THROW_WALLET_EXCEPTION_IF(!::serialization::serialize(ar, sig), error::wallet_internal_error, "Failed to serialize proof");
   return "ReserveProofV2" + tools::base58::encode(oss.str());
 }
 
@@ -878,8 +820,7 @@ bool wallet2::check_reserve_proof(const cryptonote::account_public_address &addr
 
     THROW_WALLET_EXCEPTION_IF(proof.index_in_tx >= tx.vout.size(), error::wallet_internal_error, "index_in_tx is out of bound");
 
-    const cryptonote::txout_to_key* const out_key = boost::get<cryptonote::txout_to_key>(std::addressof(tx.vout[proof.index_in_tx].target));
-    THROW_WALLET_EXCEPTION_IF(!out_key, error::wallet_internal_error, "Output key wasn't found")
+    const cryptonote::txout_to_key&  out_key = boost::get<cryptonote::txout_to_key>(tx.vout[proof.index_in_tx].target);
 
     // get tx pub key
     const crypto::public_key tx_pub_key = get_tx_pub_key_from_extra(tx);
@@ -893,7 +834,7 @@ bool wallet2::check_reserve_proof(const cryptonote::account_public_address &addr
       return false;
 
     // check signature for key image
-    const std::vector<const crypto::public_key*> pubs = { &out_key->key };
+    const std::vector<const crypto::public_key*> pubs = { &out_key.key };
     ok = crypto::check_ring_signature(prefix_hash, proof.key_image, &pubs[0], 1, &proof.key_image_sig);
     if (!ok)
       return false;
@@ -901,21 +842,18 @@ bool wallet2::check_reserve_proof(const cryptonote::account_public_address &addr
     // check if the address really received the fund
     crypto::key_derivation derivation;
     THROW_WALLET_EXCEPTION_IF(!crypto::generate_key_derivation(proof.shared_secret, rct::rct2sk(rct::I), derivation), error::wallet_internal_error, "Failed to generate key derivation");
-    crypto::public_key subaddr_spendkey;
-    crypto::derive_subaddress_public_key(out_key->key, derivation, proof.index_in_tx, subaddr_spendkey);
-    THROW_WALLET_EXCEPTION_IF(subaddr_spendkeys.count(subaddr_spendkey) == 0, error::wallet_internal_error,
+    crypto::public_key B;
+    crypto::derive_subaddress_public_key(out_key.key, derivation, proof.index_in_tx, B);
+    THROW_WALLET_EXCEPTION_IF(m_account.get_spend_public_key()!=B, error::wallet_internal_error,
       "The address doesn't seem to have received the fund");
 
     // check amount
-    uint64_t amount = tx.vout[proof.index_in_tx].amount;
-    if (amount == 0)
     {
       // decode rct
       crypto::secret_key shared_secret;
       crypto::derivation_to_scalar(derivation, proof.index_in_tx, shared_secret);
       rct::ecdhTuple ecdh_info = tx.rct_signatures.ecdhInfo[proof.index_in_tx];
-      rct::ecdhDecode(ecdh_info, rct::sk2rct(shared_secret), tx.rct_signatures.type == rct::RCTTypeBulletproof2 || tx.rct_signatures.type == rct::RCTTypeCLSAG);
-      amount = rct::h2d(ecdh_info.amount);
+      auto [amount,noise]=rct::ecdhDecode(ecdh_info.amount, rct::sk2rct(shared_secret));
     }
     total += amount;
     if (kispent_res.spent_status[i])
@@ -932,4 +870,74 @@ bool wallet2::check_reserve_proof(const cryptonote::account_public_address &addr
 }
 
 
+// Sign a message with a private key from either the base address or a subaddress
+// The signature is also bound to both keys and the signature mode (spend, view) to prevent unintended reuse
+std::string wallet2::sign(const std::string &data, message_signature_type_t signature_type) const
+{
+  const cryptonote::account_keys &keys = m_account.get_keys();
+  
+  crypto::secret_key skey;
+  crypto::public_key pkey;
+  crypto::hash hash;
+  uint8_t mode;
+
+  // Use the base address
+  {
+    switch (signature_type)
+    {
+      case sign_with_spend_key:
+        skey = keys.m_spend_secret_key;
+        pkey = keys.m_account_address.m_spend_public_key;
+        mode = 0;
+        break;
+      case sign_with_view_key:
+        skey = keys.m_view_secret_key;
+        pkey = keys.m_account_address.m_view_public_key;
+        mode = 1;
+        break;
+      default: CHECK_AND_ASSERT_THROW_MES(false, "Invalid signature type requested");
+    }
+    hash = get_message_hash(data,keys.m_account_address.m_spend_public_key,keys.m_account_address.m_view_public_key,mode);
+  }
+
+  crypto::signature signature;
+  crypto::generate_signature(hash, pkey, skey, signature);
+  return std::string("SigV2") + tools::base58::encode(std::string((const char *)&signature, sizeof(signature)));
+}
+
+tools::wallet2::message_signature_result_t wallet2::verify(const std::string &data, const cryptonote::account_public_address &address, const std::string &signature) const
+{
+  static const size_t v2_header_len = strlen("SigV2");
+  const bool v2 = signature.size() >= v2_header_len && signature.substr(0, v2_header_len) == "SigV2";
+  if ( !v2)
+  {
+    LOG_PRINT_L0("Signature header check error");
+    return {};
+  }
+  
+ 
+  std::string decoded;
+  if (!tools::base58::decode(signature.substr(v2_header_len), decoded)) {
+    LOG_PRINT_L0("Signature decoding error");
+    return {};
+  }
+  crypto::signature s;
+  if (sizeof(s) != decoded.size()) {
+    LOG_PRINT_L0("Signature decoding error");
+    return {};
+  }
+  memcpy(&s, decoded.data(), sizeof(s));
+crypto::hash hash;
+  // Test each mode and return which mode, if either, succeeded
+  hash = get_message_hash(data,address.m_spend_public_key,address.m_view_public_key,(uint8_t) 0);
+  if (crypto::check_signature(hash, address.m_spend_public_key, s))
+    return {true,  sign_with_spend_key };
+
+  hash = get_message_hash(data,address.m_spend_public_key,address.m_view_public_key,(uint8_t) 1);
+  if (crypto::check_signature(hash, address.m_view_public_key, s))
+    return {true,   sign_with_view_key };
+
+  // Both modes failed
+  return {};
+}
 }

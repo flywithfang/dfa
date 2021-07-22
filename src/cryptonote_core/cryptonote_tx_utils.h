@@ -36,41 +36,31 @@
 #include <tuple>
 namespace cryptonote
 {
-  //---------------------------------------------------------------
-  bool construct_miner_tx(size_t height, size_t median_weight, uint64_t already_generated_coins, size_t current_block_weight, uint64_t fee, const account_public_address &miner_address, transaction& tx, const blobdata& extra_nonce = blobdata(), size_t max_outs = 999, uint8_t hard_fork_version = 1);
 
-    inline std::tuple<bool, transaction> construct_miner_tx_2(size_t height, size_t median_weight, uint64_t already_generated_coins, size_t current_block_weight, uint64_t fee, const account_public_address &miner_address,  const blobdata& extra_nonce = blobdata(), size_t max_outs = 999, uint8_t hard_fork_version = 1)
-    {
-      transaction tx;
-
-      auto r =construct_miner_tx(height,median_weight,already_generated_coins,current_block_weight,fee,miner_address,tx,extra_nonce,max_outs,hard_fork_version);
-
-      return std::make_tuple(r,tx);
-
-    }
+    std::tuple<bool, transaction> construct_miner_tx(size_t height, size_t median_weight, uint64_t already_generated_coins, size_t current_block_weight, uint64_t fee, const account_public_address &miner_address,  const blobdata& extra_nonce = blobdata(),  uint8_t hard_fork_version = 1);
+  
 
   struct tx_source_entry
   {
     typedef std::pair<uint64_t, rct::ctkey> output_entry;
 
-    std::vector<output_entry> outputs;  //index + key + optional ringct commitment
+    std::vector<output_entry> decoys;  //index + key + optional ringct commitment
     uint64_t real_output;               //index in outputs vector of real output_entry
     crypto::public_key real_out_tx_key; //incoming real tx public key
     uint64_t real_output_in_tx_index;   //index in transaction outputs vector
     uint64_t amount;                    //money
-    bool rct;                           //true if the output is rct
-    rct::key mask;                      //ringct amount mask
+    rct::key noise;                      //ringct amount mask
 
-    void push_output(uint64_t idx, const crypto::public_key &k, uint64_t amount) { outputs.push_back(std::make_pair(idx, rct::ctkey({rct::pk2rct(k), rct::zeroCommit(amount)}))); }
+    void push_output(uint64_t idx, const crypto::public_key &otk, uint64_t amount) {
+     decoys.push_back(std::make_pair(idx, rct::ctkey({rct::pk2rct(otk), rct::zeroCommit(amount)}))); }
 
     BEGIN_SERIALIZE_OBJECT()
-      FIELD(outputs)
+      FIELD(decoys)
       FIELD(real_output)
       FIELD(real_out_tx_key)
       FIELD(real_output_in_tx_index)
       FIELD(amount)
-      FIELD(rct)
-      FIELD(mask)
+      FIELD(noise)
 
       if (real_output >= outputs.size())
         return false;
@@ -114,15 +104,8 @@ namespace cryptonote
   //---------------------------------------------------------------
   crypto::public_key get_destination_view_key_pub(const std::vector<tx_destination_entry> &destinations, const boost::optional<cryptonote::account_public_address>& change_addr);
   bool construct_tx(const account_keys& sender_account_keys, std::vector<tx_source_entry> &sources, const std::vector<tx_destination_entry>& destinations, const boost::optional<cryptonote::account_public_address>& change_addr, const std::vector<uint8_t> &extra, transaction& tx, uint64_t unlock_time);
-  bool construct_tx_with_tx_key(const account_keys& sender_account_keys, const std::unordered_map<crypto::public_key, subaddress_index>& subaddresses, std::vector<tx_source_entry>& sources, std::vector<tx_destination_entry>& destinations, const boost::optional<cryptonote::account_public_address>& change_addr, const std::vector<uint8_t> &extra, transaction& tx, uint64_t unlock_time, const crypto::secret_key &tx_key, bool rct = true, const rct::RCTConfig &rct_config = { rct::RangeProofPaddedBulletproof, 3 },  bool shuffle_outs = true);
-  bool construct_tx_and_get_tx_key(const account_keys& sender_account_keys, const std::unordered_map<crypto::public_key, subaddress_index>& subaddresses, std::vector<tx_source_entry>& sources, std::vector<tx_destination_entry>& destinations, const boost::optional<cryptonote::account_public_address>& change_addr, const std::vector<uint8_t> &extra, transaction& tx, uint64_t unlock_time, crypto::secret_key &tx_key,  bool rct = false, const rct::RCTConfig &rct_config = { rct::RangeProofPaddedBulletproof, 3 });
-  bool generate_output_ephemeral_keys(const size_t tx_version, const cryptonote::account_keys &sender_account_keys, const crypto::public_key &txkey_pub,  const crypto::secret_key &tx_key,
-                                      const cryptonote::tx_destination_entry &dst_entr, const boost::optional<cryptonote::account_public_address> &change_addr, const size_t output_index,std::vector<rct::key> &amount_keys,
-                                      crypto::public_key &out_eph_public_key) ;
 
-  bool generate_output_ephemeral_keys(const size_t tx_version, const cryptonote::account_keys &sender_account_keys, const crypto::public_key &txkey_pub,  const crypto::secret_key &tx_key,
-                                      const cryptonote::tx_destination_entry &dst_entr, const boost::optional<cryptonote::account_public_address> &change_addr, const size_t output_index,std::vector<rct::key> &amount_keys,
-                                      crypto::public_key &out_eph_public_key) ;
+  bool construct_tx_and_get_tx_key(const account_keys& sender_account_keys, std::vector<tx_source_entry>& sources, std::vector<tx_destination_entry>& destinations, const boost::optional<cryptonote::account_public_address>& change_addr, const std::vector<uint8_t> &extra, transaction& tx, uint64_t unlock_time, crypto::secret_key &tx_key,  const rct::RCTConfig &rct_config = { rct::RangeProofPaddedBulletproof, 3 },bool shuffle_outs=true);
 
   bool generate_genesis_block(
       block& bl
@@ -154,8 +137,7 @@ namespace boost
       a & x.real_out_tx_key;
       a & x.real_output_in_tx_index;
       a & x.amount;
-      a & x.rct;
-      a & x.mask;
+      a & x.noise;
       if (ver < 1)
         return;
     }
@@ -165,13 +147,6 @@ namespace boost
     {
       a & x.amount;
       a & x.addr;
-      if (ver < 1)
-        return;
-      if (ver < 2)
-      {
-        x.is_integrated = false;
-        return;
-      }
       a & x.original;
       a & x.is_integrated;
     }
