@@ -653,8 +653,7 @@ TEST(Serialization, portability_wallet)
     std::unordered_map<crypto::hash, confirmed_transfer_details>    m_confirmed_txs
     std::unordered_map<crypto::hash, std::string>                   m_tx_notes
     std::unordered_map<crypto::hash, payment_details>               m_pool_transfers_in
-    std::unordered_map<crypto::public_key, size_t>                  m_pub_keys
-    std::vector<tools::wallet2::address_book_row>                   m_address_book
+    std::unordered_map<crypto::public_key, size_t>                  m_otks
   */
   // blockchain
   ASSERT_TRUE(w.m_blockchain.size() == 1);
@@ -709,24 +708,17 @@ TEST(Serialization, portability_wallet)
   // unconfirmed payments
   ASSERT_TRUE(w.m_pool_transfers_in.size() == 0);
   // pub keys
-  ASSERT_TRUE(w.m_pub_keys.size() == 3);
+  ASSERT_TRUE(w.m_otks.size() == 3);
   {
     crypto::public_key pubkey[3];
     epee::string_tools::hex_to_pod("33f75f264574cb3a9ea5b24220a5312e183d36dc321c9091dfbb720922a4f7b0", pubkey[0]);
     epee::string_tools::hex_to_pod("5066ff2ce9861b1d131cf16eeaa01264933a49f28242b97b153e922ec7b4b3cb", pubkey[1]);
     epee::string_tools::hex_to_pod("0d8467e16e73d16510452b78823e082e05ee3a63788d40de577cf31eb555f0c8", pubkey[2]);
-    ASSERT_EQ_MAP(0, w.m_pub_keys, pubkey[0]);
-    ASSERT_EQ_MAP(1, w.m_pub_keys, pubkey[1]);
-    ASSERT_EQ_MAP(2, w.m_pub_keys, pubkey[2]);
+    ASSERT_EQ_MAP(0, w.m_otks, pubkey[0]);
+    ASSERT_EQ_MAP(1, w.m_otks, pubkey[1]);
+    ASSERT_EQ_MAP(2, w.m_otks, pubkey[2]);
   }
-  // address book
-  ASSERT_TRUE(w.m_address_book.size() == 1);
-  {
-    auto address_book_row = w.m_address_book.begin();
-    ASSERT_TRUE(epee::string_tools::pod_to_hex(address_book_row->m_address.m_spend_public_key) == "9bc53a6ff7b0831c9470f71b6b972dbe5ad1e8606f72682868b1dda64e119fb3");
-    ASSERT_TRUE(epee::string_tools::pod_to_hex(address_book_row->m_address.m_view_public_key) == "49fece1ef97dc0c0f7a5e2106e75e96edd910f7e86b56e1e308cd0cf734df191");
-    ASSERT_TRUE(address_book_row->m_description == "testnet wallet 9y52S6");
-  }
+  
 }
 
 #define OUTPUT_EXPORT_FILE_MAGIC "Monero output export\003"

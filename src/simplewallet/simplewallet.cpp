@@ -3605,7 +3605,7 @@ void simple_wallet::on_new_block(uint64_t height, const cryptonote::block& block
     m_refresh_progress_reporter.update(height, false);
 }
 //----------------------------------------------------------------------------------------------------
-void simple_wallet::on_money_received(uint64_t height, const crypto::hash &txid, const cryptonote::transaction& tx, uint64_t amount, const cryptonote::subaddress_index& subaddr_index, bool is_change, uint64_t unlock_time)
+void simple_wallet::on_money_received(uint64_t height, const crypto::hash &txid, const cryptonote::transaction& tx, uint64_t amount,  bool is_change, uint64_t unlock_time)
 {
   if (m_locked)
     return;
@@ -3616,34 +3616,7 @@ void simple_wallet::on_money_received(uint64_t height, const crypto::hash &txid,
     tr("idx ") << subaddr_index;
 
   const uint64_t warn_height = m_wallet->nettype() == TESTNET ? 1000000 : m_wallet->nettype() == STAGENET ? 50000 : 1650000;
-  if (height >= warn_height && !is_change)
-  {
-    std::vector<tx_extra_field> tx_extra_fields;
-    parse_tx_extra(tx.extra, tx_extra_fields); // failure ok
-    tx_extra_nonce extra_nonce;
-    tx_extra_pub_key extra_pub_key;
-    crypto::hash8 payment_id8 = crypto::null_hash8;
-    if (find_tx_extra_field_by_type(tx_extra_fields, extra_pub_key))
-    {
-      const crypto::public_key &tx_pub_key = extra_pub_key.pub_key;
-      if (find_tx_extra_field_by_type(tx_extra_fields, extra_nonce))
-      {
-        if (get_encrypted_payment_id_from_tx_extra_nonce(extra_nonce.nonce, payment_id8))
-        {
-          m_wallet->get_account().get_device().decrypt_payment_id(payment_id8, tx_pub_key, m_wallet->get_account().get_keys().m_view_secret_key);
-        }
-     }
-    }
 
-    if (payment_id8 != crypto::null_hash8)
-      message_writer() <<
-        tr("NOTE: this transaction uses an encrypted payment ID: consider using subaddresses instead");
-
-    crypto::hash payment_id = crypto::null_hash;
-    if (get_payment_id_from_tx_extra_nonce(extra_nonce.nonce, payment_id))
-      message_writer(console_color_red, false) <<
-        tr("WARNING: this transaction uses an unencrypted payment ID: these are obsolete and ignored. Use subaddresses instead.");
-  }
   if (unlock_time && !cryptonote::is_coinbase(tx))
     message_writer() << tr("NOTE: This transaction is locked, see details with: show_transfer ") + epee::string_tools::pod_to_hex(txid);
   if (m_auto_refresh_refreshing)
@@ -3659,15 +3632,14 @@ void simple_wallet::on_unconfirmed_money_received(uint64_t height, const crypto:
   // Not implemented in CLI wallet
 }
 //----------------------------------------------------------------------------------------------------
-void simple_wallet::on_money_spent(uint64_t height, const crypto::hash &txid, const cryptonote::transaction& in_tx, uint64_t amount, const cryptonote::transaction& spend_tx, const cryptonote::subaddress_index& subaddr_index)
+void simple_wallet::on_money_spent(uint64_t height, const crypto::hash &txid, const cryptonote::transaction& in_tx, uint64_t amount, const cryptonote::transaction& spend_tx)
 {
   if (m_locked)
     return;
   message_writer(console_color_magenta, false) << "\r" <<
     tr("Height ") << height << ", " <<
     tr("txid ") << txid << ", " <<
-    tr("spent ") << print_money(amount) << ", " <<
-    tr("idx ") << subaddr_index;
+    tr("spent ") << print_money(amount) ;
   if (m_auto_refresh_refreshing)
     m_cmd_binder.print_prompt();
   else
@@ -4791,21 +4763,6 @@ bool simple_wallet::sweep_main(uint32_t account, uint64_t below, bool locked, co
 
   std::vector<std::string> local_args = args_;
 
-  std::set<uint32_t> subaddr_indices;
-  if (local_args.size() > 0 && local_args[0].substr(0, 6) == "index=")
-  {
-    if (local_args[0] == "index=all")
-    {
-      for (uint32_t i = 0; i < m_wallet->get_num_subaddresses(m_current_subaddress_account); ++i)
-        subaddr_indices.insert(i);
-    }
-    else if (!parse_subaddress_indices(local_args[0], subaddr_indices))
-    {
-      print_usage();
-      return true;
-    }
-    local_args.erase(local_args.begin());
-  }
 
   uint32_t priority = 0;
   if (local_args.size() > 0 && parse_priority(local_args[0], priority))
@@ -6259,10 +6216,7 @@ bool simple_wallet::get_transfers(std::vector<std::string>& local_args, std::vec
       m_in_manual_refresh.store(true, std::memory_order_relaxed);
       epee::misc_utils::auto_scope_leave_caller scope_exit_handler = epee::misc_utils::create_scope_leave_handler([&](){m_in_manual_refresh.store(false, std::memory_order_relaxed);});
 
-      std::vector<std::tuple<cryptonote::transaction, crypto::hash, bool>> process_txs;
-      m_wallet->update_pool_state(process_txs);
-      if (!process_txs.empty())
-        m_wallet->process_pool_state(process_txs);
+      m_wallet->update_pool_state();
 
       std::list<std::pair<crypto::hash, tools::wallet2::pool_payment_details>> payments;
       m_wallet->get_unconfirmed_payments(payments);
@@ -6704,59 +6658,22 @@ bool simple_wallet::wallet_info(const std::vector<std::string> &args)
 //----------------------------------------------------------------------------------------------------
 bool simple_wallet::sign(const std::vector<std::string> &args)
 {
-  if (m_wallet->key_on_device())
-  {
-    fail_msg_writer() << tr("command not supported by HW wallet");
-    return true;
-  }
+
   if (args.size() != 1 && args.size() != 2 && args.size() != 3)
   {
     PRINT_USAGE(USAGE_SIGN);
     return true;
   }
-  if (m_wallet->watch_only())
-  {
-    fail_msg_writer() << tr("wallet is watch-only and cannot sign");
-    return true;
-  }
+
 
   tools::wallet2::message_signature_type_t message_signature_type = tools::wallet2::sign_with_spend_key;
-  subaddress_index index{0, 0};
-  for (unsigned int idx = 0; idx + 1 < args.size(); ++idx)
-  {
-    unsigned int a, b;
-    if (sscanf(args[idx].c_str(), "%u,%u", &a, &b) == 2)
-    {
-      index.major = a;
-      index.minor = b;
-    }
-    else if (args[idx] == "--spend")
-    {
-      message_signature_type = tools::wallet2::sign_with_spend_key;
-    }
-    else if (args[idx] == "--view")
-    {
-      message_signature_type = tools::wallet2::sign_with_view_key;
-    }
-    else
-    {
-      fail_msg_writer() << tr("Invalid subaddress index format, and not a signature type: ") << args[idx];
-      return true;
-    }
-  }
-
-  const std::string &filename = args.back();
-  std::string data;
-  bool r = m_wallet->load_from_file(filename, data);
-  if (!r)
-  {
-    fail_msg_writer() << tr("failed to read file ") << filename;
-    return true;
-  }
+ 
+  const std::string data = args.back();
+ 
 
   SCOPED_WALLET_UNLOCK();
 
-  std::string signature = m_wallet->sign(data, message_signature_type, index);
+  std::string signature = m_wallet->sign(data, message_signature_type);
   success_msg_writer() << signature;
   return true;
 }
@@ -6880,10 +6797,7 @@ bool simple_wallet::show_transfer(const std::vector<std::string> &args)
 
   try
   {
-    std::vector<std::tuple<cryptonote::transaction, crypto::hash, bool>> process_txs;
-    m_wallet->update_pool_state(process_txs);
-    if (!process_txs.empty())
-      m_wallet->process_pool_state(process_txs);
+    m_wallet->update_pool_state();
 
     std::list<std::pair<crypto::hash, tools::wallet2::pool_payment_details>> pool_payments;
     m_wallet->get_unconfirmed_payments(pool_payments);

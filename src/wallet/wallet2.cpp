@@ -855,7 +855,6 @@ wallet2::wallet2(network_type nettype, uint64_t kdf_rounds, bool unattended, std
   m_node_rpc_proxy(*m_http_client, m_daemon_rpc_mutex),
   m_account_public_address{crypto::null_pkey, crypto::null_pkey},
   m_original_keys_available(false),
-  m_message_store(http_client_factory->create()),
   m_key_device_type(hw::device::device_type::SOFTWARE),
   m_ring_history_saved(false),
   m_ringdb(),
@@ -1083,15 +1082,10 @@ void wallet2::set_seed_language(const std::string &language)
 }
 
 //----------------------------------------------------------------------------------------------------
-std::string wallet2::get_address_as_str(const cryptonote::subaddress_index& index) const
+std::string wallet2::get_address_as_str() const
 {
   cryptonote::account_public_address address = get_address();
   return cryptonote::get_account_address_as_str(m_nettype,  address);
-}
-//----------------------------------------------------------------------------------------------------
-std::string wallet2::get_integrated_address_as_str(const crypto::hash8& payment_id) const
-{
-  return cryptonote::get_account_integrated_address_as_str(m_nettype, get_address(), payment_id);
 }
 
 
@@ -1401,9 +1395,9 @@ void wallet2::detach_blockchain(uint64_t height, std::map<std::pair<uint64_t, ui
 
   for(size_t i = i_start; i!= m_transfers_in.size();i++)
   {
-    auto it_pk = m_pub_keys.find(m_transfers_in[i].get_public_key());
-    THROW_WALLET_EXCEPTION_IF(it_pk == m_pub_keys.end(), error::wallet_internal_error, "public key not found");
-    m_pub_keys.erase(it_pk);
+    auto it_pk = m_otks.find(m_transfers_in[i].get_public_key());
+    THROW_WALLET_EXCEPTION_IF(it_pk == m_otks.end(), error::wallet_internal_error, "public key not found");
+    m_otks.erase(it_pk);
   }
   transfers_detached = std::distance(it, m_transfers_in.end());
   m_transfers_in.erase(it, m_transfers_in.end());
@@ -1437,17 +1431,11 @@ bool wallet2::clear()
   m_blockchain.clear();
   m_transfers_in.clear();
   m_key_images.clear();
-  m_pub_keys.clear();
+  m_otks.clear();
   m_unconfirmed_txs.clear();
   m_tx_keys.clear();
   m_confirmed_txs.clear();
   m_pool_transfers_in.clear();
-  m_scanned_pool_txs[0].clear();
-  m_scanned_pool_txs[1].clear();
-  m_address_book.clear();
-  m_subaddresses.clear();
-  m_subaddress_labels.clear();
-  m_device_last_key_image_sync = 0;
   return true;
 }
 
@@ -2775,344 +2763,7 @@ uint64_t wallet2::adjust_mixin(uint64_t mixin)
   }
   return mixin;
 }
-//----------------------------------------------------------------------------------------------------
-uint32_t wallet2::adjust_priority(uint32_t priority)
-{
-  if (priority == 0 && m_default_priority == 0 && auto_low_priority())
-  {
-    try
-    {
-      // check if there's a backlog in the tx pool
-      const bool use_per_byte_fee = use_fork_rules(HF_VERSION_PER_BYTE_FEE, 0);
-      const uint64_t base_fee = get_base_fee();
-      const uint64_t fee_multiplier = get_fee_multiplier(1);
-      const double fee_level = fee_multiplier * base_fee * (use_per_byte_fee ? 1 : (12/(double)13 / (double)1024));
-      const std::vector<std::pair<uint64_t, uint64_t>> blocks = estimate_backlog({std::make_pair(fee_level, fee_level)});
-      if (blocks.size() != 1)
-      {
-        MERROR("Bad estimated backlog array size");
-        return priority;
-      }
-      else if (blocks[0].first > 0)
-      {
-        MINFO("We don't use the low priority because there's a backlog in the tx pool.");
-        return priority;
-      }
 
-      // get the current full reward zone
-      uint64_t block_weight_limit = 0;
-      const auto result = m_node_rpc_proxy.get_block_weight_limit(block_weight_limit);
-      if (result)
-        return priority;
-      const uint64_t full_reward_zone = block_weight_limit / 2;
-
-      // get the last N block headers and sum the block sizes
-      const size_t N = 10;
-      if (m_blockchain.size() < N)
-      {
-        MERROR("The blockchain is too short");
-        return priority;
-      }
-      cryptonote::COMMAND_RPC_GET_BLOCK_HEADERS_RANGE::request getbh_req = AUTO_VAL_INIT(getbh_req);
-      cryptonote::COMMAND_RPC_GET_BLOCK_HEADERS_RANGE::response getbh_res = AUTO_VAL_INIT(getbh_res);
-      getbh_req.start_height = m_blockchain.size() - N;
-      getbh_req.end_height = m_blockchain.size() - 1;
-
-      {
-        const boost::lock_guard<boost::recursive_mutex> lock{m_daemon_rpc_mutex};
-
-
-        bool r = net_utils::invoke_http_json_rpc("/json_rpc", "getblockheadersrange", getbh_req, getbh_res, *m_http_client, rpc_timeout);
-        THROW_ON_RPC_RESPONSE_ERROR(r, {}, getbh_res, "getblockheadersrange", error::get_blocks_error, get_rpc_status(getbh_res.status));
-        
-      }
-
-      if (getbh_res.headers.size() != N)
-      {
-        MERROR("Bad blockheaders size");
-        return priority;
-      }
-      size_t block_weight_sum = 0;
-      for (const cryptonote::block_header_response &i : getbh_res.headers)
-      {
-        block_weight_sum += i.block_weight;
-      }
-
-      // estimate how 'full' the last N blocks are
-      const size_t P = 100 * block_weight_sum / (N * full_reward_zone);
-      MINFO((boost::format("The last %d blocks fill roughly %d%% of the full reward zone.") % N % P).str());
-      if (P > 80)
-      {
-        MINFO("We don't use the low priority because recent blocks are quite full.");
-        return priority;
-      }
-      MINFO("We'll use the low priority because probably it's safe to do so.");
-      return 1;
-    }
-    catch (const std::exception &e)
-    {
-      MERROR(e.what());
-    }
-  }
-  return priority;
-}
-//----------------------------------------------------------------------------------------------------
-bool wallet2::set_ring_database(const std::string &filename)
-{
-  m_ring_database = filename;
-  MINFO("ringdb path set to " << filename);
-  m_ringdb.reset();
-  if (!m_ring_database.empty())
-  {
-    try
-    {
-      cryptonote::block b;
-      generate_genesis(b);
-      m_ringdb.reset(new tools::ringdb(m_ring_database, epee::string_tools::pod_to_hex(get_block_hash(b))));
-    }
-    catch (const std::exception &e)
-    {
-      MERROR("Failed to initialize ringdb: " << e.what());
-      m_ring_database = "";
-      return false;
-    }
-  }
-  return true;
-}
-
-crypto::chacha_key wallet2::get_ringdb_key()
-{
-  if (!m_ringdb_key)
-  {
-    MINFO("caching ringdb key");
-    crypto::chacha_key key;
-    generate_chacha_key_from_secret_keys(key);
-    m_ringdb_key = key;
-  }
-  return *m_ringdb_key;
-}
-
-void wallet2::register_devices(){
-//  hw::trezor::register_all();
-}
-
-hw::device& wallet2::lookup_device(const std::string & device_descriptor){
-  if (!m_devices_registered){
-    m_devices_registered = true;
-    register_devices();
-  }
-
-  return hw::get_device(device_descriptor);
-}
-
-bool wallet2::add_rings(const crypto::chacha_key &key, const cryptonote::transaction_prefix &tx)
-{
-  if (!m_ringdb)
-    return false;
-  try { return m_ringdb->add_rings(key, tx); }
-  catch (const std::exception &e) { return false; }
-}
-
-bool wallet2::add_rings(const cryptonote::transaction_prefix &tx)
-{
-  try { return add_rings(get_ringdb_key(), tx); }
-  catch (const std::exception &e) { return false; }
-}
-
-bool wallet2::remove_rings(const cryptonote::transaction_prefix &tx)
-{
-  if (!m_ringdb)
-    return false;
-  try { return m_ringdb->remove_rings(get_ringdb_key(), tx); }
-  catch (const std::exception &e) { return false; }
-}
-
-bool wallet2::get_ring(const crypto::chacha_key &key, const crypto::key_image &key_image, std::vector<uint64_t> &outs)
-{
-  if (!m_ringdb)
-    return false;
-  try { return m_ringdb->get_ring(key, key_image, outs); }
-  catch (const std::exception &e) { return false; }
-}
-
-bool wallet2::get_rings(const crypto::hash &txid, std::vector<std::pair<crypto::key_image, std::vector<uint64_t>>> &outs)
-{
-  for (auto i: m_confirmed_txs)
-  {
-    if (txid == i.first)
-    {
-      for (const auto &x: i.second.m_rings)
-        outs.push_back({x.first, cryptonote::relative_output_offsets_to_absolute(x.second)});
-      return true;
-    }
-  }
-  for (auto i: m_unconfirmed_txs)
-  {
-    if (txid == i.first)
-    {
-      for (const auto &x: i.second.m_rings)
-        outs.push_back({x.first, cryptonote::relative_output_offsets_to_absolute(x.second)});
-      return true;
-    }
-  }
-  return false;
-}
-
-bool wallet2::get_ring(const crypto::key_image &key_image, std::vector<uint64_t> &outs)
-{
-  try { return get_ring(get_ringdb_key(), key_image, outs); }
-  catch (const std::exception &e) { return false; }
-}
-
-bool wallet2::set_ring(const crypto::key_image &key_image, const std::vector<uint64_t> &outs, bool relative)
-{
-  if (!m_ringdb)
-    return false;
-
-  try { return m_ringdb->set_ring(get_ringdb_key(), key_image, outs, relative); }
-  catch (const std::exception &e) { return false; }
-}
-
-bool wallet2::unset_ring(const std::vector<crypto::key_image> &key_images)
-{
-  if (!m_ringdb)
-    return false;
-
-  try { return m_ringdb->remove_rings(get_ringdb_key(), key_images); }
-  catch (const std::exception &e) { return false; }
-}
-
-bool wallet2::unset_ring(const crypto::hash &txid)
-{
-  if (!m_ringdb)
-    return false;
-
-  COMMAND_RPC_GET_TRANSACTIONS::request req;
-  COMMAND_RPC_GET_TRANSACTIONS::response res;
-  req.txs_hashes.push_back(epee::string_tools::pod_to_hex(txid));
-  req.decode_as_json = false;
-  req.prune = true;
-  m_daemon_rpc_mutex.lock();
-  bool ok = invoke_http_json("/gettransactions", req, res, rpc_timeout);
-  m_daemon_rpc_mutex.unlock();
-  THROW_WALLET_EXCEPTION_IF(!ok, error::wallet_internal_error, "Failed to get transaction from daemon");
-  THROW_WALLET_EXCEPTION_IF(res.txs.size() != 1, error::wallet_internal_error, "Failed to get transaction from daemon");
-
-  cryptonote::transaction tx;
-  crypto::hash tx_hash;
-  if (!get_pruned_tx(res.txs.front(), tx, tx_hash))
-    return false;
-  THROW_WALLET_EXCEPTION_IF(tx_hash != txid, error::wallet_internal_error, "Failed to get the right transaction from daemon");
-
-  try { return m_ringdb->remove_rings(get_ringdb_key(), tx); }
-  catch (const std::exception &e) { return false; }
-}
-
-bool wallet2::find_and_save_rings(bool force)
-{
-  if (!force && m_ring_history_saved)
-    return true;
-  if (!m_ringdb)
-    return false;
-
-  COMMAND_RPC_GET_TRANSACTIONS::request req = AUTO_VAL_INIT(req);
-  COMMAND_RPC_GET_TRANSACTIONS::response res = AUTO_VAL_INIT(res);
-
-  MDEBUG("Finding and saving rings...");
-
-  // get payments we made
-  std::vector<crypto::hash> txs_hashes;
-  std::list<std::pair<crypto::hash,wallet2::confirmed_transfer_details>> payments;
-  get_payments_out(payments, 0, std::numeric_limits<uint64_t>::max(), boost::none, std::set<uint32_t>());
-  for (const std::pair<crypto::hash,wallet2::confirmed_transfer_details> &entry: payments)
-  {
-    const crypto::hash &txid = entry.first;
-    txs_hashes.push_back(txid);
-  }
-
-  MDEBUG("Found " << std::to_string(txs_hashes.size()) << " transactions");
-
-  // get those transactions from the daemon
-  auto it = txs_hashes.begin();
-  static const size_t SLICE_SIZE = 200;
-  for (size_t slice = 0; slice < txs_hashes.size(); slice += SLICE_SIZE)
-  {
-    req.decode_as_json = false;
-    req.prune = true;
-    req.txs_hashes.clear();
-    size_t ntxes = slice + SLICE_SIZE > txs_hashes.size() ? txs_hashes.size() - slice : SLICE_SIZE;
-    for (size_t s = slice; s < slice + ntxes; ++s)
-      req.txs_hashes.push_back(epee::string_tools::pod_to_hex(txs_hashes[s]));
-
-    {
-      const boost::lock_guard<boost::recursive_mutex> lock{m_daemon_rpc_mutex};
-
-
-      bool r = epee::net_utils::invoke_http_json("/gettransactions", req, res, *m_http_client, rpc_timeout);
-      THROW_ON_RPC_RESPONSE_ERROR_GENERIC(r, {}, res, "/gettransactions");
-      THROW_WALLET_EXCEPTION_IF(res.txs.size() != req.txs_hashes.size(), error::wallet_internal_error,
-        "daemon returned wrong response for gettransactions, wrong txs count = " +
-        std::to_string(res.txs.size()) + ", expected " + std::to_string(req.txs_hashes.size()));
-      
-    }
-
-    MDEBUG("Scanning " << res.txs.size() << " transactions");
-    THROW_WALLET_EXCEPTION_IF(slice + res.txs.size() > txs_hashes.size(), error::wallet_internal_error, "Unexpected tx array size");
-    for (size_t i = 0; i < res.txs.size(); ++i, ++it)
-    {
-    const auto &tx_info = res.txs[i];
-      cryptonote::transaction tx;
-      crypto::hash tx_hash;
-      THROW_WALLET_EXCEPTION_IF(!get_pruned_tx(tx_info, tx, tx_hash), error::wallet_internal_error,
-          "Failed to get transaction from daemon");
-      THROW_WALLET_EXCEPTION_IF(!(tx_hash == *it), error::wallet_internal_error, "Wrong txid received");
-      THROW_WALLET_EXCEPTION_IF(!add_rings(get_ringdb_key(), tx), error::wallet_internal_error, "Failed to save ring");
-    }
-  }
-
-  MINFO("Found and saved rings for " << txs_hashes.size() << " transactions");
-  m_ring_history_saved = true;
-  return true;
-}
-
-bool wallet2::blackball_output(const std::pair<uint64_t, uint64_t> &output)
-{
-  if (!m_ringdb)
-    return false;
-  try { return m_ringdb->blackball(output); }
-  catch (const std::exception &e) { return false; }
-}
-
-bool wallet2::set_blackballed_outputs(const std::vector<std::pair<uint64_t, uint64_t>> &outputs, bool add)
-{
-  if (!m_ringdb)
-    return false;
-  try
-  {
-    bool ret = true;
-    if (!add)
-      ret &= m_ringdb->clear_blackballs();
-    ret &= m_ringdb->blackball(outputs);
-    return ret;
-  }
-  catch (const std::exception &e) { return false; }
-}
-
-bool wallet2::unblackball_output(const std::pair<uint64_t, uint64_t> &output)
-{
-  if (!m_ringdb)
-    return false;
-  try { return m_ringdb->unblackball(output); }
-  catch (const std::exception &e) { return false; }
-}
-
-bool wallet2::is_output_blackballed(const std::pair<uint64_t, uint64_t> &output) const
-{
-  if (!m_ringdb)
-    return false;
-  try { return m_ringdb->blackballed(output); }
-  catch (const std::exception &e) { return false; }
-}
 
 bool wallet2::lock_keys_file()
 {

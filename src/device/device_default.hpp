@@ -81,8 +81,7 @@ namespace hw {
             /*                               SUB ADDRESS                               */
             /* ======================================================================= */
             bool  derive_subaddress_public_key(const crypto::public_key &pub, const crypto::key_derivation &derivation, const std::size_t output_index,  crypto::public_key &derived_pub) override;
-            cryptonote::account_public_address  get_subaddress(const cryptonote::account_keys& keys, const cryptonote::subaddress_index &index) override;
-            crypto::secret_key  get_subaddress_secret_key(const crypto::secret_key &sec, const cryptonote::subaddress_index &index) override;
+
 
             /* ======================================================================= */
             /*                            DERIVATION & KEY                             */

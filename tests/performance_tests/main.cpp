@@ -204,7 +204,6 @@ int main(int argc, char** argv)
   TEST_PERFORMANCE1(filter, p, test_signature, false);
   TEST_PERFORMANCE1(filter, p, test_signature, true);
 
-  TEST_PERFORMANCE2(filter, p, test_wallet2_expand_subaddresses, 50, 200);
 
   TEST_PERFORMANCE1(filter, p, test_cn_slow_hash, 0);
   TEST_PERFORMANCE1(filter, p, test_cn_slow_hash, 1);

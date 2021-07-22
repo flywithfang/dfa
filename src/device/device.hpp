@@ -53,7 +53,6 @@ namespace cryptonote
 {
     struct account_public_address;
     struct account_keys;
-    struct subaddress_index;
     struct tx_destination_entry;
     struct keypair;
     class transaction_prefix;
@@ -158,7 +157,6 @@ namespace hw {
         /*                               SUB ADDRESS                               */
         /* ======================================================================= */
         virtual bool  derive_subaddress_public_key(const crypto::public_key &pub, const crypto::key_derivation &derivation, const std::size_t output_index,  crypto::public_key &derived_pub) = 0;
-        virtual crypto::secret_key  get_subaddress_secret_key(const crypto::secret_key &sec, const cryptonote::subaddress_index &index) = 0;
 
         /* ======================================================================= */
         /*                            DERIVATION & KEY                             */
@@ -231,7 +229,6 @@ namespace hw {
       
         virtual void  computing_key_images(bool started) {};
         virtual void  set_network_type(cryptonote::network_type network_type) { }
-        virtual void  display_address(const cryptonote::subaddress_index& index, const boost::optional<crypto::hash8> &payment_id) {}
 
     protected:
         device_mode mode;

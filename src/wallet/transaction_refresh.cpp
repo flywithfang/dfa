@@ -100,8 +100,6 @@ void wallet2::refresh(bool trusted_daemon, uint64_t start_height, uint64_t & blo
   uint64_t added_blocks = 0;
   size_t try_count = 0;
   crypto::hash last_tx_hash_id = m_transfers_in.size() ? m_transfers_in.back().m_txid : null_hash;
-  
- 
 
   hw::device &hwdev = m_account.get_device();
 
@@ -150,8 +148,7 @@ void wallet2::refresh(bool trusted_daemon, uint64_t start_height, uint64_t & blo
   // since that might cause a password prompt, which would introduce a data
   // leak allowing a passive adversary with traffic analysis capability to
   // infer when we get an incoming output
-  std::vector<std::tuple<cryptonote::transaction, crypto::hash, bool>> process_pool_txs;
-  update_pool_state(process_pool_txs, true);
+  update_pool_state( true);
 
   bool first = true, last = false;
   tools::threadpool& tpool = tools::threadpool::getInstance();
@@ -286,16 +283,7 @@ void wallet2::refresh(bool trusted_daemon, uint64_t start_height, uint64_t & blo
   if(last_tx_hash_id != (m_transfers_in.size() ? m_transfers_in.back().m_txid : null_hash))
     received_money = true;
 
-  try
-  {
-    // If stop() is called we don't need to check pending transactions
-    if (check_pool && m_run.load(std::memory_order_relaxed) && !process_pool_txs.empty())
-      process_pool_state(process_pool_txs);
-  }
-  catch (...)
-  {
-    MINFO("Failed to check pending transactions");
-  }
+
 
   m_first_refresh_done = true;
 
@@ -644,7 +632,7 @@ static bool emplace_or_replace(std::unordered_multimap<crypto::hash, tools::wall
 
 
 //----------------------------------------------------------------------------------------------------
-void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote::transaction& tx, const std::vector<uint64_t> &o_indices, uint64_t height, uint8_t block_version, uint64_t ts, bool miner_tx, bool pool, bool double_spend_seen, const tx_cache_data &tx_cache_data, std::map<std::pair<uint64_t, uint64_t>, size_t> *output_tracker_cache)
+void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote::transaction& tx, const std::vector<uint64_t> &o_indices, uint64_t height, uint8_t block_version, uint64_t ts, bool miner_tx, bool pool, bool double_spend_seen, const tx_cache_data &tx_cache_data)
 {
   PERF_TIMER(process_new_transaction);
   // In this function, tx (probably) only contains the base information
@@ -653,7 +641,7 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
     process_unconfirmed(txid, tx, height);
 
   // per receiving subaddress index
-  std::vector<uint64_t> tx_money_got_in_outs;
+  uint64_t tx_money_got_in_outs=0;
 
   crypto::public_key tx_pub_key{};
   bool notify = false;
@@ -756,12 +744,12 @@ THROW_WALLET_EXCEPTION_IF( tx.vout.empty(), "tx.vout.empty()");
         THROW_WALLET_EXCEPTION_IF(tx.vout.size() <= o, error::wallet_internal_error, "wrong out in transaction: internal index=" + std::to_string(o) + ", total_outs=" + std::to_string(tx.vout.size()));
 
         const auto otk=tx_scan_info[o].in_ephemeral.pub;
-        auto kit = m_pub_keys.find(otk);
-        THROW_WALLET_EXCEPTION_IF(kit != m_pub_keys.end() && kit->second >= m_transfers_in.size(),
+        auto kit = m_otks.find(otk);
+        THROW_WALLET_EXCEPTION_IF(kit != m_otks.end() && kit->second >= m_transfers_in.size(),
             error::wallet_internal_error, std::string("Unexpected transfer index from public key: ")
-            + "got " + (kit == m_pub_keys.end() ? "<none>" : boost::lexical_cast<std::string>(kit->second))
+            + "got " + (kit == m_otks.end() ? "<none>" : boost::lexical_cast<std::string>(kit->second))
             + ", m_transfers_in.size() is " + boost::lexical_cast<std::string>(m_transfers_in.size()));
-        if (kit == m_pub_keys.end())
+        if (kit == m_otks.end())
         {
           uint64_t amount =  tx_scan_info[o].amount;
           if (!pool)
@@ -780,7 +768,7 @@ THROW_WALLET_EXCEPTION_IF( tx.vout.empty(), "tx.vout.empty()");
             set_unspent(m_transfers_in.size()-1);
             m_key_images[td.m_key_image] = m_transfers_in.size()-1;
 
-            m_pub_keys[otk] = m_transfers_in.size()-1;
+            m_otks[otk] = m_transfers_in.size()-1;
 
             MINFO("Received money: " << print_money(td.amount()) << ", with tx: " << txid);
             if (0 != m_callback)
@@ -790,34 +778,22 @@ THROW_WALLET_EXCEPTION_IF( tx.vout.empty(), "tx.vout.empty()");
             total_received_1 += amount;
             notify = true;
         }
-      else if (m_transfers_in[kit->second].m_spent || m_transfers_in[kit->second].amount() >= tx_scan_info[o].amount)
+      else 
         {
-          LOG_ERROR("otk " << epee::string_tools::pod_to_hex(kit->first)
-              << " from received " << print_money(tx_scan_info[o].amount) << " output already exists with "
-              << (m_transfers_in[kit->second].m_spent ? "spent" : "unspent") << " "
-              << print_money(m_transfers_in[kit->second].amount()) << " in tx " << m_transfers_in[kit->second].m_txid << ", received output ignored");
-          THROW_WALLET_EXCEPTION_IF(tx_money_got_in_outs[tx_scan_info[o].received->index] < tx_scan_info[o].amount,
-              error::wallet_internal_error, "Unexpected values of new and old outputs");
-          tx_money_got_in_outs[tx_scan_info[o].received->index] -= tx_scan_info[o].amount;
-
-        }
-        else
-        {
+          auto & td = m_transfers_in[kit->second];
           LOG_ERROR("Public key " << epee::string_tools::pod_to_hex(kit->first)
               << " from received " << print_money(tx_scan_info[o].amount) << " output already exists with "
               << print_money(m_transfers_in[kit->second].amount()) << ", replacing with new output");
           // The new larger output replaced a previous smaller one
-          THROW_WALLET_EXCEPTION_IF(tx_money_got_in_outs[tx_scan_info[o].received->index] < tx_scan_info[o].amount,
+          THROW_WALLET_EXCEPTION_IF(tx_money_got_in_outs < tx_scan_info[o].amount,
               error::wallet_internal_error, "Unexpected values of new and old outputs");
           THROW_WALLET_EXCEPTION_IF(m_transfers_in[kit->second].amount() > tx_scan_info[o].amount,
               error::wallet_internal_error, "Unexpected values of new and old outputs");
-          tx_money_got_in_outs[tx_scan_info[o].received->index] -= m_transfers_in[kit->second].amount();
+          tx_money_got_in_outs -= td.amount();
 
           const auto amount = tx_scan_info[o].amount;
-          uint64_t extra_amount = amount - m_transfers_in[kit->second].amount();
           if (!pool)
           {
-            transfer_details &td = m_transfers_in[kit->second];
             td.m_block_height = height;
             td.m_internal_output_index = o;
             td.m_global_output_index = o_indices[o];
@@ -828,13 +804,13 @@ THROW_WALLET_EXCEPTION_IF( tx.vout.empty(), "tx.vout.empty()");
 
             THROW_WALLET_EXCEPTION_IF(td.otk() != tx_scan_info[o].in_ephemeral.pub, error::wallet_internal_error, "Inconsistent public keys");
             THROW_WALLET_EXCEPTION_IF(td.m_spent, error::wallet_internal_error, "Inconsistent spent status");
+            THROW_WALLET_EXCEPTION_IF(amount!=td.amount(), error::wallet_internal_error, "Inconsistent spent status");
 
             MINFO("Received money: " << print_money(td.amount()) << ", with tx: " << txid);
             if (0 != m_callback)
               m_callback->on_money_received(height, txid, tx, td.m_amount, td.m_subaddr_index, (tx), td.m_tx.unlock_time);
           }
 
-          total_received_1 += extra_amount;
           notify = true;
         }
       }
@@ -872,81 +848,26 @@ THROW_WALLET_EXCEPTION_IF( tx.vout.empty(), "tx.vout.empty()");
 
   if (tx_money_spent_in_ins > 0 && !pool)
   {
-    uint64_t self_received = std::accumulate<decltype(tx_money_got_in_outs.begin()), uint64_t>(tx_money_got_in_outs.begin(), tx_money_got_in_outs.end(), 0,
-      [] (uint64_t acc, const std::pair<cryptonote::subaddress_index, uint64_t>& p)
-      {
-        return acc + p.second ;
-      });
-    process_outgoing(txid, tx, height, ts, tx_money_spent_in_ins, self_received);
+    process_outgoing(txid, tx, height, ts, tx_money_spent_in_ins, tx_money_got_in_outs);
     // if sending to yourself at the same subaddress account, set the outgoing payment amount to 0 so that it's less confusing
-    if (tx_money_spent_in_ins == self_received + fee)
+    if (tx_money_spent_in_ins == tx_money_got_in_outs + fee)
     {
       auto i = m_confirmed_txs.find(txid);
       THROW_WALLET_EXCEPTION_IF(i == m_confirmed_txs.end(), error::wallet_internal_error,
         "confirmed tx wasn't found: " + string_tools::pod_to_hex(txid));
-      i->second.m_change = self_received;
+      i->second.m_change = tx_money_got_in_outs;
     }
   }
 
   // create payment_details for each incoming transfer to a subaddress index
-  if (tx_money_got_in_outs.size() > 0)
+  if (tx_money_got_in_outs > 0)
   {
-    tx_extra_nonce extra_nonce;
-    crypto::hash payment_id = null_hash;
-    if (find_tx_extra_field_by_type(tx_extra_fields, extra_nonce))
-    {
-      crypto::hash8 payment_id8 = null_hash8;
-      if(get_encrypted_payment_id_from_tx_extra_nonce(extra_nonce.nonce, payment_id8))
-      {
-        // We got a payment ID to go with this tx
-        MINFO("Found encrypted payment ID: " << payment_id8);
-        MINFO("Consider using subaddresses instead of encrypted payment IDs");
-        if (tx_pub_key != null_pkey)
-        {
-          if (!m_account.get_device().decrypt_payment_id(payment_id8, tx_pub_key, m_account.get_keys().m_view_secret_key))
-          {
-            MINFO("Failed to decrypt payment ID: " << payment_id8);
-          }
-          else
-          {
-            MINFO("Decrypted payment ID: " << payment_id8);
-            // put the 64 bit decrypted payment id in the first 8 bytes
-            memcpy(payment_id.data, payment_id8.data, 8);
-            // rest is already 0, but guard against code changes above
-            memset(payment_id.data + 8, 0, 24);
-          }
-        }
-        else
-        {
-          MINFO("No public key found in tx, unable to decrypt payment id");
-        }
-      }
-      else if (get_payment_id_from_tx_extra_nonce(extra_nonce.nonce, payment_id))
-      {
-        bool ignore = block_version >= IGNORE_LONG_PAYMENT_ID_FROM_BLOCK_VERSION;
-        if (ignore)
-        {
-          MINFO("Found unencrypted payment ID in tx " << txid << " (ignored)");
-          MWARNING("Found OBSOLETE AND IGNORED unencrypted payment ID: these are bad for privacy, use subaddresses instead");
-          payment_id = crypto::null_hash;
-        }
-        else
-        {
-          MINFO("Found unencrypted payment ID: " << payment_id);
-          MWARNING("Found unencrypted payment ID: these are bad for privacy, consider using subaddresses instead");
-        }
-      }
-    }
-
-
-
     bool all_same = true;
-    for (const auto& i : tx_money_got_in_outs)
     {
       payment_details payment;
       payment.m_tx_hash      = txid;
       payment.m_fee          = tx.rct_signatures.txnFee;
-      payment.m_amount       = i.second;
+      payment.m_amount       = tx_money_got_in_outs;
       payment.m_block_height = height;
       payment.m_unlock_time  = tx.unlock_time;
       payment.m_timestamp    = ts;
@@ -1011,7 +932,7 @@ void wallet2::check_acc_out_precomp_once(const tx_out &o, const crypto::key_deri
 
 
 //----------------------------------------------------------------------------------------------------
-void wallet2::scan_output(const cryptonote::transaction &tx, bool miner_tx, const crypto::public_key &tx_pub_key, size_t i, tx_scan_info_t &tx_scan_info, int &num_vouts_received, std::unordered_map<cryptonote::subaddress_index, uint64_t> &tx_money_got_in_outs, std::vector<size_t> &outs, bool pool)
+void wallet2::scan_output(const cryptonote::transaction &tx, bool miner_tx, const crypto::public_key &tx_pub_key, size_t i, tx_scan_info_t &tx_scan_info, int &num_vouts_received,  uint64_t &tx_money_got_in_outs, std::vector<size_t> &outs, bool pool)
 {
   THROW_WALLET_EXCEPTION_IF(i >= tx.vout.size(), error::wallet_internal_error, "Invalid vout index");
 
@@ -1035,8 +956,7 @@ void wallet2::scan_output(const cryptonote::transaction &tx, bool miner_tx, cons
       const auto otk= boost::get<cryptonote::txout_to_key>(tx.vout[i].target).key;
 
     THROW_WALLET_EXCEPTION_IF(!r, error::wallet_internal_error, "Failed to generate key image");
-    THROW_WALLET_EXCEPTION_IF(tx_scan_info.in_ephemeral.pub != otk,
-        error::wallet_internal_error, "key_image generated ephemeral public key not matched with output_key");
+    THROW_WALLET_EXCEPTION_IF(tx_scan_info.in_ephemeral.pub != otk,error::wallet_internal_error, "key_image generated ephemeral public key not matched with output_key");
 
 
   THROW_WALLET_EXCEPTION_IF(std::find(outs.begin(), outs.end(), i) != outs.end(), error::wallet_internal_error, "Same output cannot be added twice");
@@ -1057,7 +977,7 @@ void wallet2::scan_output(const cryptonote::transaction &tx, bool miner_tx, cons
   }
   outs.push_back(i);
 
-  tx_money_got_in_outs[tx_scan_info.received->index] += tx_scan_info.money_transfered;
+  tx_money_got_in_outs += tx_scan_info.money_transfered;
   tx_scan_info.amount = tx_scan_info.money_transfered;
   ++num_vouts_received;
 }
