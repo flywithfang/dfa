@@ -88,12 +88,6 @@ namespace boost
     a & reinterpret_cast<char (&)[sizeof(crypto::hash8)]>(x);
   }
 
-  template <class Archive>
-  inline void serialize(Archive &a, cryptonote::txout_to_script &x, const boost::serialization::version_type ver)
-  {
-    a & x.keys;
-    a & x.script;
-  }
 
 
   template <class Archive>
@@ -102,11 +96,6 @@ namespace boost
     a & x.key;
   }
 
-  template <class Archive>
-  inline void serialize(Archive &a, cryptonote::txout_to_scripthash &x, const boost::serialization::version_type ver)
-  {
-    a & x.hash;
-  }
 
   template <class Archive>
   inline void serialize(Archive &a, cryptonote::txin_gen &x, const boost::serialization::version_type ver)
@@ -148,11 +137,6 @@ namespace boost
     a & x.vin;
     a & x.vout;
     a & x.extra;
-    if (x.version == 1)
-    {
-      a & x.signatures;
-    }
-    else
     {
       a & (rct::rctSigBase&)x.rct_signatures;
       if (x.rct_signatures.type != rct::RCTTypeNull)

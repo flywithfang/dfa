@@ -23,8 +23,8 @@ using namespace epee;
 #include "net/parse.h"
 #include "rpc/core_rpc_server_commands_defs.h"
 #include "rpc/core_rpc_server_error_codes.h"
-#include "rpc/rpc_payment_signature.h"
-#include "rpc/rpc_payment_costs.h"
+
+
 #include "misc_language.h"
 #include "cryptonote_basic/cryptonote_basic_impl.h"
 
@@ -52,8 +52,8 @@ using namespace epee;
 #include "common/notify.h"
 #include "common/perf_timer.h"
 #include "ringct/rctSigs.h"
-#include "ringdb.h"
-#include "device/device_cold.hpp"
+
+
 //#include "device_trezor/device_trezor.hpp"
 #include "net/socks_connect.h"
 
@@ -121,17 +121,17 @@ void wallet2::update_pool_state( bool refreshed)
       // that the first time we don't see the tx, we set that boolean, and only
       // delete it the second time it is checked (but only when refreshed, so
       // we're sure we've seen the blockchain state first)
-      if (utd.m_state == wallet2::unconfirmed_transfer_details::pending)
+      if (utd.m_state == wallet2::unconfirmed_transfer_out::pending)
       {
         MINFO("Pending txid " << txid << " not in pool, marking as not in pool");
-        pit->second.m_state = wallet2::unconfirmed_transfer_details::pending_not_in_pool;
+        pit->second.m_state = wallet2::unconfirmed_transfer_out::pending_not_in_pool;
       }
-      else if (utd.m_state == wallet2::unconfirmed_transfer_details::pending_not_in_pool && refreshed &&
+      else if (utd.m_state == wallet2::unconfirmed_transfer_out::pending_not_in_pool && refreshed &&
         now > std::chrono::system_clock::from_time_t(utd.m_sent_time) + tx_propagation_timeout)
       {
         MINFO("Pending txid " << txid << " not in pool after " << tx_propagation_timeout.count() <<
           " seconds, marking as failed");
-        utd.m_state = wallet2::unconfirmed_transfer_details::failed;
+        utd.m_state = wallet2::unconfirmed_transfer_out::failed;
         
         // the inputs aren't spent anymore, since the tx failed
         for (size_t i = 0; i < utd.m_tx.vin.size(); ++i)
@@ -170,11 +170,11 @@ void wallet2::update_pool_state( bool refreshed)
 void wallet2::remove_obsolete_pool_transfer_in(const std::vector<crypto::hash> &pool_txids)
 {
   // remove pool txes to us that aren't in the pool anymore
-  std::unordered_multimap<crypto::hash, wallet2::pool_payment_details>::iterator uit = m_pool_transfers_in.begin();
+  std::unordered_multimap<crypto::hash, wallet2::pool_transfer_in>::iterator uit = m_pool_transfers_in.begin();
   while (uit != m_pool_transfers_in.end())
   {
   	const auto & utd = uit->second;
-    const crypto::hash &txid = utd.m_pd.m_tx_hash;
+    const crypto::hash &txid = utd.m_tx_hash;
     bool found = false;
     for (const auto &it2: pool_txids)
     {
@@ -196,19 +196,13 @@ void wallet2::remove_obsolete_pool_transfer_in(const std::vector<crypto::hash> &
 }
 
 //----------------------------------------------------------------------------------------------------
-void wallet2::get_payments(const crypto::hash& payment_id, std::list<wallet2::payment_details>& payments, uint64_t min_height) const
+void wallet2::get_unconfirmed_transfer_in(std::list<std::pair<crypto::hash,wallet2::pool_transfer_in>>& payments, uint64_t min_height,uint64_t max_height) const
 {
  
 }
 
-
 //----------------------------------------------------------------------------------------------------
-void wallet2::get_payments(std::list<std::pair<crypto::hash,wallet2::payment_details>>& payments, uint64_t min_height, uint64_t max_height) const
-{
- 
-}
-//----------------------------------------------------------------------------------------------------
-void wallet2::get_payments_out(std::list<std::pair<crypto::hash,wallet2::confirmed_transfer_details>>& confirmed_payments,uint64_t min_height, uint64_t max_height) const
+void wallet2::get_payments_out(std::list<std::pair<crypto::hash,wallet2::confirmed_transfer_out>>& confirmed_payments,uint64_t min_height, uint64_t max_height) const
 {
   for (auto i = m_confirmed_txs.begin(); i != m_confirmed_txs.end(); ++i) {
     if (i->second.m_block_height <= min_height || i->second.m_block_height > max_height)
@@ -217,7 +211,7 @@ void wallet2::get_payments_out(std::list<std::pair<crypto::hash,wallet2::confirm
   }
 }
 //----------------------------------------------------------------------------------------------------
-void wallet2::get_unconfirmed_payments_out(std::list<std::pair<crypto::hash,wallet2::unconfirmed_transfer_details>>& unconfirmed_payments) const
+void wallet2::get_unconfirmed_payments_out(std::list<std::pair<crypto::hash,wallet2::unconfirmed_transfer_out>>& unconfirmed_payments) const
 {
   for (auto i = m_unconfirmed_txs.begin(); i != m_unconfirmed_txs.end(); ++i) {
    
@@ -225,7 +219,7 @@ void wallet2::get_unconfirmed_payments_out(std::list<std::pair<crypto::hash,wall
   }
 }
 //----------------------------------------------------------------------------------------------------
-void wallet2::get_unconfirmed_payments(std::list<std::pair<crypto::hash,wallet2::pool_payment_details>>& unconfirmed_payments) const
+void wallet2::get_unconfirmed_transfer_in(std::list<std::pair<crypto::hash,wallet2::pool_transfer_in>>& unconfirmed_payments) const
 {
   for (auto i = m_pool_transfers_in.begin(); i != m_pool_transfers_in.end(); ++i) {
    

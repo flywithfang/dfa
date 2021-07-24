@@ -573,7 +573,7 @@ namespace tools
     struct tx_not_constructed : public transfer_error
     {
       typedef std::vector<cryptonote::tx_source_entry> sources_t;
-      typedef std::vector<cryptonote::tx_destination_entry> destinations_t;
+      typedef cryptonote::tx_destination_entry destinations_t;
 
       explicit tx_not_constructed(
           std::string && loc
@@ -584,14 +584,14 @@ namespace tools
         )
         : transfer_error(std::move(loc), "transaction was not constructed")
         , m_sources(sources)
-        , m_destinations(destinations)
+        , m_dst(destinations)
         , m_unlock_time(unlock_time)
         , m_nettype(nettype)
       {
       }
 
       const sources_t& sources() const { return m_sources; }
-      const destinations_t& destinations() const { return m_destinations; }
+      const destinations_t& destinations() const { return m_dst; }
       uint64_t unlock_time() const { return m_unlock_time; }
 
       std::string to_string() const
@@ -617,11 +617,8 @@ namespace tools
         }
 
         ss << "\nDestinations:";
-        for (size_t i = 0; i < m_destinations.size(); ++i)
         {
-          const cryptonote::tx_destination_entry& dst = m_destinations[i];
-          ss << "\n  " << i << ": " << cryptonote::get_account_address_as_str(m_nettype,  dst.addr) << " " <<
-            cryptonote::print_money(dst.amount);
+          ss << "\n  " << ": " << cryptonote::get_account_address_as_str(m_nettype,  m_dst.addr) << " " <<cryptonote::print_money(m_dst.amount);
         }
 
         ss << "\nunlock_time: " << m_unlock_time;
@@ -631,7 +628,7 @@ namespace tools
 
     private:
       sources_t m_sources;
-      destinations_t m_destinations;
+      destinations_t m_dst;
       uint64_t m_unlock_time;
       cryptonote::network_type m_nettype;
     };
@@ -673,18 +670,18 @@ namespace tools
     {
       explicit tx_sum_overflow(
           std::string && loc
-        , const std::vector<cryptonote::tx_destination_entry>& destinations
+        , const cryptonote::tx_destination_entry& destinations
         , uint64_t fee
         , cryptonote::network_type nettype
         )
         : transfer_error(std::move(loc), "transaction sum + fee exceeds " + cryptonote::print_money(std::numeric_limits<uint64_t>::max()))
-        , m_destinations(destinations)
+        , m_dst(destinations)
         , m_fee(fee)
         , m_nettype(nettype)
       {
       }
 
-      const std::vector<cryptonote::tx_destination_entry>& destinations() const { return m_destinations; }
+      const cryptonote::tx_destination_entry& destinations() const { return m_dst; }
       uint64_t fee() const { return m_fee; }
 
       std::string to_string() const
@@ -693,15 +690,14 @@ namespace tools
         ss << transfer_error::to_string() <<
           ", fee = " << cryptonote::print_money(m_fee) <<
           ", destinations:";
-        for (const auto& dst : m_destinations)
         {
-          ss << '\n' << cryptonote::print_money(dst.amount) << " -> " << cryptonote::get_account_address_as_str(m_nettype,  dst.addr);
+          ss << '\n' << cryptonote::print_money(m_dst.amount) << " -> " << cryptonote::get_account_address_as_str(m_nettype,  m_dst.addr);
         }
         return ss.str();
       }
 
     private:
-      std::vector<cryptonote::tx_destination_entry> m_destinations;
+      cryptonote::tx_destination_entry m_dst;
       uint64_t m_fee;
       cryptonote::network_type m_nettype;
     };

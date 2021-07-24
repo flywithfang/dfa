@@ -127,11 +127,9 @@ bool gen_rct_tx_validation_base::generate_with_full(std::vector<test_event_entry
       crypto::key_derivation derivation;
       bool r = crypto::generate_key_derivation(destinations[o].addr.m_view_public_key, tx_key, derivation);
       CHECK_AND_ASSERT_MES(r, false, "Failed to generate key derivation");
-      crypto::secret_key amount_key;
-      crypto::derivation_to_scalar(derivation, o, amount_key);
       const uint8_t type = rct_txes[n].rct_signatures.type;
       if (type == rct::RCTTypeSimple || type == rct::RCTTypeBulletproof || type == rct::RCTTypeBulletproof2 || type == rct::RCTTypeCLSAG)
-        rct::decodeRctSimple(rct_txes[n].rct_signatures, rct::sk2rct(amount_key), o, rct_tx_masks[o+n*4], hw::get_device("default"));
+        rct::decodeRctSimple(rct_txes[n].rct_signatures,derivation, o);
     }
 
     CHECK_AND_ASSERT_MES(generator.construct_block_manually(blk_txes[n], blk_last, miner_account,

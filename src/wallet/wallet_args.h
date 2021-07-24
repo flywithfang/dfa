@@ -34,7 +34,6 @@
 
 namespace wallet_args
 {
-  command_line::arg_descriptor<std::string> arg_generate_from_json();
   command_line::arg_descriptor<std::string> arg_wallet_file();
   command_line::arg_descriptor<std::string> arg_rpc_client_secret_key();
 

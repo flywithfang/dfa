@@ -73,14 +73,15 @@ namespace cryptonote
   std::tuple<bool, transaction> construct_miner_tx(size_t height, size_t median_weight, uint64_t already_generated_coins, size_t current_block_weight, uint64_t fee, const account_public_address &miner_address, const blobdata& blob_reserve,  uint8_t hard_fork_version) {
     transaction tx;
     tx.version = 2;
+    const  std::tuple<bool, transaction> failed={false,tx};
 
     keypair txkey = keypair::generate(hw::get_device("default"));
     add_tx_pub_key_to_extra(tx, txkey.pub);
     if(!blob_reserve.empty())
       if(!add_extra_nonce_to_tx_extra(tx.extra, blob_reserve))
-        return false;
+        return {false,tx};
     if (!sort_tx_extra(tx.extra, tx.extra))
-      return false;
+      return {false,tx};
 
     txin_gen in;
     in.height = height;
@@ -89,7 +90,7 @@ namespace cryptonote
     if(!get_block_reward(median_weight, current_block_weight, already_generated_coins, block_reward, hard_fork_version))
     {
       LOG_PRINT_L0("Block is too big");
-      return false;
+       return {false,tx};
     }
 
     MINFO("construct_miner_tx: reward " << print_money(block_reward) <<", fee " << fee << ",height "<<height<<",coins"<<already_generated_coins);
@@ -102,10 +103,10 @@ namespace cryptonote
       const auto & A=miner_address.m_view_public_key;
       const auto & B=miner_address.m_spend_public_key;
       bool r = crypto::generate_key_derivation(A, txkey.sec, kA);
-      CHECK_AND_ASSERT_MES(r, false, "while creating outs: failed to generate_key_derivation(" << miner_address.m_view_public_key << ", " << txkey.sec << ")");
+      CHECK_AND_ASSERT_MES(r, failed, "while creating outs: failed to generate_key_derivation(" << miner_address.m_view_public_key << ", " << txkey.sec << ")");
 
       std::tie(r,otk) = crypto::derive_public_key(kA, 0, B);
-      CHECK_AND_ASSERT_MES(r, false, "while creating outs: failed to derive_public_key(" << kA << ", "  << ", "<< miner_address.m_spend_public_key << ")");
+      CHECK_AND_ASSERT_MES(r,  failed, "while creating outs: failed to derive_public_key(" << kA << ", "  << ", "<< miner_address.m_spend_public_key << ")");
 
       txout_to_key tk{otk};
 
@@ -148,12 +149,13 @@ namespace cryptonote
     //---------------------------------------------------------------
   bool construct_tx_and_get_tx_key(const account_keys& sender_account_keys,  std::vector<tx_source_entry>& sources, std::vector<tx_destination_entry>& destinations, const boost::optional<cryptonote::account_public_address>& change_addr, const std::vector<uint8_t> &extra, transaction& tx, uint64_t unlock_time, crypto::secret_key &tx_sec,  const rct::RCTConfig &rct_config,bool shuffle_outs)
   {
+     hw::device &hwdev = sender_account_keys.get_device();
     tx=transaction{}; //clear everthing
 
-      cryptonote::keypair txkey = cryptonote::keypair::generate(*this);
-      tx_sec = txkey.sec;
-      const crypto::public_key txkey_pub=txkey.pub;
-    hw::device &hwdev = sender_account_keys.get_device();
+    cryptonote::keypair txkey = cryptonote::keypair::generate(hwdev);
+    tx_sec = txkey.sec;
+    const crypto::public_key txkey_pub=txkey.pub;
+   
 
     if (sources.empty())
     {
@@ -257,7 +259,7 @@ namespace cryptonote
       ++idx;
       if(src_entr.real_output >= src_entr.decoys.size())
       {
-        LOG_ERROR("real_output index (" << src_entr.real_output << ")bigger than output_keys.size()=" << src_entr.outputs.size());
+        LOG_ERROR("real_output index (" << src_entr.real_output << ")bigger than output_keys.size()=" << src_entr.decoys.size());
         return false;
       }
       summary_inputs_money += src_entr.amount;
@@ -267,7 +269,6 @@ namespace cryptonote
       keypair& in_ephemeral = in_contexts.back().in_ephemeral;
       crypto::key_image img;
       const auto & real_input= src_entr.decoys[src_entr.real_output];
-      const auto& out_key = reinterpret_cast<const crypto::public_key&>(real_input.second.dest);
       if(!generate_key_image_helper(sender_account_keys, src_entr.real_out_tx_key,  src_entr.real_output_in_tx_index, in_ephemeral,img, hwdev))
       {
         LOG_ERROR("Key image generation failed!");
@@ -280,7 +281,7 @@ namespace cryptonote
         LOG_ERROR("derived public key mismatch with output public key at index " << idx << ", real out " << src_entr.real_output << "! "<< ENDL << "derived_key:"
           << string_tools::pod_to_hex(in_ephemeral.pub) << ENDL << "real otk:"
           << string_tools::pod_to_hex(old_otk) );
-        LOG_ERROR("amount " << src_entr.amount <<  src_entr.rct);
+        LOG_ERROR("amount " << src_entr.amount );
         LOG_ERROR("tx pubkey " << src_entr.real_out_tx_key << ", real_output_in_tx_index " << src_entr.real_output_in_tx_index);
         return false;
       }
@@ -292,11 +293,11 @@ namespace cryptonote
       for(auto decoy: src_entr.decoys)
         txin.key_offsets.push_back(decoy.first);
 
-      txin.key_offsets = absolute_output_offsets_to_relative(input_to_key.key_offsets);
+      txin.key_offsets = absolute_output_offsets_to_relative(txin.key_offsets);
       tx.vin.push_back(txin);
     }
 
-    if (shuffle_outs)txin
+    if (shuffle_outs)
     {
       std::shuffle(destinations.begin(), destinations.end(), crypto::random_device{});
     }
@@ -340,7 +341,7 @@ namespace cryptonote
 
       shared_secs.push_back(shared_sec);
 
-      txout_to_key tk{otk}
+      txout_to_key tk{otk};
       tx_out out{0,tk};
       tx.vout.push_back(out);
       output_index++;
@@ -348,8 +349,6 @@ namespace cryptonote
     }
 
     MINFO("tx pubkey: " << txkey_pub);
-
-
     if (!sort_tx_extra(tx.extra, tx.extra))
       return false;
 
@@ -364,7 +363,7 @@ namespace cryptonote
     {
 
       uint64_t amount_in = 0, amount_out = 0;
-      std::vector<ctkey> real_ins;
+      std::vector<rct::ctkey> real_ins;
       real_ins.reserve(sources.size());
     
       std::vector<uint64_t> inamounts, outamounts;
@@ -378,18 +377,18 @@ namespace cryptonote
         inamounts.push_back(in.amount);
         ring_index.push_back(in.real_output);
         // real_ins: (secret key, mask)
-        const auto key & otk_sec =rct::sk2rct(in_contexts[i].in_ephemeral.sec);//b
+        const auto  & otk_sec =rct::sk2rct(in_contexts[i].in_ephemeral.sec);//b
         ctkey.otk_sec = otk_sec;
         ctkey.noise = in.noise;//aG+bH amount commit
         real_ins.push_back(ctkey);
         memwipe(&ctkey, sizeof(rct::ctkey));
        
       }
-       rct::keyV destinations;
+       rct::keyV dst_otks;
       for (size_t i = 0; i < tx.vout.size(); ++i)
       {
         const auto & otk=boost::get<txout_to_key>(tx.vout[i].target).key;
-        destinations.push_back(rct::pk2rct(otk));
+        dst_otks.push_back(rct::pk2rct(otk));
 
         const auto & dst = destinations[i];
         outamounts.push_back(dst.amount);
@@ -397,7 +396,7 @@ namespace cryptonote
       }
 
   // mixRing indexing is done the other way round for simple
-      std::vector<std::vector<ctkey>> mixRing(tx.vin.size());
+      std::vector<std::vector<rct::ctkey>> mixRing(tx.vin.size());
       {
         // mixRing indexing is done the other way round for simple
         for (size_t i = 0; i < sources.size(); ++i)
@@ -419,7 +418,7 @@ namespace cryptonote
 
       const auto & message= rct::hash2rct(tx_prefix_hash);
       const auto fee = amount_in - amount_out;
-      tx.rct_signatures = rct::genRctSimple(message, real_ins, destinations, inamounts, outamounts,fee , mixRing, shared_secs,   ring_index, outSk, rct_config, hwdev);
+      tx.rct_signatures = rct::genRctSimple(message, real_ins, dst_otks, inamounts, outamounts,fee , mixRing, shared_secs,   ring_index, outSk, rct_config, hwdev);
     
       memwipe(real_ins.data(), real_ins.size() * sizeof(rct::ctkey));
 

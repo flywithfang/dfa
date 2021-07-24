@@ -67,19 +67,12 @@ namespace
 
 namespace wallet_args
 {
-  // Create on-demand to prevent static initialization order fiasco issues.
-  command_line::arg_descriptor<std::string> arg_generate_from_json()
-  {
-    return {"generate-from-json", wallet_args::tr("Generate wallet from JSON format file"), ""};
-  }
+  
   command_line::arg_descriptor<std::string> arg_wallet_file()
   {
     return {"wallet-file", wallet_args::tr("Use wallet <arg>"), ""};
   }
-  command_line::arg_descriptor<std::string> arg_rpc_client_secret_key()
-  {
-    return {"rpc-client-secret-key", wallet_args::tr("Set RPC client secret key for RPC payments"), ""};
-  }
+ 
 
   const char* tr(const char* str)
   {

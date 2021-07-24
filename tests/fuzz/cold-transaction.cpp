@@ -45,18 +45,9 @@ BEGIN_INIT_SIMPLE_FUZZER()
   epee::string_tools::hex_to_pod(spendkey_hex, spendkey);
 
   wallet->init("", boost::none, "", 0, true, epee::net_utils::ssl_support_t::e_ssl_support_disabled);
-  wallet->set_subaddress_lookahead(1, 1);
   wallet->generate("", "", spendkey, true, false);
 END_INIT_SIMPLE_FUZZER()
 
 BEGIN_SIMPLE_FUZZER()
-  std::string s((const char*)buf, len);
-  tools::wallet2::unsigned_tx_set exported_txs;
-  std::stringstream iss;
-  iss << s;
-  binary_archive<false> ar(iss);
-  ::serialization::serialize(ar, exported_txs);
-  std::vector<tools::wallet2::pending_tx> ptx;
-  bool success = wallet->sign_tx(exported_txs, "/tmp/cold-transaction-test-signed", ptx);
-  std::cout << (success ? "signed" : "error") << std::endl;
+ 
 END_SIMPLE_FUZZER()

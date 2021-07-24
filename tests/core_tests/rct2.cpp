@@ -151,12 +151,9 @@ bool gen_rct2_tx_validation_base::generate_with(std::vector<test_event_entry>& e
       crypto::key_derivation derivation;
       bool r = crypto::generate_key_derivation(destinations[o].addr.m_view_public_key, tx_key, derivation);
       CHECK_AND_ASSERT_MES(r, false, "Failed to generate key derivation");
-      crypto::secret_key amount_key;
-      crypto::derivation_to_scalar(derivation, o, amount_key);
-      rct::key rct_tx_mask;
       const uint8_t type = rct_txes.back().rct_signatures.type;
       if (type == rct::RCTTypeSimple || type == rct::RCTTypeBulletproof || type == rct::RCTTypeBulletproof2 || type == rct::RCTTypeCLSAG)
-        rct::decodeRctSimple(rct_txes.back().rct_signatures, rct::sk2rct(amount_key), o, rct_tx_mask, hw::get_device("default"));
+        rct::decodeRctSimple(rct_txes.back().rct_signatures, derivation, o);
     }
 
     while (amounts_paid[0] != (size_t)-1)

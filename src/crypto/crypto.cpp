@@ -652,9 +652,7 @@ POP_WARNINGS
   }
 
   void crypto_ops::generate_ring_signature(const hash &prefix_hash, const key_image &image,
-    const public_key *const *pubs, size_t pubs_count,
-    const secret_key &sec, size_t sec_index,
-    signature *sig) {
+    const public_key *const *pubs, size_t pubs_count,const secret_key &sec, size_t sec_index,signature *sig) {
     size_t i;
     ge_p3 image_unp;
     ge_dsmp image_pre;
@@ -690,10 +688,10 @@ POP_WARNINGS
       ge_p3 tmp3;
       if (i == sec_index) {
         random_scalar(k);
-        ge_scalarmult_base(&tmp3, &k);
+        ge_scalarmult_base(&tmp3, &k);//kG
         ge_p3_tobytes(&buf->ab[i].a, &tmp3);
         hash_to_ec(*pubs[i], tmp3);
-        ge_scalarmult(&tmp2, &k, &tmp3);
+        ge_scalarmult(&tmp2, &k, &tmp3);//kA,kG
         ge_tobytes(&buf->ab[i].b, &tmp2);
       } else {
         random_scalar(sig[i].c);
@@ -705,13 +703,16 @@ POP_WARNINGS
         ge_double_scalarmult_base_vartime(&tmp2, &sig[i].c, &tmp3, &sig[i].r);
         ge_tobytes(&buf->ab[i].a, &tmp2);
         hash_to_ec(*pubs[i], tmp3);
+        //sA+ex
         ge_double_scalarmult_precomp_vartime(&tmp2, &sig[i].r, &tmp3, &sig[i].c, image_pre);
         ge_tobytes(&buf->ab[i].b, &tmp2);
         sc_add(&sum, &sum, &sig[i].c);
       }
     }
+    //H(kA,kG)
     hash_to_scalar(buf.get(), rs_comm_size(pubs_count), h);
     sc_sub(&sig[sec_index].c, &h, &sum);
+    //s=k-xe
     sc_mulsub(&sig[sec_index].r, &sig[sec_index].c, &unwrap(sec), &k);
 
     memwipe(&k, sizeof(k));

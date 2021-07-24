@@ -50,7 +50,6 @@
 #include "generate_keypair.h"
 #include "signature.h"
 #include "is_out_to_acc.h"
-#include "subaddress_expand.h"
 #include "sc_reduce32.h"
 #include "sc_check.h"
 #include "cn_fast_hash.h"
@@ -190,7 +189,6 @@ int main(int argc, char** argv)
   TEST_PERFORMANCE4(filter, p, test_check_hash, 0xffffffffffffffff, 0xffffffffffffffff, 0xffffffffffffffff, 0xffffffffffffffff);
 
   TEST_PERFORMANCE0(filter, p, test_is_out_to_acc);
-  TEST_PERFORMANCE0(filter, p, test_is_out_to_acc_precomp);
   TEST_PERFORMANCE0(filter, p, test_generate_key_image_helper);
   TEST_PERFORMANCE0(filter, p, test_generate_key_derivation);
   TEST_PERFORMANCE0(filter, p, test_generate_key_image);

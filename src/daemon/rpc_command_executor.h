@@ -77,7 +77,6 @@ public:
 
   bool show_hash_rate();
 
-  bool hide_hash_rate();
 
   bool show_difficulty();
 

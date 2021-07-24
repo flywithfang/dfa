@@ -101,12 +101,12 @@ namespace rct {
         key dest; 
         key otk;
         key otk_sec;
-      }
+      };
         union{
         key mask; 
         key noise;
         key commitment;
-      }
+      };
     };
     typedef std::vector<ctkey> ctkeyV;
     typedef std::vector<ctkeyV> ctkeyM;
@@ -263,10 +263,10 @@ namespace rct {
     struct rctSigBase {
         uint8_t type;
         key message;
-        std::vector<std:vector<ctkey>> mixRing; //the set of all pubkeys / copy
+        std::vector<std::vector<ctkey>> mixRing; //the set of all pubkeys / copy
         //pairs that you mix with
         std::vector<ecdhTuple> ecdhInfo;
-        std:vector<ctkey> outPk;
+        std::vector<ctkey> outPk;
         xmr_amount txnFee; // contains b
 
         template<bool W, template <bool> class Archive>
@@ -301,7 +301,7 @@ namespace rct {
 
           ar.tag("outPk");
           ar.begin_array();
-          ::serialization::detail::prepare_custom_vector_serialization(outputs, outPk, typename Archive<W>::is_saving())
+          ::serialization::detail::prepare_custom_vector_serialization(outputs, outPk, typename Archive<W>::is_saving());
           if (outPk.size() != outputs)
             return false;
           for (size_t i = 0; i < outputs; ++i)

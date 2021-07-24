@@ -165,14 +165,15 @@ bool Blockchain::create_block_template(block& b, const crypto::hash *from_block,
    */
   //make blocks coin-base tx looks close to real coinbase tx to get truthful blob weight
   uint8_t hf_version = b.major_version;
-  bool r = construct_miner_tx(height, median_weight, already_generated_coins, txs_weight, fee, miner_address, b.miner_tx, ex_nonce, 0, hf_version);
+  bool r=false;
+   std::tie(r,b.miner_tx)  = construct_miner_tx(height, median_weight, already_generated_coins, txs_weight, fee, miner_address, ex_nonce, hf_version);
   CHECK_AND_ASSERT_MES(r, false, "Failed to construct miner tx, first chance");
   size_t cumulative_weight = txs_weight + get_transaction_weight(b.miner_tx);
   MDEBUG("Creating block template: miner tx weight " << get_transaction_weight(b.miner_tx) <<
       ", cumulative weight " << cumulative_weight);
   for (size_t try_count = 0; try_count != 10; ++try_count)
   {
-    r = construct_miner_tx(height, median_weight, already_generated_coins, cumulative_weight, fee, miner_address, b.miner_tx, ex_nonce, 1, hf_version);
+    std::tie(r,b.miner_tx) = construct_miner_tx(height, median_weight, already_generated_coins, cumulative_weight, fee, miner_address, ex_nonce,  hf_version);
 
     CHECK_AND_ASSERT_MES(r, false, "Failed to construct miner tx, second chance");
     size_t coinbase_weight = get_transaction_weight(b.miner_tx);
@@ -188,11 +189,7 @@ bool Blockchain::create_block_template(block& b, const crypto::hash *from_block,
     if (coinbase_weight < cumulative_weight - txs_weight)
     {
       size_t delta = cumulative_weight - txs_weight - coinbase_weight;
-#if defined(DEBUG_CREATE_BLOCK_TEMPLATE)
-      MDEBUG("Creating block template: miner tx weight " << coinbase_weight <<
-          ", cumulative weight " << txs_weight + coinbase_weight <<
-          " is less than before, adding " << delta << " zero bytes");
-#endif
+
       b.miner_tx.extra.insert(b.miner_tx.extra.end(), delta, 0);
       //here  could be 1 byte difference, because of extra field counter is varint, and it can become from 1-byte len to 2-bytes len.
       if (cumulative_weight != txs_weight + get_transaction_weight(b.miner_tx))

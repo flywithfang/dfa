@@ -15,14 +15,7 @@ void wallet_accessor_test::set_account(tools::wallet2 * wallet, cryptonote::acco
   wallet->clear();
   wallet->m_account = account;
 
-  wallet->m_key_device_type = account.get_device().get_type();
   wallet->m_account_public_address = account.get_keys().m_account_address;
-  wallet->m_watch_only = false;
-  wallet->m_multisig = false;
-  wallet->m_multisig_threshold = 0;
-  wallet->m_multisig_signers.clear();
-  wallet->m_device_name = account.get_device().get_name();
-
 
   wallet->setup_new_blockchain();  // generates also subadress register
 }
@@ -133,7 +126,6 @@ bool wallet_tools::fill_tx_sources(tools::wallet2 * wallet, std::vector<cryptono
       MDEBUG("Selected " << i << " from tx: " << dump_keys(td.m_txid.data)
                         << " ki: " << dump_keys(td.m_key_image.data)
                         << " amnt: " << td.amount()
-                        << " rct: " << td.is_rct()
                         << " glob: " << td.m_global_output_index);
 
       sum += td.amount();
@@ -160,10 +152,9 @@ void wallet_tools::gen_tx_src(size_t mixin, uint64_t cur_height, const tools::wa
 {
   CHECK_AND_ASSERT_THROW_MES(mixin != 0, "mixin is zero");
   src.amount = td.amount();
-  src.rct = td.is_rct();
 
   std::vector<tools::wallet2::get_outs_entry> outs;
-  bt.get_fake_outs(mixin, td.is_rct() ? 0 : td.amount(), td.m_global_output_index, cur_height, outs);
+  bt.get_fake_outs(mixin, 0, td.m_global_output_index, cur_height, outs);
 
   for (size_t n = 0; n < mixin; ++n)
   {

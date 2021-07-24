@@ -62,42 +62,27 @@ namespace cryptonote
       FIELD(amount)
       FIELD(noise)
 
-      if (real_output >= outputs.size())
+      if (real_output >= decoys.size())
         return false;
     END_SERIALIZE()
   };
 
   struct tx_destination_entry
   {
-    std::string original;
     uint64_t amount;                    //money
     account_public_address addr;        //destination address
-    bool is_integrated;
 
-    tx_destination_entry() : amount(0), addr(AUTO_VAL_INIT(addr)), is_integrated(false) { }
-    tx_destination_entry(uint64_t a, const account_public_address &ad) : amount(a), addr(ad), is_integrated(false) { }
-    tx_destination_entry(const std::string &o, uint64_t a, const account_public_address &ad) : original(o), amount(a), addr(ad), is_integrated(false) { }
+    tx_destination_entry() : amount(0), addr(AUTO_VAL_INIT(addr)) { }
+    tx_destination_entry(uint64_t a, const account_public_address &ad) : amount(a), addr(ad) { }
 
-    std::string address(network_type nettype, const crypto::hash &payment_id) const
+    std::string address(network_type nettype) const
     {
-      if (!original.empty())
-      {
-        return original;
-      }
-
-      if (is_integrated)
-      {
-        return get_account_integrated_address_as_str(nettype, addr, reinterpret_cast<const crypto::hash8 &>(payment_id));
-      }
-
       return get_account_address_as_str(nettype,  addr);
     }
 
     BEGIN_SERIALIZE_OBJECT()
-      FIELD(original)
       VARINT_FIELD(amount)
       FIELD(addr)
-      FIELD(is_integrated)
     END_SERIALIZE()
   };
 
@@ -132,7 +117,7 @@ namespace boost
     template <class Archive>
     inline void serialize(Archive &a, cryptonote::tx_source_entry &x, const boost::serialization::version_type ver)
     {
-      a & x.outputs;
+      a & x.decoys;
       a & x.real_output;
       a & x.real_out_tx_key;
       a & x.real_output_in_tx_index;
@@ -147,8 +132,6 @@ namespace boost
     {
       a & x.amount;
       a & x.addr;
-      a & x.original;
-      a & x.is_integrated;
     }
   }
 }

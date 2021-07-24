@@ -96,12 +96,9 @@ namespace cryptonote
     //! \return Prompts user for password and verifies against local file. Logs on error and returns `none`
     boost::optional<tools::password_container> get_and_verify_password() const;
 
-    boost::optional<epee::wipeable_string> new_wallet(const boost::program_options::variables_map& vm, const crypto::secret_key& recovery_key,
-        bool recover, bool two_random, const std::string &old_language);
-    boost::optional<epee::wipeable_string> new_wallet(const boost::program_options::variables_map& vm, const cryptonote::account_public_address& address,
-        const boost::optional<crypto::secret_key>& spendkey, const crypto::secret_key& viewkey);
+    boost::optional<epee::wipeable_string> new_wallet(const boost::program_options::variables_map& vm, const crypto::secret_key& recovery_key,bool recover, bool two_random, const std::string &old_language);
+    boost::optional<epee::wipeable_string> new_wallet(const boost::program_options::variables_map& vm, const cryptonote::account_public_address& address,const boost::optional<crypto::secret_key>& spendkey, const crypto::secret_key& viewkey);
 
-    boost::optional<epee::wipeable_string> new_wallet(const boost::program_options::variables_map& vm);
     boost::optional<epee::wipeable_string> open_wallet(const boost::program_options::variables_map& vm);
     bool close_wallet();
 
@@ -122,30 +119,15 @@ namespace cryptonote
      */
     bool seed_set_language(const std::vector<std::string> &args = std::vector<std::string>());
     bool set_always_confirm_transfers(const std::vector<std::string> &args = std::vector<std::string>());
-    bool set_print_ring_members(const std::vector<std::string> &args = std::vector<std::string>());
     bool set_store_tx_info(const std::vector<std::string> &args = std::vector<std::string>());
     bool set_default_ring_size(const std::vector<std::string> &args = std::vector<std::string>());
     bool set_auto_refresh(const std::vector<std::string> &args = std::vector<std::string>());
-    bool set_refresh_type(const std::vector<std::string> &args = std::vector<std::string>());
     bool set_confirm_missing_payment_id(const std::vector<std::string> &args = std::vector<std::string>());
     bool set_ask_password(const std::vector<std::string> &args = std::vector<std::string>());
     bool set_unit(const std::vector<std::string> &args = std::vector<std::string>());
     bool set_max_reorg_depth(const std::vector<std::string> &args = std::vector<std::string>());
-    bool set_min_output_count(const std::vector<std::string> &args = std::vector<std::string>());
-    bool set_min_output_value(const std::vector<std::string> &args = std::vector<std::string>());
-    bool set_merge_destinations(const std::vector<std::string> &args = std::vector<std::string>());
-    bool set_confirm_backlog(const std::vector<std::string> &args = std::vector<std::string>());
-    bool set_confirm_backlog_threshold(const std::vector<std::string> &args = std::vector<std::string>());
-    bool set_confirm_export_overwrite(const std::vector<std::string> &args = std::vector<std::string>());
     bool set_refresh_from_block_height(const std::vector<std::string> &args = std::vector<std::string>());
     bool set_auto_low_priority(const std::vector<std::string> &args = std::vector<std::string>());
-    bool set_segregate_pre_fork_outputs(const std::vector<std::string> &args = std::vector<std::string>());
-    bool set_key_reuse_mitigation2(const std::vector<std::string> &args = std::vector<std::string>());
-    bool set_subaddress_lookahead(const std::vector<std::string> &args = std::vector<std::string>());
-    bool set_segregation_height(const std::vector<std::string> &args = std::vector<std::string>());
-    bool set_ignore_fractional_outputs(const std::vector<std::string> &args = std::vector<std::string>());
-    bool set_ignore_outputs_above(const std::vector<std::string> &args = std::vector<std::string>());
-    bool set_ignore_outputs_below(const std::vector<std::string> &args = std::vector<std::string>());
     bool set_inactivity_lock_timeout(const std::vector<std::string> &args = std::vector<std::string>());
     bool set_device_name(const std::vector<std::string> &args = std::vector<std::string>());
     bool set_export_format(const std::vector<std::string> &args = std::vector<std::string>());
@@ -154,8 +136,6 @@ namespace cryptonote
     bool help(const std::vector<std::string> &args = std::vector<std::string>());
     bool apropos(const std::vector<std::string> &args);
     bool scan_tx(const std::vector<std::string> &args);
-    bool start_mining(const std::vector<std::string> &args);
-    bool stop_mining(const std::vector<std::string> &args);
     bool set_daemon(const std::vector<std::string> &args);
     bool save_bc(const std::vector<std::string> &args);
     bool refresh(const std::vector<std::string> &args);
@@ -164,75 +144,35 @@ namespace cryptonote
     bool show_incoming_transfers(const std::vector<std::string> &args);
     bool show_payments(const std::vector<std::string> &args);
     bool show_blockchain_height(const std::vector<std::string> &args);
-    bool transfer_main(int transfer_type, const std::vector<std::string> &args, bool called_by_mms);
+    bool transfer_main( const std::vector<std::string> &args);
     bool transfer(const std::vector<std::string> &args);
-    bool locked_transfer(const std::vector<std::string> &args);
-    bool locked_sweep_all(const std::vector<std::string> &args);
-    bool sweep_main(uint32_t account, uint64_t below, bool locked, const std::vector<std::string> &args);
+    bool sweep_main( uint64_t below,  const std::vector<std::string> &args);
     bool sweep_all(const std::vector<std::string> &args);
-    bool sweep_account(const std::vector<std::string> &args);
     bool sweep_below(const std::vector<std::string> &args);
-    bool sweep_single(const std::vector<std::string> &args);
-    bool sweep_unmixable(const std::vector<std::string> &args);
     bool donate(const std::vector<std::string> &args);
     bool sign_transfer(const std::vector<std::string> &args);
     bool submit_transfer(const std::vector<std::string> &args);
     std::vector<std::vector<cryptonote::tx_destination_entry>> split_amounts(
         std::vector<cryptonote::tx_destination_entry> dsts, size_t num_splits
     );
-    bool account(const std::vector<std::string> &args = std::vector<std::string>());
-    void print_accounts();
-    void print_accounts(const std::string& tag);
     bool print_address(const std::vector<std::string> &args = std::vector<std::string>());
-    bool print_integrated_address(const std::vector<std::string> &args = std::vector<std::string>());
     bool save(const std::vector<std::string> &args);
-    bool save_watch_only(const std::vector<std::string> &args);
     bool set_variable(const std::vector<std::string> &args);
     bool rescan_spent(const std::vector<std::string> &args);
     bool set_log(const std::vector<std::string> &args);
     bool get_tx_key(const std::vector<std::string> &args);
-    bool set_tx_key(const std::vector<std::string> &args);
     bool check_tx_key(const std::vector<std::string> &args);
     bool get_tx_proof(const std::vector<std::string> &args);
     bool check_tx_proof(const std::vector<std::string> &args);
     bool get_spend_proof(const std::vector<std::string> &args);
     bool check_spend_proof(const std::vector<std::string> &args);
-    bool get_reserve_proof(const std::vector<std::string> &args);
-    bool check_reserve_proof(const std::vector<std::string> &args);
     bool show_transfers(const std::vector<std::string> &args);
-    bool export_transfers(const std::vector<std::string> &args);
-    bool unspent_outputs(const std::vector<std::string> &args);
     bool rescan_blockchain(const std::vector<std::string> &args);
     bool refresh_main(uint64_t start_height, ResetType reset, bool is_init = false);
-    bool set_tx_note(const std::vector<std::string> &args);
-    bool get_tx_note(const std::vector<std::string> &args);
-    bool set_description(const std::vector<std::string> &args);
-    bool get_description(const std::vector<std::string> &args);
     bool status(const std::vector<std::string> &args);
     bool wallet_info(const std::vector<std::string> &args);
-    bool set_default_priority(const std::vector<std::string> &args);
-    bool sign(const std::vector<std::string> &args);
-    bool verify(const std::vector<std::string> &args);
-    bool export_key_images(const std::vector<std::string> &args);
-    bool import_key_images(const std::vector<std::string> &args);
-    bool hw_key_images_sync(const std::vector<std::string> &args);
-    bool hw_reconnect(const std::vector<std::string> &args);
-    bool export_outputs(const std::vector<std::string> &args);
-    bool import_outputs(const std::vector<std::string> &args);
     bool show_transfer(const std::vector<std::string> &args);
     bool change_password(const std::vector<std::string>& args);
-    bool payment_id(const std::vector<std::string> &args);
-    bool print_fee_info(const std::vector<std::string> &args);
-    bool print_ring(const std::vector<std::string>& args);
-    bool set_ring(const std::vector<std::string>& args);
-    bool unset_ring(const std::vector<std::string>& args);
-    bool save_known_rings(const std::vector<std::string>& args);
-    bool blackball(const std::vector<std::string>& args);
-    bool unblackball(const std::vector<std::string>& args);
-    bool blackballed(const std::vector<std::string>& args);
-    bool freeze(const std::vector<std::string>& args);
-    bool thaw(const std::vector<std::string>& args);
-    bool frozen(const std::vector<std::string>& args);
     bool lock(const std::vector<std::string>& args);
     bool net_stats(const std::vector<std::string>& args);
     bool public_nodes(const std::vector<std::string>& args);
@@ -240,20 +180,13 @@ namespace cryptonote
     bool version(const std::vector<std::string>& args);
     bool on_unknown_command(const std::vector<std::string>& args);
 
-    bool cold_sign_tx(const std::vector<tools::wallet2::pending_tx>& ptx_vector, tools::wallet2::signed_tx_set &exported_txs, std::vector<cryptonote::address_parse_info> &dsts_info, std::function<bool(const tools::wallet2::signed_tx_set &)> accept_func);
     uint64_t get_daemon_blockchain_height(std::string& err);
     bool try_connect_to_daemon(bool silent = false, uint32_t* version = nullptr);
     bool ask_wallet_create_if_needed();
-    bool accept_loaded_tx(const std::function<size_t()> get_num_txes, const std::function<const tools::wallet2::tx_construction_data&(size_t)> &get_tx, const std::string &extra_message = std::string());
-    bool accept_loaded_tx(const tools::wallet2::unsigned_tx_set &txs);
-    bool accept_loaded_tx(const tools::wallet2::signed_tx_set &txs);
-    bool process_ring_members(const std::vector<tools::wallet2::pending_tx>& ptx_vector, std::ostream& ostr, bool verbose);
     std::string get_prompt() const;
     bool print_seed(bool encrypted);
-    void key_images_sync_intern();
     void on_refresh_finished(uint64_t start_height, uint64_t fetched_blocks, bool is_init, bool received_money);
     std::pair<std::string, std::string> show_outputs_line(const std::vector<uint64_t> &heights, uint64_t blockchain_height, uint64_t highlight_idx = std::numeric_limits<uint64_t>::max()) const;
-    bool freeze_thaw(const std::vector<std::string>& args, bool freeze);
     bool prompt_if_old(const std::vector<tools::wallet2::pending_tx> &ptx_vector);
     bool on_command(bool (simple_wallet::*cmd)(const std::vector<std::string>&), const std::vector<std::string> &args);
     bool on_empty_command();
@@ -269,10 +202,8 @@ namespace cryptonote
       bool confirmed;
       uint64_t amount;
       crypto::hash hash;
-      std::string payment_id;
       uint64_t fee;
-      std::vector<std::pair<std::string, uint64_t>> outputs;
-      std::set<uint32_t> index;
+      std::pair<std::string, uint64_t> outputs;
       std::string note;
       std::string unlocked;
     };
@@ -297,7 +228,7 @@ namespace cryptonote
      * \brief When --do-not-relay option is specified, save the raw tx hex blob to a file instead of calling m_wallet->commit_tx(ptx).
      * \param ptx_vector Pending tx(es) created by transfer/sweep_all
      */
-    void commit_or_save(std::vector<tools::wallet2::pending_tx>& ptx_vector, bool do_not_relay);
+    void commit_or_save(std::vector<tools::wallet2::pending_tx>& ptx_vector);
 
 
     // idle thread workers
@@ -375,26 +306,20 @@ namespace cryptonote
   private:
     std::string m_wallet_file;
     std::string m_generate_new;
-    std::string m_generate_from_device;
     std::string m_generate_from_view_key;
     std::string m_generate_from_spend_key;
     std::string m_generate_from_keys;
-    std::string m_generate_from_json;
     std::string m_mnemonic_language;
     std::string m_import_path;
-    std::string m_subaddress_lookahead;
     std::string m_restore_date;  // optional - converted to m_restore_height
 
     epee::wipeable_string m_electrum_seed;  // electrum-style seed parameter
 
     crypto::secret_key m_recovery_key;  // recovery key (used as random for wallet gen)
     bool m_restore_deterministic_wallet;  // recover flag
-    bool m_restore_multisig_wallet;  // recover flag
-    bool m_non_deterministic;  // old 2-random generation
     bool m_allow_mismatched_daemon_version;
     bool m_restoring;           // are we restoring, by whatever method?
     uint64_t m_restore_height;  // optional
-    bool m_do_not_relay;
     bool m_use_english_language_names;
 
     epee::console_handlers_binder m_cmd_binder;
@@ -410,7 +335,6 @@ namespace cryptonote
     std::atomic<bool> m_auto_refresh_enabled;
     bool m_auto_refresh_refreshing;
     std::atomic<bool> m_in_manual_refresh;
-    uint32_t m_current_subaddress_account;
 
     std::atomic<time_t> m_last_activity_time;
     std::atomic<bool> m_locked;

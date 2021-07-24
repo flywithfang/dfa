@@ -28,8 +28,8 @@
 
 #include "node_rpc_proxy.h"
 #include "rpc/core_rpc_server_commands_defs.h"
-#include "rpc/rpc_payment_signature.h"
-#include "rpc/rpc_payment_costs.h"
+
+
 #include "storages/http_abstract_invoke.h"
 
 #include <boost/thread.hpp>
@@ -111,7 +111,6 @@ boost::optional<std::string> NodeRPCProxy::get_info()
 
     {
       const boost::lock_guard<boost::recursive_mutex> lock{m_daemon_rpc_mutex};
-      req_t.client = cryptonote::make_rpc_payment_signature(m_client_id_secret_key);
       bool r = net_utils::invoke_http_json_rpc("/json_rpc", "get_info", req_t, resp_t, m_http_client, rpc_timeout);
       RETURN_ON_RPC_RESPONSE_ERROR(r, epee::json_rpc::error{}, resp_t, "get_info");
     }
@@ -181,7 +180,6 @@ boost::optional<std::string> NodeRPCProxy::get_earliest_height(uint8_t version, 
 
     {
       const boost::lock_guard<boost::recursive_mutex> lock{m_daemon_rpc_mutex};
-      req_t.client = cryptonote::make_rpc_payment_signature(m_client_id_secret_key);
       bool r = net_utils::invoke_http_json_rpc("/json_rpc", "hard_fork_info", req_t, resp_t, m_http_client, rpc_timeout);
       RETURN_ON_RPC_RESPONSE_ERROR(r, epee::json_rpc::error{}, resp_t, "hard_fork_info");
     }

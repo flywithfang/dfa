@@ -38,7 +38,7 @@
 #include "cryptonote_core/cryptonote_core.h"
 #include "cryptonote_core/blockchain.h"
 #include "blockchain_db/blockchain_db.h"
-#include "wallet/ringdb.h"
+
 #include "version.h"
 
 #undef MONERO_DEFAULT_LOG_CATEGORY

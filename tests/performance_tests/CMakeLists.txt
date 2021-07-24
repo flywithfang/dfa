@@ -43,7 +43,6 @@ set(performance_tests_headers
   generate_keypair.h
   signature.h
   is_out_to_acc.h
-  subaddress_expand.h
   bulletproof.h
   crypto_ops.h
   sc_reduce32.h

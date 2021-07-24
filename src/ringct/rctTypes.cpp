@@ -142,8 +142,8 @@ namespace rct {
     //32 byte key to uint long long
     // if the key holds a value > 2^64
     // then the value in the first 8 bytes is returned    
-    xmr_amount h2d(const key & test) {
-        xmr_amount vali = *(uint64_t*)(key.bytes);
+    xmr_amount h2d(const key & h) {
+        xmr_amount vali = *(uint64_t*)(h.bytes);
         return vali;
     }
     

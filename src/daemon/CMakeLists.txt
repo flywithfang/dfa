@@ -79,7 +79,6 @@ target_link_libraries(daemon
     cryptonote_protocol
     daemonizer
     serialization
-    daemon_rpc_server
     ${EPEE_READLINE}
     version
     ${Boost_CHRONO_LIBRARY}

@@ -41,7 +41,7 @@
 #include "crypto/chacha.h"
 #include "ringct/rctOps.h"
 #include "cryptonote_basic/cryptonote_basic.h"
-#include "wallet/ringdb.h"
+
 
 static crypto::chacha_key generate_chacha_key()
 {

@@ -23,8 +23,8 @@ using namespace epee;
 #include "net/parse.h"
 #include "rpc/core_rpc_server_commands_defs.h"
 #include "rpc/core_rpc_server_error_codes.h"
-#include "rpc/rpc_payment_signature.h"
-#include "rpc/rpc_payment_costs.h"
+
+
 #include "misc_language.h"
 #include "cryptonote_basic/cryptonote_basic_impl.h"
 
@@ -52,8 +52,8 @@ using namespace epee;
 #include "common/notify.h"
 #include "common/perf_timer.h"
 #include "ringct/rctSigs.h"
-#include "ringdb.h"
-#include "device/device_cold.hpp"
+
+
 #include "net/socks_connect.h"
 
 extern "C"
@@ -123,7 +123,7 @@ void wallet2::load(const std::string& _wallet_file, const epee::wipeable_string&
     THROW_WALLET_EXCEPTION_IF(true, error::file_read_error, "failed to load keys from buffer");
   }
 
-  wallet_keys_unlocker unlocker(*this, m_ask_password == AskPasswordToDecrypt && !m_unattended && !m_watch_only, password);
+  wallet_keys_unlocker unlocker(*this, m_ask_password == AskPasswordToDecrypt , password);
 
   //keys loaded ok!
   //try to load wallet file. but even if we failed, it is not big problem
@@ -247,9 +247,6 @@ void wallet2::load(const std::string& _wallet_file, const epee::wipeable_string&
       error::wallet_files_doesnt_correspond, m_keys_file, m_wallet_file);
   }
 
-  if (!m_persistent_rpc_client_id)
-    set_rpc_client_secret_key(rct::rct2sk(rct::skGen()));
-
   cryptonote::block genesis;
   generate_genesis(genesis);
   crypto::hash genesis_hash = get_block_hash(genesis);
@@ -264,16 +261,6 @@ void wallet2::load(const std::string& _wallet_file, const epee::wipeable_string&
   }
 
   trim_hashchain();
-
-  try
-  {
-    find_and_save_rings(false);
-  }
-  catch (const std::exception &e)
-  {
-    MERROR("Failed to save rings, will try again next time");
-  }
-  
  
 }
 void wallet2::wallet_exists(const std::string& file_path, bool& keys_file_exists, bool& wallet_file_exists)
@@ -294,7 +281,7 @@ void wallet2::setup_keys(const epee::wipeable_string &password)
   crypto::generate_chacha_key(password.data(), password.size(), key, m_kdf_rounds);
 
   // re-encrypt, but keep viewkey unencrypted
-  if (m_ask_password == AskPasswordToDecrypt && !m_unattended && !m_watch_only)
+  if (m_ask_password == AskPasswordToDecrypt)
   {
     m_account.encrypt_keys(key);
     m_account.decrypt_viewkey(key);
@@ -307,7 +294,6 @@ void wallet2::setup_keys(const epee::wipeable_string &password)
   cn_fast_hash(cache_key_data.data(), HASH_SIZE+1, (crypto::hash&)m_cache_key);
 
   MDEBUG("cache key "<<(crypto::hash&)m_cache_key);
-  get_ringdb_key();
 }
 
 
@@ -330,15 +316,15 @@ bool wallet2::load_keys(const std::string& keys_file_name, const epee::wipeable_
   // Rewrite with encrypted keys if unencrypted, ignore errors
   if (r && keys_to_encrypt != boost::none)
   {
-    if (m_ask_password == AskPasswordToDecrypt && !m_unattended && !m_watch_only)
+    if (m_ask_password == AskPasswordToDecrypt )
       encrypt_keys(keys_to_encrypt.get());
-    bool saved_ret = store_keys(keys_file_name, password, m_watch_only);
+    bool saved_ret = store_keys(keys_file_name, password, false);
     if (!saved_ret)
     {
       // just moan a bit, but not fatal
       MERROR("Error saving keys file with encrypted keys, not fatal");
     }
-    if (m_ask_password == AskPasswordToDecrypt && !m_unattended && !m_watch_only)
+    if (m_ask_password == AskPasswordToDecrypt )
       decrypt_keys(keys_to_encrypt.get());
     m_keys_file_locker.reset();
   }
@@ -371,45 +357,13 @@ std::cout<<"load_keys_buf" << keys_buf.size()<<" pass "<<password.data()<<std::e
   // The contents should be JSON if the wallet follows the new format.
   if (json.Parse(account_data.c_str()).HasParseError())
   {
-    is_old_file_format = true;
-    m_watch_only = false;
-    m_always_confirm_transfers = false;
-    m_print_ring_members = false;
-    m_store_tx_info = true;
-    m_default_mixin = 0;
-    m_default_priority = 0;
     m_auto_refresh = true;
-    m_refresh_type = RefreshType::RefreshDefault;
     m_refresh_from_block_height = 0;
-    m_confirm_non_default_ring_size = true;
     m_ask_password = AskPasswordToDecrypt;
     cryptonote::set_default_decimal_point(CRYPTONOTE_DISPLAY_DECIMAL_POINT);
     m_max_reorg_depth = ORPHANED_BLOCKS_MAX_COUNT;
-    m_min_output_count = 0;
-    m_min_output_value = 0;
-    m_merge_destinations = false;
-    m_confirm_backlog = true;
-    m_confirm_backlog_threshold = 0;
-    m_confirm_export_overwrite = true;
-    m_auto_low_priority = true;
-    m_segregate_pre_fork_outputs = true;
-    m_key_reuse_mitigation2 = true;
-    m_segregation_height = 0;
-    m_ignore_fractional_outputs = true;
-    m_ignore_outputs_above = MONEY_SUPPLY;
-    m_ignore_outputs_below = 0;
     m_inactivity_lock_timeout = DEFAULT_INACTIVITY_LOCK_TIMEOUT;
-    m_setup_background_mining = BackgroundMiningMaybe;
-    m_original_keys_available = false;
-    m_export_format = ExportFormat::Binary;
-    m_load_deprecated_formats = false;
-    m_device_name = "";
-    m_device_derivation_path = "";
-    m_key_device_type = hw::device::device_type::SOFTWARE;
     encrypted_secret_keys = false;
-    m_persistent_rpc_client_id = false;
-    m_auto_mine_for_rpc_payment_threshold = -1.0f;
-    m_credits_target = 0;
   }
   else if(json.IsObject())
   {
@@ -427,164 +381,41 @@ std::cout<<"load_keys_buf" << keys_buf.size()<<" pass "<<password.data()<<std::e
     MDEBUG("key_data "<<field_key_data);
     account_data = std::string(field_key_data, field_key_data + json["key_data"].GetStringLength());
 
-    if (json.HasMember("key_on_device"))
-    {
-      GET_FIELD_FROM_JSON_RETURN_ON_ERROR(json, key_on_device, int, Int, false, hw::device::device_type::SOFTWARE);
-      m_key_device_type = static_cast<hw::device::device_type>(field_key_on_device);
-    }
-
+   
     GET_FIELD_FROM_JSON_RETURN_ON_ERROR(json, seed_language, std::string, String, false, std::string());
     if (field_seed_language_found)
     {
       set_seed_language(field_seed_language);
     }
 
-  
-    GET_FIELD_FROM_JSON_RETURN_ON_ERROR(json, always_confirm_transfers, int, Int, false, true);
-    m_always_confirm_transfers = field_always_confirm_transfers;
-    GET_FIELD_FROM_JSON_RETURN_ON_ERROR(json, print_ring_members, int, Int, false, true);
-    m_print_ring_members = field_print_ring_members;
-    if (json.HasMember("store_tx_info"))
-    {
-      GET_FIELD_FROM_JSON_RETURN_ON_ERROR(json, store_tx_info, int, Int, true, true);
-      m_store_tx_info = field_store_tx_info;
-    }
-    else if (json.HasMember("store_tx_keys")) // backward compatibility
-    {
-      GET_FIELD_FROM_JSON_RETURN_ON_ERROR(json, store_tx_keys, int, Int, true, true);
-      m_store_tx_info = field_store_tx_keys;
-    }
-    else
-      m_store_tx_info = true;
-    GET_FIELD_FROM_JSON_RETURN_ON_ERROR(json, default_mixin, unsigned int, Uint, false, 0);
-    m_default_mixin = field_default_mixin;
-    GET_FIELD_FROM_JSON_RETURN_ON_ERROR(json, default_priority, unsigned int, Uint, false, 0);
-    if (field_default_priority_found)
-    {
-      m_default_priority = field_default_priority;
-    }
-    else
-    {
-      GET_FIELD_FROM_JSON_RETURN_ON_ERROR(json, default_fee_multiplier, unsigned int, Uint, false, 0);
-      if (field_default_fee_multiplier_found)
-        m_default_priority = field_default_fee_multiplier;
-      else
-        m_default_priority = 0;
-    }
+ 
     GET_FIELD_FROM_JSON_RETURN_ON_ERROR(json, auto_refresh, int, Int, false, true);
     m_auto_refresh = field_auto_refresh;
-    GET_FIELD_FROM_JSON_RETURN_ON_ERROR(json, refresh_type, int, Int, false, RefreshType::RefreshDefault);
-    m_refresh_type = RefreshType::RefreshDefault;
-    if (field_refresh_type_found)
-    {
-      if (field_refresh_type == RefreshFull || field_refresh_type == RefreshOptimizeCoinbase || field_refresh_type == RefreshNoCoinbase)
-        m_refresh_type = (RefreshType)field_refresh_type;
-      else
-        LOG_PRINT_L0("Unknown refresh-type value (" << field_refresh_type << "), using default");
-    }
+  
     GET_FIELD_FROM_JSON_RETURN_ON_ERROR(json, refresh_height, uint64_t, Uint64, false, 0);
     m_refresh_from_block_height = field_refresh_height;
-    GET_FIELD_FROM_JSON_RETURN_ON_ERROR(json, confirm_non_default_ring_size, int, Int, false, true);
-    m_confirm_non_default_ring_size = field_confirm_non_default_ring_size;
     GET_FIELD_FROM_JSON_RETURN_ON_ERROR(json, ask_password, AskPasswordType, Int, false, AskPasswordToDecrypt);
     m_ask_password = field_ask_password;
     GET_FIELD_FROM_JSON_RETURN_ON_ERROR(json, default_decimal_point, int, Int, false, CRYPTONOTE_DISPLAY_DECIMAL_POINT);
     cryptonote::set_default_decimal_point(field_default_decimal_point);
     GET_FIELD_FROM_JSON_RETURN_ON_ERROR(json, max_reorg_depth, uint64_t, Uint64, false, ORPHANED_BLOCKS_MAX_COUNT);
     m_max_reorg_depth = field_max_reorg_depth;
-    GET_FIELD_FROM_JSON_RETURN_ON_ERROR(json, min_output_count, uint32_t, Uint, false, 0);
-    m_min_output_count = field_min_output_count;
-    GET_FIELD_FROM_JSON_RETURN_ON_ERROR(json, min_output_value, uint64_t, Uint64, false, 0);
-    m_min_output_value = field_min_output_value;
-    GET_FIELD_FROM_JSON_RETURN_ON_ERROR(json, merge_destinations, int, Int, false, false);
-    m_merge_destinations = field_merge_destinations;
-    GET_FIELD_FROM_JSON_RETURN_ON_ERROR(json, confirm_backlog, int, Int, false, true);
-    m_confirm_backlog = field_confirm_backlog;
-    GET_FIELD_FROM_JSON_RETURN_ON_ERROR(json, confirm_backlog_threshold, uint32_t, Uint, false, 0);
-    m_confirm_backlog_threshold = field_confirm_backlog_threshold;
-    GET_FIELD_FROM_JSON_RETURN_ON_ERROR(json, confirm_export_overwrite, int, Int, false, true);
-    m_confirm_export_overwrite = field_confirm_export_overwrite;
-    GET_FIELD_FROM_JSON_RETURN_ON_ERROR(json, auto_low_priority, int, Int, false, true);
-    m_auto_low_priority = field_auto_low_priority;
+
+
     GET_FIELD_FROM_JSON_RETURN_ON_ERROR(json, nettype, uint8_t, Uint, false, static_cast<uint8_t>(m_nettype));
     // The network type given in the program argument is inconsistent with the network type saved in the wallet
     THROW_WALLET_EXCEPTION_IF(static_cast<uint8_t>(m_nettype) != field_nettype, error::wallet_internal_error,
     (boost::format("%s wallet cannot be opened as %s wallet")
     % (field_nettype == 0 ? "Mainnet" : field_nettype == 1 ? "Testnet" : "Stagenet")
     % (m_nettype == MAINNET ? "mainnet" : m_nettype == TESTNET ? "testnet" : "stagenet")).str());
-    GET_FIELD_FROM_JSON_RETURN_ON_ERROR(json, segregate_pre_fork_outputs, int, Int, false, true);
-    m_segregate_pre_fork_outputs = field_segregate_pre_fork_outputs;
-    GET_FIELD_FROM_JSON_RETURN_ON_ERROR(json, key_reuse_mitigation2, int, Int, false, true);
-    m_key_reuse_mitigation2 = field_key_reuse_mitigation2;
-    GET_FIELD_FROM_JSON_RETURN_ON_ERROR(json, segregation_height, int, Uint, false, 0);
-    m_segregation_height = field_segregation_height;
-    GET_FIELD_FROM_JSON_RETURN_ON_ERROR(json, ignore_fractional_outputs, int, Int, false, true);
-    m_ignore_fractional_outputs = field_ignore_fractional_outputs;
-    GET_FIELD_FROM_JSON_RETURN_ON_ERROR(json, ignore_outputs_above, uint64_t, Uint64, false, MONEY_SUPPLY);
-    m_ignore_outputs_above = field_ignore_outputs_above;
-    GET_FIELD_FROM_JSON_RETURN_ON_ERROR(json, ignore_outputs_below, uint64_t, Uint64, false, 0);
-    m_ignore_outputs_below = field_ignore_outputs_below;
 
+ 
     GET_FIELD_FROM_JSON_RETURN_ON_ERROR(json, inactivity_lock_timeout, uint32_t, Uint, false, DEFAULT_INACTIVITY_LOCK_TIMEOUT);
     m_inactivity_lock_timeout = field_inactivity_lock_timeout;
 
     GET_FIELD_FROM_JSON_RETURN_ON_ERROR(json, encrypted_secret_keys, uint32_t, Uint, false, false);
     encrypted_secret_keys = field_encrypted_secret_keys;
 
-    GET_FIELD_FROM_JSON_RETURN_ON_ERROR(json, export_format, ExportFormat, Int, false, Binary);
-    m_export_format = field_export_format;
-
-
-    GET_FIELD_FROM_JSON_RETURN_ON_ERROR(json, device_name, std::string, String, false, std::string());
-    if (m_device_name.empty())
-    {
-      if (field_device_name_found)
-      {
-        m_device_name = field_device_name;
-      }
-      else
-      {
-        m_device_name = m_key_device_type == hw::device::device_type::LEDGER ? "Ledger" : "default";
-      }
-    }
-
-    GET_FIELD_FROM_JSON_RETURN_ON_ERROR(json, device_derivation_path, std::string, String, false, std::string());
-    m_device_derivation_path = field_device_derivation_path;
-    
-    if (json.HasMember("original_keys_available"))
-    {
-      GET_FIELD_FROM_JSON_RETURN_ON_ERROR(json, original_keys_available, int, Int, false, false);
-      m_original_keys_available = field_original_keys_available;
-      if (m_original_keys_available)
-      {
-        GET_FIELD_FROM_JSON_RETURN_ON_ERROR(json, original_address, std::string, String, true, std::string());
-        address_parse_info info;
-        bool ok = get_account_address_from_str(info, m_nettype, field_original_address);
-        if (!ok)
-        {
-          LOG_ERROR("Failed to parse original_address from JSON");
-          return false;
-        }
-        m_original_address = info.address;
-        GET_FIELD_FROM_JSON_RETURN_ON_ERROR(json, original_view_secret_key, std::string, String, true, std::string());
-        ok = epee::string_tools::hex_to_pod(field_original_view_secret_key, m_original_view_secret_key);
-        if (!ok)
-        {
-          LOG_ERROR("Failed to parse original_view_secret_key from JSON");
-          return false;
-        }
-      }
-    }
-    else
-    {
-      m_original_keys_available = false;
-    }
-
-    GET_FIELD_FROM_JSON_RETURN_ON_ERROR(json, persistent_rpc_client_id, int, Int, false, false);
-    m_persistent_rpc_client_id = field_persistent_rpc_client_id;
-    // save as float, load as double, because it can happen you can't load back as float...
-    GET_FIELD_FROM_JSON_RETURN_ON_ERROR(json, credits_target, uint64_t, Uint64, false, 0);
-    m_credits_target = field_credits_target;
   }
   else
   {
@@ -594,9 +425,7 @@ std::cout<<"load_keys_buf" << keys_buf.size()<<" pass "<<password.data()<<std::e
   std::cout<<"load account keys"<<std::endl;
   r = epee::serialization::load_t_from_binary(m_account, account_data);
   THROW_WALLET_EXCEPTION_IF(!r, error::invalid_password);
-  if (key_on_device()) {
-    THROW_WALLET_EXCEPTION(error::wallet_internal_error, "hardware device not supported");
-  }
+
 
   if (r)
   {
@@ -612,7 +441,6 @@ std::cout<<"load_keys_buf" << keys_buf.size()<<" pass "<<password.data()<<std::e
   const cryptonote::account_keys& keys = m_account.get_keys();
   hw::device &hwdev = m_account.get_device();
   r = r && hwdev.verify_keys(keys.m_view_secret_key,  keys.m_account_address.m_view_public_key);
-  if (!m_watch_only  && hwdev.device_protocol() != hw::device::PROTOCOL_COLD)
     r = r && hwdev.verify_keys(keys.m_spend_secret_key, keys.m_account_address.m_spend_public_key);
   THROW_WALLET_EXCEPTION_IF(!r, error::wallet_files_doesnt_correspond, m_keys_file, m_wallet_file);
 

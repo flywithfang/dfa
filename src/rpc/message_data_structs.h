@@ -120,12 +120,6 @@ namespace rpc
     uint64_t index;
   };
 
-  struct output_key_mask_unlocked
-  {
-    crypto::public_key key;
-    rct::key mask;
-    bool unlocked;
-  };
 
   struct hard_fork_info
   {

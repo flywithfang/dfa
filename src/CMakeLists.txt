@@ -28,6 +28,7 @@
 #
 # Parts of this file are originally copyright (c) 2012-2013 The Cryptonote developers
 
+SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17")
 if (WIN32 OR STATIC)
   add_definitions(-DSTATICLIB)
   # miniupnp changed their static define

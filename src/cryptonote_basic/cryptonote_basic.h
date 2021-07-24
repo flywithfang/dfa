@@ -468,7 +468,6 @@ namespace std {
 }
 
 BLOB_SERIALIZER(cryptonote::txout_to_key);
-BLOB_SERIALIZER(cryptonote::txout_to_scripthash);
 
 VARIANT_TAG(binary_archive, cryptonote::txin_gen, 0xff);
 VARIANT_TAG(binary_archive, cryptonote::txin_to_key, 0x2);

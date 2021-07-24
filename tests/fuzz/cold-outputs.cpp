@@ -45,7 +45,6 @@ BEGIN_INIT_SIMPLE_FUZZER()
   epee::string_tools::hex_to_pod(spendkey_hex, spendkey);
 
   wallet->init("", boost::none, "", 0, true, epee::net_utils::ssl_support_t::e_ssl_support_disabled);
-  wallet->set_subaddress_lookahead(1, 1);
   wallet->generate("", "", spendkey, true, false);
 END_INIT_SIMPLE_FUZZER()
 

@@ -37,7 +37,7 @@
 #include "cryptonote_core/cryptonote_core.h"
 #include "cryptonote_basic/difficulty.h"
 #include "cryptonote_basic/hardfork.h"
-#include "rpc/rpc_payment_signature.h"
+
 #include "rpc/rpc_version_str.h"
 #include <boost/format.hpp>
 #include <ctime>
@@ -288,61 +288,6 @@ bool t_rpc_command_executor::save_blockchain() {
   }
 
   tools::success_msg_writer() << "Blockchain saved";
-
-  return true;
-}
-
-bool t_rpc_command_executor::show_hash_rate() {
-  cryptonote::COMMAND_RPC_SET_LOG_HASH_RATE::request req;
-  cryptonote::COMMAND_RPC_SET_LOG_HASH_RATE::response res;
-  req.visible = true;
-
-  std::string fail_message = "Unsuccessful";
-
-  if (m_is_rpc)
-  {
-    if (!m_rpc_client->rpc_request(req, res, "/set_log_hash_rate", fail_message.c_str()))
-    {
-      return true;
-    }
-  }
-  else
-  {
-    if (!m_rpc_server->on_set_log_hash_rate(req, res) || res.status != CORE_RPC_STATUS_OK)
-    {
-      tools::fail_msg_writer() << make_error(fail_message, res.status);
-    }
-  }
-
-  tools::success_msg_writer() << "Hash rate logging is on";
-
-  return true;
-}
-
-bool t_rpc_command_executor::hide_hash_rate() {
-  cryptonote::COMMAND_RPC_SET_LOG_HASH_RATE::request req;
-  cryptonote::COMMAND_RPC_SET_LOG_HASH_RATE::response res;
-  req.visible = false;
-
-  std::string fail_message = "Unsuccessful";
-
-  if (m_is_rpc)
-  {
-    if (!m_rpc_client->rpc_request(req, res, "/set_log_hash_rate", fail_message.c_str()))
-    {
-      return true;
-    }
-  }
-  else
-  {
-    if (!m_rpc_server->on_set_log_hash_rate(req, res) || res.status != CORE_RPC_STATUS_OK)
-    {
-      tools::fail_msg_writer() << make_error(fail_message, res.status);
-      return true;
-    }
-  }
-
-  tools::success_msg_writer() << "Hash rate logging is off";
 
   return true;
 }

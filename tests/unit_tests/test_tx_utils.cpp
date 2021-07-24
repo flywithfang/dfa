@@ -140,7 +140,7 @@ TEST(parse_and_validate_tx_extra, is_valid_tx_extra_parsed)
   cryptonote::account_base acc;
   acc.generate();
   cryptonote::blobdata b = "dsdsdfsdfsf";
-  auto [r,tx]=cryptonote::construct_miner_tx(0, 0, 10000000000000, 1000, TEST_FEE, acc.get_keys().m_account_address,  b, 1);
+  auto [r,tx]=cryptonote::construct_miner_tx(0, 0, 10000000000000, 1000, TEST_FEE, acc.get_keys().m_account_address,  b);
   ASSERT_TRUE(r);
   crypto::public_key tx_pub_key = cryptonote::get_tx_pub_key_from_extra(tx);
   ASSERT_NE(tx_pub_key, crypto::null_pkey);
@@ -149,7 +149,7 @@ TEST(parse_and_validate_tx_extra, fails_on_big_extra_nonce)
 {
   cryptonote::account_base acc;
   acc.generate();
-  auto [r,tx]=cryptonote::construct_miner_tx(0, 0, 10000000000000, 1000, TEST_FEE, acc.get_keys().m_account_address,  b, 1);
+  auto [r,tx]=cryptonote::construct_miner_tx(0, 0, 10000000000000, 1000, TEST_FEE, acc.get_keys().m_account_address,  b);
   cryptonote::blobdata b(TX_EXTRA_NONCE_MAX_COUNT + 1, 0);
   ASSERT_FALSE(r);
 }

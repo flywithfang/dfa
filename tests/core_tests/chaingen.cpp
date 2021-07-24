@@ -966,7 +966,6 @@ cryptonote::tx_destination_entry build_dst(const var_addr_t& to, bool is_subaddr
   tx_destination_entry de;
   de.amount = amount;
   de.addr = get_address(to);
-  de.is_subaddress = is_subaddr;
   return de;
 }
 

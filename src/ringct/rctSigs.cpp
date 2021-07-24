@@ -82,7 +82,7 @@ namespace
 }
 
 namespace rct {
-    Bulletproof proveRangeBulletproof(keyV &C, keyV &noises, const std::vector<uint64_t> &amounts, const std::vector<ey>& shared_secs, hw::device &hwdev)
+    Bulletproof proveRangeBulletproof(keyV &C, keyV &noises, const std::vector<uint64_t> &amounts, const std::vector<key>& shared_secs, hw::device &hwdev)
     {
         CHECK_AND_ASSERT_THROW_MES(amounts.size() == shared_secs.size(), "Invalid amounts/sk sizes");
         noises.resize(amounts.size());
@@ -389,7 +389,7 @@ namespace rct {
         const key & real_noise=real_in.noise;
        // sk[0] = copy(otk_sec);
         key noise_delta;
-        sc_sub(noise_delta, real_noise.bytes, noise.bytes);
+        sc_sub(noise_delta.bytes, real_noise.bytes, noise.bytes);
         clsag result = CLSAG_Gen(message, P, otk_sec, C, noise_delta, C_nonzero, in_C2, index,  hwdev);
       //  memwipe(sk.data(), sk.size() * sizeof(key));
         return result;
@@ -584,18 +584,16 @@ namespace rct {
         rv.ecdhInfo.resize(destinations.size());
 
         size_t i;
-        keyV masks(destinations.size()); //sk mask..
+        //keyV masks(destinations.size()); //sk mask..
         outSk.resize(destinations.size());
         for (i = 0; i < destinations.size(); i++) {
 
             //add destination to sig
-            rv.outPk[i].dest = copy(destinations[i]);
+            rv.outPk[i].otk = copy(destinations[i]);
         }
 
         rv.p.bulletproofs.clear();
         {
-            size_t n_amounts = outamounts.size();
-            size_t amounts_proved = 0;
           //  if (rct_config.range_proof_type == RangeProofPaddedBulletproof)
             {
                 rct::keyV C, noises;
@@ -613,8 +611,8 @@ namespace rct {
                 }
                 for (i = 0; i < outamounts.size(); ++i)
                 {
-                    rv.outPk[i].mask = rct::scalarmult8(C[i]);
-                    outSk[i].mask = noises[i];
+                    rv.outPk[i].commitment = rct::scalarmult8(C[i]);
+                    outSk[i].noise = noises[i];
                 }
             }
           
@@ -623,7 +621,7 @@ namespace rct {
         key sumout = zero();
         for (i = 0; i < outamounts.size(); ++i)
         {
-            const key & noise=outSk[i].mask;
+            const key & noise=outSk[i].noise;
             sc_add(sumout.bytes, noise.bytes, sumout.bytes);
 
             //mask amount 
@@ -697,7 +695,7 @@ namespace rct {
         tools::threadpool::waiter waiter(tpool);
         std::deque<bool> results;
         std::vector<const Bulletproof*> proofs;
-        size_t max_non_bp_proofs = 0, offset = 0;
+        size_t max_non_bp_proofs = 0;
 
         for (const rctSig *rvp: rvv)
         {
@@ -846,12 +844,13 @@ namespace rct {
         return false;
       }
     }
-
-    std::tuple<xmr_amount,key> decodeRctSimple(const rctSig & rv, const key & shared_sec, unsigned int i ) {
-        CHECK_AND_ASSERT_MES(rv.type == RCTTypeSimple || rv.type == RCTTypeBulletproof || rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG, false, "decodeRct called on non simple rctSig");
+ std::tuple<xmr_amount,key> decodeRctSimple(const rctSig & rv, const rct::key & shared_sec, unsigned int i)
+ {
+       CHECK_AND_ASSERT_THROW_MES(rv.type == RCTTypeSimple || rv.type == RCTTypeBulletproof || rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG, "decodeRct called on non simple rctSig");
         CHECK_AND_ASSERT_THROW_MES(i < rv.ecdhInfo.size(), "Bad index");
         CHECK_AND_ASSERT_THROW_MES(rv.outPk.size() == rv.ecdhInfo.size(), "Mismatched sizes of rv.outPk and rv.ecdhInfo");
 
+     
         //mask amount and mask
         ecdhTuple ecdh_info = rv.ecdhInfo[i];
         const uint64_t amount = rct::ecdhDecode(ecdh_info.amount, shared_sec);
@@ -871,12 +870,14 @@ namespace rct {
             CHECK_AND_ASSERT_THROW_MES(false, "warning, amount decoded incorrectly, will be unable to spend");
         }
         return {amount,noise};
+
+ }
+    std::tuple<xmr_amount,key> decodeRctSimple(const rctSig & rv, const crypto::key_derivation & kA, unsigned int i ) { 
+        crypto::secret_key ss;
+        crypto::derivation_to_scalar(kA,i,ss);
+        const rct::key shared_sec = rct::sk2rct(ss);
+        return decodeRctSimple(rv,shared_sec,i);
     }
 
-    xmr_amount decodeRctSimple(const rctSig & rv, const key & sk, unsigned int i) {
-      key noise;
-      auto [amount,noise] = decodeRctSimple(rv, sk, i);
-      return amount;
-    }
 
 }

@@ -143,13 +143,6 @@ namespace cryptonote
     CRITICAL_REGION_LOCAL(m_transactions_lock);
 
     PERF_TIMER(add_tx);
-    if (tx.version == 0)
-    {
-      // v0 never accepted
-      LOG_PRINT_L1("transaction version 0 is invalid");
-      tvc.m_verifivation_failed = true;
-      return false;
-    }
 
     // we do not accept transactions that timed out before, unless they're
     // kept_by_block
@@ -169,40 +162,9 @@ namespace cryptonote
     }
 
     // fee per kilobyte, size rounded up.
-    uint64_t fee;
+    uint64_t fee=tx.rct_signatures.txnFee;
 
-    if (tx.version == 1)
-    {
-      uint64_t inputs_amount = 0;
-      if(!get_inputs_money_amount(tx, inputs_amount))
-      {
-        tvc.m_verifivation_failed = true;
-        return false;
-      }
-
-      uint64_t outputs_amount = get_outs_money_amount(tx);
-      if(outputs_amount > inputs_amount)
-      {
-        LOG_PRINT_L1("transaction use more money than it has: use " << print_money(outputs_amount) << ", have " << print_money(inputs_amount));
-        tvc.m_verifivation_failed = true;
-        tvc.m_overspend = true;
-        return false;
-      }
-      else if(outputs_amount == inputs_amount)
-      {
-        LOG_PRINT_L1("transaction fee is zero: outputs_amount == inputs_amount, rejecting.");
-        tvc.m_verifivation_failed = true;
-        tvc.m_fee_too_low = true;
-        return false;
-      }
-
-      fee = inputs_amount - outputs_amount;
-    }
-    else
-    {
-      fee = tx.rct_signatures.txnFee;
-    }
-
+    
     if (!kept_by_block && !m_blockchain.check_fee(tx_weight, fee))
     {
       tvc.m_verifivation_failed = true;
@@ -1315,12 +1277,12 @@ namespace cryptonote
     CRITICAL_REGION_LOCAL(m_transactions_lock);
     CRITICAL_REGION_LOCAL1(m_blockchain);
 
-    uint64_t best_coinbase = 0, coinbase = 0;
+    uint64_t block_reward = 0;
     total_weight = 0;
     fee = 0;
     
     //baseline empty block
-    if (!get_block_reward(median_weight, total_weight, already_generated_coins, best_coinbase, version))
+    if (!get_block_reward(median_weight, total_weight, already_generated_coins, block_reward, version))
     {
       MERROR("Failed to get block reward for empty block");
       return false;
@@ -1342,11 +1304,10 @@ namespace cryptonote
       {
         static bool warned = false;
         if (!warned)
-          MERROR("  failed to find tx meta: " << sorted_it->second << " (will only print once)");
+          MERROR("  failed to find tx meta: " << tx_hash<< " (will only print once)");
         warned = true;
         continue;
       }
-      MINFO("Considering " << sorted_it->second << ", weight " << meta.weight << ", current block weight " << total_weight << "/" << max_total_weight << ", current coinbase " << print_money(best_coinbase) << ", relay method " << (unsigned)meta.get_relay_method());
 
       if (meta.pruned)
       {
@@ -1361,32 +1322,11 @@ namespace cryptonote
         continue;
       }
 
-      // start using the optimal filling algorithm from v5
-      {
-        // If we're getting lower coinbase tx,
-        // stop including more tx
-        uint64_t block_reward;
-        if(!get_block_reward(median_weight, total_weight + meta.weight, already_generated_coins, block_reward, version))
-        {
-          MINFO("  would exceed maximum block weight");
-          continue;
-        }
-        coinbase = block_reward + fee + meta.fee;
-        if (coinbase < template_accept_threshold(best_coinbase))
-        {
-          MINFO("  would decrease coinbase to " << print_money(coinbase));
-          continue;
-        }
-      }
-     
-
       // "local" and "stem" txes are filtered above
       cryptonote::blobdata txblob = m_blockchain.get_txpool_tx_blob(tx_hash, relay_category::all);
 
       cryptonote::transaction tx;
-
-      // Skip transactions that are not ready to be
-      // included into the blockchain or that are
+      // Skip transactions that are not ready to be included into the blockchain or that are
       // missing key images
       const cryptonote::txpool_tx_meta_t original_meta = meta;
       bool ready = false;
@@ -1422,18 +1362,17 @@ namespace cryptonote
         continue;
       }
 
-      bl.tx_hashes.push_back(sorted_it->second);
+      bl.tx_hashes.push_back(tx_hash);
       total_weight += meta.weight;
       fee += meta.fee;
-      best_coinbase = coinbase;
       append_key_images(k_images, tx);
-      MINFO("  added, new block weight " << total_weight << "/" << max_total_weight << ", coinbase " << print_money(best_coinbase));
+      MINFO("  added, new block weight " << total_weight << "/" << max_total_weight );
     }
     lock.commit();
-
-    expected_reward = best_coinbase;
+    const auto coinbase = block_reward + fee ;
+    expected_reward = coinbase;
     MINFO("Block template filled with " << bl.tx_hashes.size() << " txes, weight "
-        << total_weight << "/" << max_total_weight << ", coinbase " << print_money(best_coinbase)
+        << total_weight << "/" << max_total_weight << ", coinbase " << print_money(coinbase)
         << " (including " << print_money(fee) << " in fees)");
     return true;
   }

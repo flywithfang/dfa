@@ -43,7 +43,6 @@ set(device_headers
   device.hpp
   device_io.hpp
   device_default.hpp
-  device_cold.hpp
   log.hpp
  )
 

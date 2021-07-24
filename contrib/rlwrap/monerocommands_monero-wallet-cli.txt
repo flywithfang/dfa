@@ -2,14 +2,10 @@ address
 balance
 bc_height
 check_tx_key
-export_key_images
 get_tx_key
-get_tx_note
 help
-import_key_images
 incoming_transfers
 integrated_address
-payments
 refresh
 rescan_bc
 rescan_spent
@@ -18,7 +14,6 @@ save_bc
 save_watch_only
 seed
 set
-set_tx_note
 show_transfers
 sign
 spendkey
@@ -26,8 +21,6 @@ start_mining
 status
 stop_mining
 sweep_all
-sweep_unmixable
 transfer
-transfer_original
 verify
 viewkey

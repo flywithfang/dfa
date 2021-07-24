@@ -145,16 +145,7 @@ t_command_server::t_command_server(
     , std::bind(&t_command_parser_executor::print_transaction_pool_stats, &m_parser, p::_1)
     , "Print the transaction pool's statistics."
     );
-  m_command_lookup.set_handler(
-      "show_hr"
-    , std::bind(&t_command_parser_executor::show_hash_rate, &m_parser, p::_1)
-    , "Start showing the current hash rate."
-    );
-  m_command_lookup.set_handler(
-      "hide_hr"
-    , std::bind(&t_command_parser_executor::hide_hash_rate, &m_parser, p::_1)
-    , "Stop showing the hash rate."
-    );
+
   m_command_lookup.set_handler(
       "save"
     , std::bind(&t_command_parser_executor::save_blockchain, &m_parser, p::_1)

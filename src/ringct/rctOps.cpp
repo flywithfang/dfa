@@ -696,7 +696,7 @@ namespace rct {
     uint64_t ecdhEncode(const uint64_t & amount, const key & sharedSec) {
         //encode
           uint64_t a=amount;
-          const key k= ecdhHash(sharedSec)
+          const key k= ecdhHash(sharedSec);
           const uint64_t M = rct::h2d(k);
 
           a ^= M;
@@ -705,7 +705,7 @@ namespace rct {
       uint64_t ecdhDecode(const uint64_t & amount, const key & shared_sec) {
         //decode
           uint64_t a=amount;
-          const key k= ecdhHash(shared_sec)
+          const key k= ecdhHash(shared_sec);
           const uint64_t M = rct::h2d(k);
             a ^= M;
           return  a;

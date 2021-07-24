@@ -30,7 +30,6 @@ include_directories(SYSTEM ${ZMQ_INCLUDE_PATH})
 
 set(rpc_base_sources
   rpc_args.cpp
-  rpc_payment_signature.cpp
   rpc_handler.cpp)
 
 set(rpc_sources
@@ -42,7 +41,6 @@ set(rpc_sources
 
 set(rpc_base_headers
   rpc_args.h
-  rpc_payment_signature.h
   rpc_handler.h)
 
 set(rpc_headers
@@ -56,7 +54,6 @@ set(daemon_rpc_server_headers)
 set(rpc_private_headers
   bootstrap_daemon.h
   core_rpc_server.h
-  rpc_payment.h
   core_rpc_server_commands_defs.h
   core_rpc_server_error_codes.h)
 
@@ -69,9 +66,6 @@ monero_private_headers(rpc
 
 set(rpc_pub_private_headers)
 
-monero_private_headers(daemon_rpc_server
-  ${daemon_rpc_server_private_headers})
-
 
 monero_add_library(rpc_base
   ${rpc_base_sources}
@@ -82,8 +76,6 @@ monero_add_library(rpc
   ${rpc_sources}
   ${rpc_headers}
   ${rpc_private_headers})
-
-
 
 
 target_link_libraries(rpc_base

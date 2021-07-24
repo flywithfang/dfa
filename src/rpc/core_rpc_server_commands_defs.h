@@ -2144,7 +2144,7 @@ namespace cryptonote
   {
     struct request_t: public rpc_access_request_base
     {
-      std::vector<uint64_t> amounts;
+     
       uint64_t from_height;
       uint64_t to_height;
       bool cumulative;
@@ -2153,7 +2153,6 @@ namespace cryptonote
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE_PARENT(rpc_access_request_base)
-        KV_SERIALIZE(amounts)
         KV_SERIALIZE_OPT(from_height, (uint64_t)0)
         KV_SERIALIZE_OPT(to_height, (uint64_t)0)
         KV_SERIALIZE_OPT(cumulative, false)
@@ -2166,13 +2165,11 @@ namespace cryptonote
     struct distribution
     {
       rpc::output_distribution_data data;
-      uint64_t amount;
       std::string compressed_data;
       bool binary;
       bool compress;
 
       BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE(amount)
         KV_SERIALIZE_N(data.start_height, "start_height")
         KV_SERIALIZE(binary)
         KV_SERIALIZE(compress)
@@ -2207,11 +2204,11 @@ namespace cryptonote
 
     struct response_t: public rpc_access_response_base
     {
-      std::vector<distribution> distributions;
+      distribution dist;
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE_PARENT(rpc_access_response_base)
-        KV_SERIALIZE(distributions)
+        KV_SERIALIZE(dist)
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<response_t> response;

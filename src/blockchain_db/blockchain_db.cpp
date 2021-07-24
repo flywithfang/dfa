@@ -283,7 +283,6 @@ uint64_t BlockchainDB::add_block( const std::pair<block, blobdata>& blck
   uint64_t num_rct_outs = 0;
   blobdata miner_bd = tx_to_blob(blk.miner_tx);
   add_transaction(blk_hash, std::make_pair(blk.miner_tx, blobdata_ref(miner_bd)));
-  if (blk.miner_tx.version == 2)
     num_rct_outs += blk.miner_tx.vout.size();
   int tx_i = 0;
   crypto::hash tx_hash = crypto::null_hash;
@@ -291,11 +290,8 @@ uint64_t BlockchainDB::add_block( const std::pair<block, blobdata>& blck
   {
     tx_hash = blk.tx_hashes[tx_i];
     add_transaction(blk_hash, tx, &tx_hash);
-    for (const auto &vout: tx.first.vout)
-    {
-      if (vout.amount == 0)
-        ++num_rct_outs;
-    }
+
+    num_rct_outs += tx.first.vout.size();
     ++tx_i;
   }
   TIME_MEASURE_FINISH(time1);

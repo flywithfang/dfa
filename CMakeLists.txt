@@ -28,6 +28,7 @@
 #
 # Parts of this file are originally copyright (c) 2012-2013 The Cryptonote developers
 
+SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17")
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 list(INSERT CMAKE_MODULE_PATH 0
@@ -496,7 +497,7 @@ if (CMAKE_SYSTEM_NAME MATCHES "(SunOS|Solaris)")
 endif ()
 
 if (APPLE AND NOT IOS)
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fvisibility=default -std=c++11")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fvisibility=default -std=c++17")
   if (NOT OPENSSL_ROOT_DIR)
       EXECUTE_PROCESS(COMMAND brew --prefix openssl
         OUTPUT_VARIABLE OPENSSL_ROOT_DIR
@@ -682,7 +683,7 @@ else()
     set(STATIC_ASSERT_FLAG "-Dstatic_assert=_Static_assert")
   endif()
 
-  try_compile(STATIC_ASSERT_CPP_RES "${CMAKE_CURRENT_BINARY_DIR}/static-assert" "${CMAKE_CURRENT_SOURCE_DIR}/cmake/test-static-assert.cpp" COMPILE_DEFINITIONS "-std=c++11")
+  try_compile(STATIC_ASSERT_CPP_RES "${CMAKE_CURRENT_BINARY_DIR}/static-assert" "${CMAKE_CURRENT_SOURCE_DIR}/cmake/test-static-assert.cpp" COMPILE_DEFINITIONS "-std=c++17")
   if(STATIC_ASSERT_CPP_RES)
     set(STATIC_ASSERT_CPP_FLAG "")
   else()
@@ -1027,35 +1028,8 @@ if(CMAKE_C_COMPILER_ID MATCHES "Clang" AND ARCH_WIDTH EQUAL "32" AND NOT IOS AND
   endif()
 endif()
 
-find_path(ZMQ_INCLUDE_PATH zmq.h)
-find_library(ZMQ_LIB zmq)
-find_library(PGM_LIBRARY pgm)
-find_library(NORM_LIBRARY norm)
-find_library(GSSAPI_LIBRARY gssapi_krb5)
-find_library(PROTOLIB_LIBRARY protolib)
-find_library(SODIUM_LIBRARY sodium)
 
-if(NOT ZMQ_INCLUDE_PATH)
-  message(FATAL_ERROR "Could not find required header zmq.h")
-endif()
-if(NOT ZMQ_LIB)
-  message(FATAL_ERROR "Could not find required libzmq")
-endif()
-if(PGM_LIBRARY)
-  set(ZMQ_LIB "${ZMQ_LIB};${PGM_LIBRARY}")
-endif()
-if(NORM_LIBRARY)
-  set(ZMQ_LIB "${ZMQ_LIB};${NORM_LIBRARY}")
-endif()
-if(GSSAPI_LIBRARY)
-  set(ZMQ_LIB "${ZMQ_LIB};${GSSAPI_LIBRARY}")
-endif()
-if(PROTOLIB_LIBRARY)
-  set(ZMQ_LIB "${ZMQ_LIB};${PROTOLIB_LIBRARY}")
-endif()
-if(SODIUM_LIBRARY)
-  set(ZMQ_LIB "${ZMQ_LIB};${SODIUM_LIBRARY}")
-endif()
+
 
 #include(external/supercop/functions.cmake) # place after setting flags and before src directory inclusion
 add_subdirectory(contrib)

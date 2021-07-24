@@ -112,25 +112,7 @@ bool t_command_parser_executor::save_blockchain(const std::vector<std::string>& 
   return m_executor.save_blockchain();
 }
 
-bool t_command_parser_executor::show_hash_rate(const std::vector<std::string>& args)
-{
-  if (!args.empty()) {
-    std::cout << "Invalid syntax: No parameters expected. For more details, use the help command." << std::endl;
-    return true;
-  }
 
-  return m_executor.show_hash_rate();
-}
-
-bool t_command_parser_executor::hide_hash_rate(const std::vector<std::string>& args)
-{
-  if (!args.empty()) {
-    std::cout << "Invalid syntax: No parameters expected. For more details, use the help command." << std::endl;
-    return true;
-  }
-
-  return m_executor.hide_hash_rate();
-}
 
 bool t_command_parser_executor::show_difficulty(const std::vector<std::string>& args)
 {

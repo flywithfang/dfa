@@ -282,7 +282,7 @@ namespace cryptonote
     if (!r)
     {
       MWARNING("key image helper: failed to generate_key_derivation(" << tx_public_key << ", " << ack.m_view_secret_key << ")");
-      memcpy(&recv_derivation, rct::identity().bytes, sizeof(recv_derivation));
+      memcpy(&kA, rct::identity().bytes, sizeof(kA));
     }
 
  //computes Hs(a*R || idx) + b
@@ -418,24 +418,8 @@ namespace cryptonote
   //---------------------------------------------------------------
   bool get_tx_fee(const transaction& tx, uint64_t & fee)
   {
-    if (tx.version > 1)
-    {
       fee = tx.rct_signatures.txnFee;
       return true;
-    }
-    uint64_t amount_in = 0;
-    uint64_t amount_out = 0;
-    for(auto& in: tx.vin)
-    {
-      CHECK_AND_ASSERT_MES(in.type() == typeid(txin_to_key), 0, "unexpected type id in transaction");
-      amount_in += boost::get<txin_to_key>(in).amount;
-    }
-    for(auto& o: tx.vout)
-      amount_out += o.amount;
-
-    CHECK_AND_ASSERT_MES(amount_in >= amount_out, false, "transaction spend (" <<amount_in << ") more than it has (" << amount_out << ")");
-    fee = amount_in - amount_out;
-    return true;
   }
   //---------------------------------------------------------------
   uint64_t get_tx_fee(const transaction& tx)
@@ -778,11 +762,6 @@ public:
         << out.target.type().name() << ", expected " << typeid(txout_to_key).name()
         << ", in transaction id=" << get_transaction_hash(tx));
 
-      if (tx.version == 1)
-      {
-        CHECK_AND_NO_ASSERT_MES(0 < out.amount, false, "zero amount output in transaction id=" << get_transaction_hash(tx));
-      }
-
       if(!check_key(boost::get<txout_to_key>(out.target).key))
         return false;
     }
@@ -849,16 +828,7 @@ public:
   
     return false;
   }
-  //---------------------------------------------------------------
-  bool is_out_to_acc_precomp(const crypto::public_key& B, const crypto::public_key& otk, const crypto::key_derivation& derivation, size_t output_index, hw::device &hwdev)
-  {
-    // try the shared tx pubkey
-    crypto::public_key B2;
-    //B=otk - H(kG,a,oi)*G
-    hwdev.derive_subaddress_public_key(otk, derivation, output_index, B2);
-    auto found = B==B2;
-    return found;
-  }
+
   //---------------------------------------------------------------
   bool lookup_acc_outs(const account_keys& acc, const transaction& tx, std::vector<size_t>& outs, uint64_t& money_transfered)
   {
