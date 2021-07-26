@@ -1530,14 +1530,15 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm)
 
   bool welcome = false;
 
-  if((!m_generate_new.empty()) + (!m_wallet_file.empty()) +  (!m_generate_from_view_key.empty()) + (!m_generate_from_spend_key.empty()) + (!m_generate_from_keys.empty())   > 1)
+  if((!m_generate_new.empty()) + (!m_wallet_file.empty()) + (!m_restore_from_spend_key.empty())  > 1)
   {
-    fail_msg_writer() << tr("can't specify more than one of --generate-new-wallet=\"wallet_name\", --wallet-file=\"wallet_name\", --generate-from-view-key=\"wallet_name\", --generate-from-spend-key=\"wallet_name\", --generate-from-keys=\"wallet_name\" ");
+    fail_msg_writer() << tr("can't specify more than one of --generate-new-wallet=\"wallet_name\", --wallet-file=\"wallet_name\", --generate-from-spend-key=\"wallet_name\", ");
     return false;
   }
-  else if (m_generate_new.empty() && m_wallet_file.empty()  && m_generate_from_view_key.empty() && m_generate_from_spend_key.empty() && m_generate_from_keys.empty() )
+  else if (m_generate_new.empty() && m_wallet_file.empty()  && m_restore_from_spend_key.empty() )
   {
-    if(!ask_wallet_create_if_needed()) return false;
+    if(!ask_wallet_create_if_needed()) 
+      return false;
   }
 
   if (!m_generate_new.empty() || m_restoring)
@@ -1556,7 +1557,6 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm)
 
       if (m_electrum_seed.empty())
       {
-      
           m_electrum_seed = "";
           do
           {
@@ -1575,7 +1575,6 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm)
         
       }
 
-   
       {
         if (!crypto::ElectrumWords::words_to_bytes(m_electrum_seed, m_recovery_key, old_language))
         {
@@ -1590,65 +1589,13 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm)
       epee::wipeable_string seed_pass = pwd_container->password();
       if (!seed_pass.empty())
       {
-       
           m_recovery_key = cryptonote::decrypt_key(m_recovery_key, seed_pass);
       }
     }
-    if (!m_generate_from_view_key.empty())
+
+   if (!m_restore_from_spend_key.empty())
     {
-      m_wallet_file = m_generate_from_view_key;
-      // parse address
-      std::string address_string = input_line("Standard address");
-      if (std::cin.eof())
-        return false;
-      if (address_string.empty()) {
-        fail_msg_writer() << tr("No data supplied, cancelled");
-        return false;
-      }
-      cryptonote::address_parse_info info;
-      if(!get_account_address_from_str(info, nettype, address_string))
-      {
-          fail_msg_writer() << tr("failed to parse address");
-          return false;
-      }
-
-
-      // parse view secret key
-      epee::wipeable_string viewkey_string = input_secure_line("Secret view key");
-      if (std::cin.eof())
-        return false;
-      if (viewkey_string.empty()) {
-        fail_msg_writer() << tr("No data supplied, cancelled");
-        return false;
-      }
-      crypto::secret_key viewkey;
-      if (!viewkey_string.hex_to_pod(unwrap(unwrap(viewkey))))
-      {
-        fail_msg_writer() << tr("failed to parse view key secret key");
-        return false;
-      }
-
-      m_wallet_file=m_generate_from_view_key;
-
-      // check the view key matches the given address
-      crypto::public_key pkey;
-      if (!crypto::secret_key_to_public_key(viewkey, pkey)) {
-        fail_msg_writer() << tr("failed to verify view key secret key");
-        return false;
-      }
-      if (info.address.m_view_public_key != pkey) {
-        fail_msg_writer() << tr("view key does not match standard address");
-        return false;
-      }
-
-      auto r = new_wallet(vm, info.address, boost::none, viewkey);
-      CHECK_AND_ASSERT_MES(r, false, tr("account creation failed"));
-      password = *r;
-      welcome = true;
-    }
-    else if (!m_generate_from_spend_key.empty())
-    {
-      m_wallet_file = m_generate_from_spend_key;
+      m_wallet_file = m_restore_from_spend_key;
       // parse spend secret key
       epee::wipeable_string spendkey_string = input_secure_line("Secret spend key");
       if (std::cin.eof())
@@ -1662,80 +1609,7 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm)
         fail_msg_writer() << tr("failed to parse spend key secret key");
         return false;
       }
-      auto r = new_wallet(vm, m_recovery_key, true, false, "");
-      CHECK_AND_ASSERT_MES(r, false, tr("account creation failed"));
-      password = *r;
-      welcome = true;
-    }
-    else if (!m_generate_from_keys.empty())
-    {
-      m_wallet_file = m_generate_from_keys;
-      // parse address
-      std::string address_string = input_line("Standard address");
-      if (std::cin.eof())
-        return false;
-      if (address_string.empty()) {
-        fail_msg_writer() << tr("No data supplied, cancelled");
-        return false;
-      }
-      cryptonote::address_parse_info info;
-      if(!get_account_address_from_str(info, nettype, address_string))
-      {
-          fail_msg_writer() << tr("failed to parse address");
-          return false;
-      }
-  
-      // parse spend secret key
-      epee::wipeable_string spendkey_string = input_secure_line("Secret spend key");
-      if (std::cin.eof())
-        return false;
-      if (spendkey_string.empty()) {
-        fail_msg_writer() << tr("No data supplied, cancelled");
-        return false;
-      }
-      crypto::secret_key spendkey;
-      if (!spendkey_string.hex_to_pod(unwrap(unwrap(spendkey))))
-      {
-        fail_msg_writer() << tr("failed to parse spend key secret key");
-        return false;
-      }
-
-      // parse view secret key
-      epee::wipeable_string viewkey_string = input_secure_line("Secret view key");
-      if (std::cin.eof())
-        return false;
-      if (viewkey_string.empty()) {
-        fail_msg_writer() << tr("No data supplied, cancelled");
-        return false;
-      }
-      crypto::secret_key viewkey;
-      if(!viewkey_string.hex_to_pod(unwrap(unwrap(viewkey))))
-      {
-        fail_msg_writer() << tr("failed to parse view key secret key");
-        return false;
-      }
-
-      m_wallet_file=m_generate_from_keys;
-
-      // check the spend and view keys match the given address
-      crypto::public_key pkey;
-      if (!crypto::secret_key_to_public_key(spendkey, pkey)) {
-        fail_msg_writer() << tr("failed to verify spend key secret key");
-        return false;
-      }
-      if (info.address.m_spend_public_key != pkey) {
-        fail_msg_writer() << tr("spend key does not match standard address");
-        return false;
-      }
-      if (!crypto::secret_key_to_public_key(viewkey, pkey)) {
-        fail_msg_writer() << tr("failed to verify view key secret key");
-        return false;
-      }
-      if (info.address.m_view_public_key != pkey) {
-        fail_msg_writer() << tr("view key does not match standard address");
-        return false;
-      }
-      auto r = new_wallet(vm, info.address, spendkey, viewkey);
+      auto r = new_wallet(vm, m_recovery_key, true,  "");
       CHECK_AND_ASSERT_MES(r, false, tr("account creation failed"));
       password = *r;
       welcome = true;
@@ -1749,7 +1623,7 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm)
       m_wallet_file = m_generate_new;
       boost::optional<epee::wipeable_string> r;
      
-        r = new_wallet(vm, m_recovery_key, m_restore_deterministic_wallet, false, old_language);
+        r = new_wallet(vm, m_recovery_key, m_restore_deterministic_wallet, old_language);
       CHECK_AND_ASSERT_MES(r, false, tr("account creation failed"));
       password = *r;
       welcome = true;
@@ -1879,9 +1753,7 @@ bool simple_wallet::handle_command_line(const boost::program_options::variables_
 {
   m_wallet_file                   = command_line::get_arg(vm, arg_wallet_file);
   m_generate_new                  = command_line::get_arg(vm, arg_generate_new_wallet);
-  m_generate_from_view_key        = command_line::get_arg(vm, arg_generate_from_view_key);
-  m_generate_from_spend_key       = command_line::get_arg(vm, arg_generate_from_spend_key);
-  m_generate_from_keys            = command_line::get_arg(vm, arg_generate_from_keys);
+  m_restore_from_spend_key       = command_line::get_arg(vm, arg_generate_from_spend_key);
   m_mnemonic_language             = command_line::get_arg(vm, arg_mnemonic_language);
   m_electrum_seed                 = command_line::get_arg(vm, arg_electrum_seed);
   m_restore_deterministic_wallet  = command_line::get_arg(vm, arg_restore_deterministic_wallet) || command_line::get_arg(vm, arg_restore_from_seed);
@@ -1889,9 +1761,7 @@ bool simple_wallet::handle_command_line(const boost::program_options::variables_
   m_restore_height                = command_line::get_arg(vm, arg_restore_height);
   m_restore_date                  = command_line::get_arg(vm, arg_restore_date);
   m_use_english_language_names    = command_line::get_arg(vm, arg_use_english_language_names);
-  m_restoring                     = !m_generate_from_view_key.empty() ||
-                                    !m_generate_from_spend_key.empty() ||
-                                    !m_generate_from_keys.empty() ||
+  m_restoring                     = !m_restore_from_spend_key.empty() ||
                                     m_restore_deterministic_wallet ;
 
   if (!command_line::is_arg_defaulted(vm, arg_restore_date))
@@ -1991,8 +1861,7 @@ boost::optional<tools::password_container> simple_wallet::get_and_verify_passwor
   return pwd_container;
 }
 //----------------------------------------------------------------------------------------------------
-boost::optional<epee::wipeable_string> simple_wallet::new_wallet(const boost::program_options::variables_map& vm,
-  const crypto::secret_key& recovery_key, bool recover, bool two_random, const std::string &old_language)
+boost::optional<epee::wipeable_string> simple_wallet::new_wallet(const boost::program_options::variables_map& vm,const crypto::secret_key& recovery_key, bool recover, const std::string &old_language)
 {
   std::pair<std::unique_ptr<tools::wallet2>, tools::password_container> rc;
   try {
@@ -2005,9 +1874,6 @@ boost::optional<epee::wipeable_string> simple_wallet::new_wallet(const boost::pr
     return {};
   }
   epee::wipeable_string password = rc.second.password();
-
-  bool was_deprecated_wallet = m_restore_deterministic_wallet && ((old_language == crypto::ElectrumWords::old_language_name) ||
-    crypto::ElectrumWords::get_is_old_style_seed(m_electrum_seed));
 
   std::string mnemonic_language = old_language;
 
@@ -2023,14 +1889,9 @@ boost::optional<epee::wipeable_string> simple_wallet::new_wallet(const boost::pr
   // a seed language is not already specified AND
   // (it is not a wallet restore OR if it was a deprecated wallet
   // that was earlier used before this restore)
-  if ((!two_random) && (mnemonic_language.empty() || mnemonic_language == crypto::ElectrumWords::old_language_name) && (!m_restore_deterministic_wallet || was_deprecated_wallet))
+  if ( (mnemonic_language.empty() || mnemonic_language == crypto::ElectrumWords::old_language_name) && (!m_restore_deterministic_wallet ))
   {
-    if (was_deprecated_wallet)
-    {
-      // The user had used an older version of the wallet with old style mnemonics.
-      message_writer(console_color_green, false) << "\n" << tr("You had been using "
-        "a deprecated version of the wallet. Please use the new seed that we provide.\n");
-    }
+    
     mnemonic_language = get_mnemonic_language();
     if (mnemonic_language.empty())
       return {};
@@ -2043,7 +1904,7 @@ boost::optional<epee::wipeable_string> simple_wallet::new_wallet(const boost::pr
   crypto::secret_key recovery_val;
   try
   {
-    recovery_val = m_wallet->generate(m_wallet_file, std::move(rc.second).password(), recovery_key, recover, two_random, create_address_file);
+    recovery_val = m_wallet->generate(m_wallet_file, std::move(rc.second).password(), recovery_key, recover,  create_address_file);
     message_writer(console_color_white, true) << tr("Generated new wallet: ")
       << m_wallet->get_account().get_public_address_str(m_wallet->nettype());
     PAUSE_READLINE();
@@ -2074,54 +1935,10 @@ boost::optional<epee::wipeable_string> simple_wallet::new_wallet(const boost::pr
     "your wallet again (your wallet keys are NOT at risk in any case).\n")
   ;
 
-  if (!two_random)
   {
     print_seed(electrum_words);
   }
   success_msg_writer() << "**********************************************************************";
-
-  return password;
-}
-//----------------------------------------------------------------------------------------------------
-boost::optional<epee::wipeable_string> simple_wallet::new_wallet(const boost::program_options::variables_map& vm,
-  const cryptonote::account_public_address& address, const boost::optional<crypto::secret_key>& spendkey,
-  const crypto::secret_key& viewkey)
-{
-  std::pair<std::unique_ptr<tools::wallet2>, tools::password_container> rc;
-  try { rc = tools::wallet2::make_new(vm, false, password_prompter); }
-  catch(const std::exception &e) { fail_msg_writer() << tr("Error creating wallet: ") << e.what(); return {}; }
-  m_wallet = std::move(rc.first);
-  if (!m_wallet)
-  {
-    return {};
-  }
-  epee::wipeable_string password = rc.second.password();
-
-   
-  if (m_restore_height)
-    m_wallet->set_refresh_from_block_height(m_restore_height);
-
-  bool create_address_file = command_line::get_arg(vm, arg_create_address_file);
-
-  try
-  {
-    if (spendkey)
-    {
-      m_wallet->generate(m_wallet_file, std::move(rc.second).password(), address, *spendkey, viewkey, create_address_file);
-    }
-    else
-    {
-      m_wallet->generate(m_wallet_file, std::move(rc.second).password(), address, viewkey, create_address_file);
-    }
-    message_writer(console_color_white, true) << tr("Generated new wallet: ")
-      << m_wallet->get_account().get_public_address_str(m_wallet->nettype());
-  }
-  catch (const std::exception& e)
-  {
-    fail_msg_writer() << tr("failed to generate new wallet: ") << e.what();
-    return {};
-  }
-
 
   return password;
 }
@@ -4181,7 +3998,6 @@ int main(int argc, char* argv[])
   tools::wallet2::init_options(desc_params);
   command_line::add_arg(desc_params, arg_wallet_file);
   command_line::add_arg(desc_params, arg_generate_new_wallet);
-  command_line::add_arg(desc_params, arg_generate_from_device);
   command_line::add_arg(desc_params, arg_generate_from_view_key);
   command_line::add_arg(desc_params, arg_generate_from_spend_key);
   command_line::add_arg(desc_params, arg_generate_from_keys);

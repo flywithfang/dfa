@@ -574,40 +574,14 @@ private:
      */
     crypto::secret_key generate(const std::string& wallet, const epee::wipeable_string& password,
       const crypto::secret_key& recovery_param = crypto::secret_key(), bool recover = false,
-      bool two_random = false, bool create_address_file = false);
-    /*!
-     * \brief Creates a wallet from a public address and a spend/view secret key pair.
-     * \param  wallet_                 Name of wallet file
-     * \param  password                Password of wallet file
-     * \param  account_public_address  The account's public address
-     * \param  spendkey                spend secret key
-     * \param  viewkey                 view secret key
-     * \param  create_address_file     Whether to create an address file
-     */
-    void generate(const std::string& wallet, const epee::wipeable_string& password,
-      const cryptonote::account_public_address &account_public_address,
-      const crypto::secret_key& spendkey, const crypto::secret_key& viewkey, bool create_address_file = false);
-    /*!
-     * \brief Creates a watch only wallet from a public address and a view secret key.
-     * \param  wallet_                 Name of wallet file
-     * \param  password                Password of wallet file
-     * \param  account_public_address  The account's public address
-     * \param  viewkey                 view secret key
-     * \param  create_address_file     Whether to create an address file
-     */
-    void generate(const std::string& wallet, const epee::wipeable_string& password,
-      const cryptonote::account_public_address &account_public_address,
-      const crypto::secret_key& viewkey = crypto::secret_key(), bool create_address_file = false);
-    
-    
-
+      bool create_address_file = false);
+   
     /*!
      * \brief Rewrites to the wallet file for wallet upgrade (doesn't generate key, assumes it's already there)
      * \param wallet_name Name of wallet file (should exist)
      * \param password    Password for wallet file
      */
     void rewrite(const std::string& wallet_name, const epee::wipeable_string& password);
-    void write_watch_only_wallet(const std::string& wallet_name, const epee::wipeable_string& password, std::string &new_keys_filename);
     void load(const std::string& wallet, const epee::wipeable_string& password, const std::string& keys_buf = "", const std::string& cache_buf = "");
     void store();
     /*!

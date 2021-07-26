@@ -3216,7 +3216,7 @@ void StackTrace::generateNew(void) {
 
       // entry: 2   crash.cpp.bin                       0x0000000101552be5 _ZN2el4base5debug10StackTraceC1Ev + 21
       const std::string line(strings[i]);
-      std::cout<<"backtrace_symbols"<<line<<std::endl;
+//      std::cout<<"backtrace_symbols"<<line<<std::endl;
       auto p = line.find("_");
       if (p != std::string::npos) {
         mangName = line.substr(p);

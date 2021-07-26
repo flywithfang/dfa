@@ -96,8 +96,8 @@ namespace cryptonote
     //! \return Prompts user for password and verifies against local file. Logs on error and returns `none`
     boost::optional<tools::password_container> get_and_verify_password() const;
 
-    boost::optional<epee::wipeable_string> new_wallet(const boost::program_options::variables_map& vm, const crypto::secret_key& recovery_key,bool recover, bool two_random, const std::string &old_language);
-    boost::optional<epee::wipeable_string> new_wallet(const boost::program_options::variables_map& vm, const cryptonote::account_public_address& address,const boost::optional<crypto::secret_key>& spendkey, const crypto::secret_key& viewkey);
+    boost::optional<epee::wipeable_string> new_wallet(const boost::program_options::variables_map& vm, const crypto::secret_key& recovery_key,bool recover,  const std::string &old_language);
+
 
     boost::optional<epee::wipeable_string> open_wallet(const boost::program_options::variables_map& vm);
     bool close_wallet();
@@ -306,9 +306,7 @@ namespace cryptonote
   private:
     std::string m_wallet_file;
     std::string m_generate_new;
-    std::string m_generate_from_view_key;
-    std::string m_generate_from_spend_key;
-    std::string m_generate_from_keys;
+    std::string m_restore_from_spend_key;
     std::string m_mnemonic_language;
     std::string m_import_path;
     std::string m_restore_date;  // optional - converted to m_restore_height

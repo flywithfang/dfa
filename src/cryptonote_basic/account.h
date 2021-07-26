@@ -75,11 +75,7 @@ namespace cryptonote
   {
   public:
     account_base();
-    crypto::secret_key generate(const crypto::secret_key& recovery_key = crypto::secret_key(), bool recover = false, bool two_random = false);
-    void create_from_device(const std::string &device_name);
-    void create_from_device(hw::device &hwdev);
-    void create_from_keys(const cryptonote::account_public_address& address, const crypto::secret_key& spendkey, const crypto::secret_key& viewkey);
-    void create_from_viewkey(const cryptonote::account_public_address& address, const crypto::secret_key& viewkey);
+    crypto::secret_key generate(const crypto::secret_key& recovery_key = crypto::secret_key(), bool recover = false);
     const account_keys& get_keys() const;
     std::string get_public_address_str(network_type nettype) const;
     std::string get_public_integrated_address_str(const crypto::hash8 &payment_id, network_type nettype) const;
@@ -101,6 +97,9 @@ namespace cryptonote
     void encrypt_viewkey(const crypto::chacha_key &key) { m_keys.encrypt_viewkey(key); }
     void decrypt_viewkey(const crypto::chacha_key &key) { m_keys.decrypt_viewkey(key); }
 
+    const account_public_address& get_address()const{
+      return m_keys.m_account_address;
+    }
     const crypto::public_key& get_view_public_key()const { return m_keys.m_account_address.m_view_public_key;}
     const crypto::public_key& get_spend_public_key()const { return m_keys.m_account_address.m_spend_public_key;}
 

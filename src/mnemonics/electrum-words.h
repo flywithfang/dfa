@@ -41,7 +41,9 @@
 
 #include <string>
 #include <cstdint>
+#include <optional>
 #include "crypto/crypto.h"  // for declaration of crypto::secret_key
+
 
 namespace epee {  class wipeable_string; }
 
@@ -71,8 +73,7 @@ namespace crypto
      * \param  language_name   Language of the seed as found gets written here.
      * \return                 false if not a multiple of 3 words, or if word is not in the words list
      */
-    bool words_to_bytes(const epee::wipeable_string &words, epee::wipeable_string& dst, size_t len, bool duplicate,
-      std::string &language_name);
+    bool words_to_bytes(const epee::wipeable_string &words, epee::wipeable_string& dst, size_t len, bool duplicate,std::string &language_name);
     /*!
      * \brief Converts seed words to bytes (secret key).
      * \param  words           String containing the words separated by spaces.
@@ -82,6 +83,8 @@ namespace crypto
      */
     bool words_to_bytes(const epee::wipeable_string &words, crypto::secret_key& dst,
       std::string &language_name);
+
+    std::tuple<crypto::secret_key, std::string> words_to_bytes(const epee::wipeable_string &words);
 
     /*!
      * \brief Converts bytes to seed words.
@@ -102,7 +105,9 @@ namespace crypto
      * \return               true if successful false if not. Unsuccessful if wrong key size.
      */
     bool bytes_to_words(const crypto::secret_key& src, epee::wipeable_string& words,
-      const std::string &language_name);
+      const std::string &language_name="English");
+
+    std::optional<epee::wipeable_string> bytes_to_words(const crypto::secret_key& src, const std::string &language_name="English");
 
     /*!
      * \brief Gets a list of seed languages that are supported.

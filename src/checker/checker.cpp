@@ -36,6 +36,8 @@
 
 #include "blockchain_db/lmdb/db_lmdb.h"
 
+#include "mnemonics/electrum-words.h"
+
 #ifdef HAVE_READLINE
 #include "readline_buffer.h"
 #endif
@@ -119,14 +121,15 @@ tuple<public_key> print_extra(const std::vector<uint8_t> & tx_extra){
          cout<<"read over"<<endl;
     return std::make_tuple(v.tx_key);
 }
-string to_json_string(const transaction & tx){
+template <class T>
+string to_json_string(T & tx){
    std::ostringstream ost;
   json_archive<true> a(ost);
-  ::serialization::serialize(a,const_cast<transaction&>(tx));
+  ::serialization::serialize(a,tx);
   auto js= ost.str();
   return js;
 }
-keyV print_in(const transaction & tx){
+rct::keyV print_in(const transaction & tx){
    auto index=0;
   rct::rctSig  rct = tx.rct_signatures;
   const auto &  CC = rct.get_pseudo_outs();
@@ -152,24 +155,16 @@ keyV print_in(const transaction & tx){
    }
    return CC;
 }
-static rct::key ecdhHash(const rct::key &k)
-{
-    char data[38];
-    rct::key hash;
-    memcpy(data, "amount", 6);
-    memcpy(data + 6, &k, sizeof(k));
-    cn_fast_hash(hash, data, sizeof(data));
-    return hash;
-}
+
  static void xor8(rct::key &v, const rct::key &k)
     {
         for (int i = 0; i < 8; ++i)
             v.bytes[i] ^= k.bytes[i];
     }
-keyV print_out(const public_key & tx_key, const transaction & tx){
+rct::keyV print_out(const public_key & tx_key, const transaction & tx){
 
      ///Ra=rGa
-    keyV out;
+    rct::keyV out;
    key_derivation kd1;
    crypto::generate_key_derivation(tx_key,a,kd1);
 
@@ -189,10 +184,9 @@ keyV print_out(const public_key & tx_key, const transaction & tx){
       crypto::derivation_to_scalar(kd1,t,s);
       rct::key shared_seret =rct::sk2rct(s);
    //  rct::ecdhDecode(ecdh,shared_seret,true);
-       const auto x = rct::genCommitmentMask(shared_seret);
-       const auto MASK=ecdhHash(shared_seret);
-      xor8(ecdh.amount,MASK);
-     uint64_t a= rct::h2d(ecdh.amount);
+       const auto noise = rct::genCommitmentMask(shared_seret);
+
+     uint64_t a= rct::ecdhDecode(ecdh.amount,shared_seret);
      //auto C = rct::addKeys2()
      cout<<"amount="<<print_money(a)<<endl;
      ///H(Ra,i)G+B
@@ -202,7 +196,7 @@ keyV print_out(const public_key & tx_key, const transaction & tx){
      rct::key xGbH;
       rct::key a2;
       rct::d2h(a2,a);
-     rct::addKeys2(xGbH,x,a2,H);
+     rct::addKeys2(xGbH,noise,a2,H);
      cout<<"outC="<<xGbH<<endl;
      const auto outC=outPk[t].commitment;
      cout<<"outC="<<outC<<endl;
@@ -287,20 +281,65 @@ void check_kimage(const string & ki){
    const bool spent=db->has_key_image(k_image);
     cout<<"key_image "<<k_image<<",spent:"<<spent<<endl;
 }
+void construct_genesis_block(){
+
+    const auto sk="533b55261db0bd3092b19c6ab60aeddb546ed6261757d1fc9d80c6198374a806";
+    const auto seed="rodent wobbly bubble satin among ecstatic desk richly bypass usage listen guest bimonthly narrate renting idols reef quote value leopard nucleus cafe hookup initiate desk";
+    const auto  [recover_key,lang]= ElectrumWords::words_to_bytes(seed);
+    account_base acc;
+    acc.generate(recover_key,true);
+
+    const auto spend_key = acc.get_keys().m_spend_secret_key;
+    cout<<string_tools::pod_to_hex(spend_key)<<endl;
+    {
+        const auto seed2 = ElectrumWords::bytes_to_words(spend_key);
+        if(!seed2) throw runtime_error("bad seed");
+        cout<<seed2.value().data()<<endl;
+    }
+
+    auto addr = acc.get_address();
+    auto [r,tx]=cryptonote::construct_miner_tx(0,0,0,0,0,addr);
+    if(!r) throw std::runtime_error("generate tx error");
+
+    const auto s = to_json_string(tx);
+    cout<<s<<endl;
+    blobdata bd;
+    t_serializable_object_to_blob(tx,bd);
+    const auto hx=string_tools::buff_to_hex_nodelimer(bd);
+    cout<<hx<<endl;
+ //genesis block
+    block bl {};
+
+    bl.miner_tx = tx;
+    bl.major_version = CURRENT_BLOCK_MAJOR_VERSION;
+    bl.minor_version = CURRENT_BLOCK_MINOR_VERSION;
+    bl.timestamp = 0;
+    bl.nonce = 0;
+    miner::find_nonce_for_given_block(nullptr,bl, 1, 0);
+    bl.invalidate_hashes();
+    cout<<to_json_string(bl)<<endl;
+}
 int main(int argc, char const * argv[]){
 
   std::vector<std::string> args(argv, argv+argc);
   for(auto p:args){
    cout<<p<<endl; 
   }
-  initChain();
+ 
 
   auto cmd=args[1];
   if(cmd=="check_image"){
     const auto kimage=args[2];
+     initChain();
     check_kimage(kimage);
     return 0;
   }
+  else if(cmd=="genesis"){
+    construct_genesis_block();
+    return 0;
+  }
+
+   initChain();
   auto tx_hash=args[2];
   auto json= argc<4 || args[3]=="json";
 

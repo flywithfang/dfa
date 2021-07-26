@@ -1033,9 +1033,7 @@ void BlockchainLMDB::remove_transaction_data(const crypto::hash& tx_hash, const 
 }
 
 uint64_t BlockchainLMDB::add_output(const crypto::hash& tx_hash,
-    const tx_out& tx_output,
-    const uint64_t& local_index,
-    const uint64_t unlock_time,
+    const tx_out& tx_output,const uint64_t& local_index, const uint64_t unlock_time,
     const rct::key *commitment)
 {
   MVERBOSE("BlockchainLMDB::" << __func__);
@@ -1061,9 +1059,11 @@ uint64_t BlockchainLMDB::add_output(const crypto::hash& tx_hash,
   if (result)
     throw0(DB_ERROR(lmdb_error("Failed to add output tx hash to db transaction: ", result).c_str()));
 
+  if(tx_output.amount!=0) throw std::runtime_error("amount!=0");
+
   outkey ok;
   MDB_val data;
-  MDB_val_copy<uint64_t> val_amount(tx_output.amount);
+  MDB_val_copy<uint64_t> val_amount(0);
   result = mdb_cursor_get(m_cur_output_amounts, &val_amount, &data, MDB_SET);
   if (!result)
     {
@@ -1077,19 +1077,15 @@ uint64_t BlockchainLMDB::add_output(const crypto::hash& tx_hash,
     throw0(DB_ERROR(lmdb_error("Failed to get output amount in db transaction: ", result).c_str()));
   else
     ok.amount_index = 0;
+
   ok.output_id = m_num_outputs;
   ok.data.pubkey = boost::get < txout_to_key > (tx_output.target).key;
   ok.data.unlock_time = unlock_time;
   ok.data.height = m_height;
-  if (tx_output.amount == 0)
-  {
-    ok.data.commitment = *commitment;
-    data.mv_size = sizeof(ok);
-  }
-  else
-  {
-    data.mv_size = sizeof(pre_rct_outkey);
-  }
+  ok.data.commitment = *commitment;
+  data.mv_size = sizeof(ok);
+  
+
   data.mv_data = &ok;
 
   if ((result = mdb_cursor_put(m_cur_output_amounts, &val_amount, &data, MDB_APPENDDUP)))

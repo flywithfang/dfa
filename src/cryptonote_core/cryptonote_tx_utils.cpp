@@ -71,8 +71,7 @@ namespace cryptonote
 
   //---------------------------------------------------------------
   std::tuple<bool, transaction> construct_miner_tx(size_t height, size_t median_weight, uint64_t already_generated_coins, size_t current_block_weight, uint64_t fee, const account_public_address &miner_address, const blobdata& blob_reserve,  uint8_t hard_fork_version) {
-    transaction tx;
-    tx.version = 2;
+    transaction tx{};
     const  std::tuple<bool, transaction> failed={false,tx};
 
     keypair txkey = keypair::generate(hw::get_device("default"));
@@ -83,8 +82,10 @@ namespace cryptonote
     if (!sort_tx_extra(tx.extra, tx.extra))
       return {false,tx};
 
-    txin_gen in;
-    in.height = height;
+    txin_gen in{height};
+    //lock
+    tx.unlock_time = height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW;
+    tx.vin.push_back(in);
 
     uint64_t block_reward;
     if(!get_block_reward(median_weight, current_block_weight, already_generated_coins, block_reward, hard_fork_version))
@@ -114,10 +115,6 @@ namespace cryptonote
       tx.vout.push_back(out);
       MINFO("txkey "<<txkey.pub<<",output amount "<<print_money(out.amount)<<" one_time_dest "<<tk.key);
     }
-
-    //lock
-    tx.unlock_time = height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW;
-    tx.vin.push_back(in);
 
     tx.invalidate_hashes();
 
@@ -173,71 +170,6 @@ namespace cryptonote
     std::vector<tx_extra_field> tx_extra_fields;
     if (parse_tx_extra(tx.extra, tx_extra_fields))
     {
-      bool add_dummy_payment_id = true;
-      tx_extra_nonce extra_nonce;
-      if (find_tx_extra_field_by_type(tx_extra_fields, extra_nonce))
-      {
-        crypto::hash payment_id = null_hash;
-        crypto::hash8 payment_id8 = null_hash8;
-        if (get_encrypted_payment_id_from_tx_extra_nonce(extra_nonce.nonce, payment_id8))
-        {
-          MINFO("Encrypting payment id " << payment_id8);
-          crypto::public_key view_key_pub = get_destination_view_key_pub(destinations, change_addr);
-          if (view_key_pub == null_pkey)
-          {
-            LOG_ERROR("Destinations have to have exactly one output to support encrypted payment ids");
-            return false;
-          }
-
-          if (!hwdev.encrypt_payment_id(payment_id8, view_key_pub, tx_sec))//kA=Ra
-          {
-            LOG_ERROR("Failed to encrypt payment id");
-            return false;
-          }
-
-          std::string extra_nonce;
-          set_encrypted_payment_id_to_tx_extra_nonce(extra_nonce, payment_id8);
-          remove_field_from_tx_extra(tx.extra, typeid(tx_extra_nonce));
-          if (!add_extra_nonce_to_tx_extra(tx.extra, extra_nonce))
-          {
-            LOG_ERROR("Failed to add encrypted payment id to tx extra");
-            return false;
-          }
-          LOG_PRINT_L1("Encrypted payment ID: " << payment_id8);
-          add_dummy_payment_id = false;
-        }
-        else if (get_payment_id_from_tx_extra_nonce(extra_nonce.nonce, payment_id))
-        {
-          add_dummy_payment_id = false;
-        }
-      }
-
-      // we don't add one if we've got more than the usual 1 destination plus change
-      if (destinations.size() > 2)
-        add_dummy_payment_id = false;
-
-      if (add_dummy_payment_id)
-      {
-        // if we have neither long nor short payment id, add a dummy short one,
-        // this should end up being the vast majority of txes as time goes on
-        std::string extra_nonce;
-        crypto::hash8 payment_id8 = null_hash8;
-        crypto::public_key view_key_pub = get_destination_view_key_pub(destinations, change_addr);
-        if (view_key_pub == null_pkey)
-        {
-          LOG_ERROR("Failed to get key to encrypt dummy payment id with");
-        }
-        else
-        {
-          hwdev.encrypt_payment_id(payment_id8, view_key_pub, tx_sec);
-          set_encrypted_payment_id_to_tx_extra_nonce(extra_nonce, payment_id8);
-          if (!add_extra_nonce_to_tx_extra(tx.extra, extra_nonce))
-          {
-            LOG_ERROR("Failed to add dummy encrypted payment id to tx extra");
-            // continue anyway
-          }
-        }
-      }
     }
     else
     {
@@ -407,7 +339,7 @@ namespace cryptonote
           for (size_t i = 0; i < in.decoys.size(); ++i)
           {
             auto & decoy= in.decoys[i];
-            ring[i] = decoy.second;
+            ring[i] = decoy.second;//otk,commitment
           }
         }
       }
@@ -440,11 +372,7 @@ namespace cryptonote
      return construct_tx_and_get_tx_key(sender_account_keys, sources, destinations_copy, change_addr, extra, tx, unlock_time, tx_sec);
   }
   //---------------------------------------------------------------
-  bool generate_genesis_block(
-      block& bl
-    , std::string const & genesis_tx
-    , uint32_t nonce
-    )
+  bool generate_genesis_block(block& bl, std::string const & genesis_tx , uint32_t nonce    )
   {
     //genesis block
     bl = {};

@@ -265,7 +265,7 @@ namespace rct {
         key message;
         std::vector<std::vector<ctkey>> mixRing; //the set of all pubkeys / copy
         //pairs that you mix with
-        std::vector<ecdhTuple> ecdhInfo;
+        std::vector<ecdhTuple> ecdhInfo;//amount+commitment+fee+
         std::vector<ctkey> outPk;
         xmr_amount txnFee; // contains b
 
@@ -275,8 +275,6 @@ namespace rct {
           FIELD(type)
           if (type == RCTTypeNull)
             return ar.stream().good();
-          if (type != RCTTypeFull && type != RCTTypeSimple && type != RCTTypeBulletproof && type != RCTTypeBulletproof2 && type != RCTTypeCLSAG)
-            return false;
           VARINT_FIELD(txnFee)
           // inputs/outputs not saved, only here for serialization help
           // FIELD(message) - not serialized, it can be reconstructed
@@ -303,7 +301,7 @@ namespace rct {
           ar.begin_array();
           ::serialization::detail::prepare_custom_vector_serialization(outputs, outPk, typename Archive<W>::is_saving());
           if (outPk.size() != outputs)
-            return false;
+            throw std::runtime_error("bad outpk size");
           for (size_t i = 0; i < outputs; ++i)
           {
             do {                  
@@ -342,15 +340,11 @@ namespace rct {
           if (mixin >= 0xffffffff)
             return false;
 
-          if (type != RCTTypeFull && type != RCTTypeSimple && type != RCTTypeBulletproof && type != RCTTypeBulletproof2 && type != RCTTypeCLSAG)
+          if ( type != RCTTypeCLSAG)
             return false;
-          if (type == RCTTypeBulletproof || type == RCTTypeBulletproof2 || type == RCTTypeCLSAG)
           {
             uint32_t nbp = bulletproofs.size();
-            if (type == RCTTypeBulletproof2 || type == RCTTypeCLSAG)
               VARINT_FIELD(nbp)
-            else
-              FIELD(nbp)
             ar.tag("bp");
             ar.begin_array();
             if (nbp > outputs)

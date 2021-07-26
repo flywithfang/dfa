@@ -195,7 +195,7 @@ void BlockchainDB::add_transaction(const crypto::hash& blk_hash, const std::pair
   {
     tx_hash = *tx_hash_ptr;
   }
-  if (tx.version >= 2)
+ // if (tx.version >= 2)
   {
     if (!tx_prunable_hash_ptr)
       tx_prunable_hash = get_transaction_prunable_hash(tx, &txp.second);

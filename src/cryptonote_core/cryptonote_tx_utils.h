@@ -52,7 +52,7 @@ namespace cryptonote
     rct::key noise;                      //ringct amount mask
 
     void push_output(uint64_t idx, const crypto::public_key &otk, uint64_t amount) {
-     decoys.push_back(std::make_pair(idx, rct::ctkey({rct::pk2rct(otk), rct::zeroCommit(amount)}))); }
+       decoys.push_back(std::make_pair(idx, rct::ctkey({rct::pk2rct(otk), rct::zeroCommit(amount)}))); }
 
     BEGIN_SERIALIZE_OBJECT()
       FIELD(decoys)

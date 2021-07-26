@@ -147,7 +147,7 @@ DISABLE_VS_WARNINGS(4244 4345)
     m_keys.m_spend_secret_key = crypto::secret_key();
   }
   //-----------------------------------------------------------------
-  crypto::secret_key account_base::generate(const crypto::secret_key& recovery_key, bool recover, bool two_random)
+  crypto::secret_key account_base::generate(const crypto::secret_key& recovery_key, bool recover)
   {
     crypto::secret_key first = crypto::generate_keys(m_keys.m_account_address.m_spend_public_key, m_keys.m_spend_secret_key, recovery_key, recover);
 
@@ -155,10 +155,10 @@ DISABLE_VS_WARNINGS(4244 4345)
     crypto::secret_key second;
     keccak((uint8_t *)&m_keys.m_spend_secret_key, sizeof(crypto::secret_key), (uint8_t *)&second, sizeof(crypto::secret_key));
 
-    generate_keys(m_keys.m_account_address.m_view_public_key, m_keys.m_view_secret_key, second, two_random ? false : true);
+    crypto::generate_keys(m_keys.m_account_address.m_view_public_key, m_keys.m_view_secret_key, second, true);
 
     struct tm timestamp = {0};
-    timestamp.tm_year = 2014 - 1900;  // year 2014
+    timestamp.tm_year = 2021 - 1900;  // year 2014
     timestamp.tm_mon = 6 - 1;  // month june
     timestamp.tm_mday = 8;  // 8th of june
     timestamp.tm_hour = 0;
@@ -177,68 +177,8 @@ DISABLE_VS_WARNINGS(4244 4345)
     }
     return first;
   }
-  //-----------------------------------------------------------------
-  void account_base::create_from_keys(const cryptonote::account_public_address& address, const crypto::secret_key& spendkey, const crypto::secret_key& viewkey)
-  {
-    m_keys.m_account_address = address;
-    m_keys.m_spend_secret_key = spendkey;
-    m_keys.m_view_secret_key = viewkey;
 
-    struct tm timestamp = {0};
-    timestamp.tm_year = 2014 - 1900;  // year 2014
-    timestamp.tm_mon = 4 - 1;  // month april
-    timestamp.tm_mday = 15;  // 15th of april
-    timestamp.tm_hour = 0;
-    timestamp.tm_min = 0;
-    timestamp.tm_sec = 0;
-
-    m_creation_timestamp = mktime(&timestamp);
-    if (m_creation_timestamp == (uint64_t)-1) // failure
-      m_creation_timestamp = 0; // lowest value
-  }
-
-  //-----------------------------------------------------------------
-  void account_base::create_from_device(const std::string &device_name)
-  {
-    hw::device &hwdev =  hw::get_device(device_name);
-    hwdev.set_name(device_name);
-    create_from_device(hwdev);
-  }
-
-  void account_base::create_from_device(hw::device &hwdev)
-  {
-    m_keys.set_device(hwdev);
-    MCDEBUG("device", "device type: "<<typeid(hwdev).name());
-    CHECK_AND_ASSERT_THROW_MES(hwdev.init(), "Device init failed");
-    CHECK_AND_ASSERT_THROW_MES(hwdev.connect(), "Device connect failed");
-    try {
-      CHECK_AND_ASSERT_THROW_MES(hwdev.get_public_address(m_keys.m_account_address), "Cannot get a device address");
-      CHECK_AND_ASSERT_THROW_MES(hwdev.get_secret_keys(m_keys.m_view_secret_key, m_keys.m_spend_secret_key), "Cannot get device secret");
-    } catch (const std::exception &e){
-      hwdev.disconnect();
-      throw;
-    }
-    struct tm timestamp = {0};
-    timestamp.tm_year = 2014 - 1900;  // year 2014
-    timestamp.tm_mon = 4 - 1;  // month april
-    timestamp.tm_mday = 15;  // 15th of april
-    timestamp.tm_hour = 0;
-    timestamp.tm_min = 0;
-    timestamp.tm_sec = 0;
-
-    m_creation_timestamp = mktime(&timestamp);
-    if (m_creation_timestamp == (uint64_t)-1) // failure
-      m_creation_timestamp = 0; // lowest value
-  }
-
-  //-----------------------------------------------------------------
-  void account_base::create_from_viewkey(const cryptonote::account_public_address& address, const crypto::secret_key& viewkey)
-  {
-    crypto::secret_key fake;
-    memset(&unwrap(unwrap(fake)), 0, sizeof(fake));
-    create_from_keys(address, fake, viewkey);
-  }
-  
+ 
   //-----------------------------------------------------------------
   const account_keys& account_base::get_keys() const
   {

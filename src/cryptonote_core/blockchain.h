@@ -70,6 +70,10 @@ namespace cryptonote
   class tx_memory_pool;
   struct test_options;
 
+  struct BlockTemplate{
+    block b;
+    difficulty_type diff;
+  };
   /** Declares ways in which the BlockchainDB backend should be told to sync
    *
    */

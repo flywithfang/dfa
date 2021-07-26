@@ -331,7 +331,7 @@ namespace rct {
         }
         key am = d2h(amount);
         key bH = scalarmultH(am);
-        return addKeys(G, bH);
+        return addKeys(G, bH);//aG+bH, a=1
     }
 
     key commit(xmr_amount amount, const key &noise) {

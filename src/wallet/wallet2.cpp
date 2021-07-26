@@ -1230,7 +1230,7 @@ void wallet2::init_type(hw::device::device_type device_type)
  * \return                         The secret key of the generated wallet
  */
 crypto::secret_key wallet2::generate(const std::string& wallet_, const epee::wipeable_string& password,
-  const crypto::secret_key& recovery_param, bool recover, bool two_random, bool create_address_file)
+  const crypto::secret_key& recovery_param, bool recover, bool create_address_file)
 {
   clear();
   prepare_file_names(wallet_);
@@ -1242,7 +1242,7 @@ crypto::secret_key wallet2::generate(const std::string& wallet_, const epee::wip
     THROW_WALLET_EXCEPTION_IF(boost::filesystem::exists(m_keys_file,   ignored_ec), error::file_exists, m_keys_file);
   }
 
-  crypto::secret_key retval = m_account.generate(recovery_param, recover, two_random);
+  crypto::secret_key retval = m_account.generate(recovery_param, recover);
 
   init_type(hw::device::device_type::SOFTWARE);
   setup_keys(password);
@@ -1258,76 +1258,7 @@ crypto::secret_key wallet2::generate(const std::string& wallet_, const epee::wip
   return retval;
 }
 
-/*!
-* \brief Creates a watch only wallet from a public address and a view secret key.
-* \param  wallet_                 Name of wallet file
-* \param  password                Password of wallet file
-* \param  account_public_address  The account's public address
-* \param  viewkey                 view secret key
-* \param  create_address_file     Whether to create an address file
-*/
-void wallet2::generate(const std::string& wallet_, const epee::wipeable_string& password,
-  const cryptonote::account_public_address &account_public_address,
-  const crypto::secret_key& viewkey, bool create_address_file)
-{
-  clear();
-  prepare_file_names(wallet_);
 
-  if (!wallet_.empty())
-  {
-    boost::system::error_code ignored_ec;
-    THROW_WALLET_EXCEPTION_IF(boost::filesystem::exists(m_wallet_file, ignored_ec), error::file_exists, m_wallet_file);
-    THROW_WALLET_EXCEPTION_IF(boost::filesystem::exists(m_keys_file,   ignored_ec), error::file_exists, m_keys_file);
-  }
-
-  m_account.create_from_viewkey(account_public_address, viewkey);
-  init_type(hw::device::device_type::SOFTWARE);
-  m_account_public_address = account_public_address;
-  setup_keys(password);
-
-  create_keys_file(wallet_, true, password, m_nettype != MAINNET || create_address_file);
-
-  setup_new_blockchain();
-
-  if (!wallet_.empty())
-    store();
-}
-
-/*!
-* \brief Creates a wallet from a public address and a spend/view secret key pair.
-* \param  wallet_                 Name of wallet file
-* \param  password                Password of wallet file
-* \param  account_public_address  The account's public address
-* \param  spendkey                spend secret key
-* \param  viewkey                 view secret key
-* \param  create_address_file     Whether to create an address file
-*/
-void wallet2::generate(const std::string& wallet_, const epee::wipeable_string& password,
-  const cryptonote::account_public_address &account_public_address,
-  const crypto::secret_key& spendkey, const crypto::secret_key& viewkey, bool create_address_file)
-{
-  clear();
-  prepare_file_names(wallet_);
-
-  if (!wallet_.empty())
-  {
-    boost::system::error_code ignored_ec;
-    THROW_WALLET_EXCEPTION_IF(boost::filesystem::exists(m_wallet_file, ignored_ec), error::file_exists, m_wallet_file);
-    THROW_WALLET_EXCEPTION_IF(boost::filesystem::exists(m_keys_file,   ignored_ec), error::file_exists, m_keys_file);
-  }
-
-  m_account.create_from_keys(account_public_address, spendkey, viewkey);
-  init_type(hw::device::device_type::SOFTWARE);
-  m_account_public_address = account_public_address;
-  setup_keys(password);
-
-  create_keys_file(wallet_, false, password, create_address_file);
-
-  setup_new_blockchain();
-
-  if (!wallet_.empty())
-    store();
-}
 
 
 /*!
@@ -1631,7 +1562,6 @@ uint64_t wallet2::unlocked_balance( bool strict)
 {
   uint64_t b=0;
   const uint64_t blockchain_height = get_blockchain_current_height();
-  const uint64_t now = time(NULL);
   for(const transfer_details& td: m_transfers_in)
   {
     if( !is_spent(td) && !td.m_frozen)

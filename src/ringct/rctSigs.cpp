@@ -564,7 +564,7 @@ namespace rct {
     //RCT simple    
     //for post-rct only
     rctSig genRctSimple(const key &message, const std::vector<ctkey> & inSk, const keyV & destinations, const vector<xmr_amount> &inamounts, const vector<xmr_amount> &outamounts, xmr_amount txnFee, const ctkeyM & mixRing, const std::vector<key> &shared_secs,  const std::vector<unsigned int> & index, std::vector<ctkey> &outSk, const RCTConfig &rct_config, hw::device &hwdev) {
-        const bool bulletproof = rct_config.range_proof_type != RangeProofBorromean;
+//        const bool bulletproof = rct_config.range_proof_type != RangeProofBorromean;
         CHECK_AND_ASSERT_THROW_MES(inamounts.size() > 0, "Empty inamounts");
         CHECK_AND_ASSERT_THROW_MES(inamounts.size() == inSk.size(), "Different number of inamounts/inSk");
         CHECK_AND_ASSERT_THROW_MES(outamounts.size() == destinations.size(), "Different number of amounts/destinations");
@@ -703,7 +703,7 @@ namespace rct {
           const rctSig &rv = *rvp;
           CHECK_AND_ASSERT_MES(rv.type == RCTTypeSimple || rv.type == RCTTypeBulletproof || rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG,
               false, "verRctSemanticsSimple called on non simple rctSig");
-          const bool bulletproof = is_rct_bulletproof(rv.type);
+//          const bool bulletproof = is_rct_bulletproof(rv.type);
           {
             CHECK_AND_ASSERT_MES(rv.outPk.size() == n_bulletproof_amounts(rv.p.bulletproofs), false, "Mismatched sizes of outPk and bulletproofs");
             if (rv.type == RCTTypeCLSAG)

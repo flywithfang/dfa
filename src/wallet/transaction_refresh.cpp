@@ -880,8 +880,14 @@ void wallet2::check_acc_out_precomp(const tx_out &o, const crypto::key_derivatio
       hwdev.derive_subaddress_public_key(otk, derivation, i, B2);
   tx_scan_info.received =  m_account.get_view_public_key()==B2;
 
-  if(o.amount!=0) 
-    throw std::runtime_error("non-zero transaction");
+ if(tx_scan_info.received)
+  {
+    tx_scan_info.money_transfered = o.amount; // may be 0 for ringct outputs
+  }
+  else
+  {
+    tx_scan_info.money_transfered = 0;
+  }
  
   tx_scan_info.error = false;
 }
