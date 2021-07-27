@@ -87,7 +87,6 @@ else ()
   add_subdirectory(crypto)
   add_subdirectory(functional_tests)
   add_subdirectory(performance_tests)
-  add_subdirectory(core_proxy)
   add_subdirectory(unit_tests)
   add_subdirectory(difficulty)
   add_subdirectory(block_weight)
@@ -99,11 +98,6 @@ if (BUILD_GUI_DEPS)
   add_subdirectory(libwallet_api_tests)
 endif()
 
-if (TREZOR_DEBUG)
-  add_subdirectory(trezor)
-endif()
-
-# add_subdirectory(daemon_tests)
 
 set(hash_targets_sources
   hash-target.cpp)
@@ -145,7 +139,6 @@ set(enabled_tests
     block_weight
     hash
     performance_tests
-    core_proxy
     fuzz
     unit_tests)
 

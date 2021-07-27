@@ -165,23 +165,7 @@ namespace cryptonote
        return handle_incoming_txs(epee::to_span(tx_blobs), epee::to_mut_span(tvc), tx_relay, relayed);
      }
 
-     /**
-      * @brief handles an incoming block
-      *
-      * periodic update to checkpoints is triggered here
-      * Attempts to add the block to the Blockchain and, on success,
-      * optionally updates the miner's block template.
-      *
-      * @param block_blob the block to be added
-      * @param block the block to be added, or NULL
-      * @param bvc return-by-reference metadata context about the block's validity
-      * @param update_miner_blocktemplate whether or not to update the miner's block template
-      *
-      * @return false if loading new checkpoints fails, or the block is not
-      * added, otherwise true
-      */
-     bool handle_incoming_block(const blobdata& block_blob, const block *b, block_verification_context& bvc, bool update_miner_blocktemplate = true);
-
+   
      /**
       * @copydoc Blockchain::prepare_handle_incoming_blocks
       *
@@ -226,7 +210,7 @@ namespace cryptonote
       *
       * @return true if the block was added to the main chain, otherwise false
       */
-     virtual bool handle_block_found(block& b, block_verification_context &bvc) override;
+     virtual bool handle_block_found(const block& b, block_verification_context &bvc) override;
 
      /**
       * @copydoc Blockchain::create_block_template
@@ -915,12 +899,7 @@ namespace cryptonote
       */
      bool add_new_tx(transaction& tx, tx_verification_context& tvc, relay_method tx_relay, bool relayed);
 
-     /**
-      * @copydoc Blockchain::add_new_block
-      *
-      * @note see Blockchain::add_new_block
-      */
-     bool add_new_block(const block& b, block_verification_context& bvc);
+   
 
      /**
       * @brief load any core state stored on disk
@@ -1047,13 +1026,6 @@ namespace cryptonote
       * @return true on success, false otherwise
       */
      bool check_block_rate();
-
-     /**
-      * @brief recalculate difficulties after the last difficulty checklpoint to circumvent the annoying 'difficulty drift' bug
-      *
-      * @return true
-      */
-     bool recalculate_difficulties();
 
      bool m_test_drop_download = true; //!< whether or not to drop incoming blocks (for testing)
 

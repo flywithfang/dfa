@@ -100,20 +100,24 @@ static const char *get_default_categories(int level)
   switch (level)
   {
     case 0:
-      categories = "*:WARNING,net:FATAL,net.http:FATAL,net.ssl:FATAL,net.p2p:FATAL,net.cn:FATAL,daemon.rpc:FATAL,global:INFO,verify:FATAL,serialization:FATAL,daemon.rpc.payment:ERROR,stacktrace:INFO,logging:INFO,msgwriter:INFO";
+      categories ="*:FATAL";
       break;
     case 1:
-      categories = "*:INFO,global:INFO,stacktrace:INFO,logging:INFO,msgwriter:INFO,perf.*:DEBUG";
+      categories = "*:ERROR";
       break;
     case 2:
-      categories = "*:INFO";
+      categories = "*:WARNING";
       break;
     case 3:
-      categories = "*:DEBUG";
+      categories = "*:INFO";
       break;
     case 4:
-      categories = "*:VERBOSE";
+      categories = "*:DEBUG";
       break;
+    case 5:
+    case 6:
+    categories = "*:VERBOSE";
+    break;
     default:
       break;
   }
@@ -310,7 +314,7 @@ void mlog_set_log(const char *log)
       mlog_set_categories(log);
     }
   }
-  else if (level >= 0 && level <= 4)
+  else if (level >= 0 && level <= 6)
   {
     mlog_set_log_level(level);
   }

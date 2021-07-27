@@ -399,14 +399,7 @@ private:
    * @param coins_generated the number of coins generated total after this block
    * @param blk_hash the hash of the block
    */
-  virtual void add_block( const block& blk
-                , size_t block_weight
-                , uint64_t long_term_block_weight
-                , const difficulty_type& cumulative_difficulty
-                , const uint64_t& coins_generated
-                , uint64_t num_rct_outs
-                , const crypto::hash& blk_hash
-                ) = 0;
+  virtual void add_block( const block& blk, size_t block_weight, uint64_t long_term_block_weight, const difficulty_type& cumulative_difficulty, const uint64_t& coins_generated, uint64_t num_rct_outs, const crypto::hash& blk_hash) = 0;
 
   /**
    * @brief remove data about the top block
@@ -852,13 +845,8 @@ public:
    *
    * @return the height of the chain post-addition
    */
-  virtual uint64_t add_block( const std::pair<block, blobdata>& blk
-                            , size_t block_weight
-                            , uint64_t long_term_block_weight
-                            , const difficulty_type& cumulative_difficulty
-                            , const uint64_t& coins_generated
-                            , const std::vector<std::pair<transaction, blobdata>>& txs
-                            );
+  virtual uint64_t add_block( const std::pair<block, blobdata>& blk, size_t block_weight, uint64_t long_term_block_weight, const difficulty_type& cumulative_difficulty, const uint64_t& coins_generated
+                            , const std::vector<std::pair<transaction, blobdata>>& txs);
 
   /**
    * @brief checks if a block exists
@@ -1411,7 +1399,7 @@ public:
    *
    * @return the number of outputs of the given amount
    */
-  virtual uint64_t get_num_outputs(const uint64_t& amount) const = 0;
+  virtual uint64_t get_num_outputs() const = 0;
 
   /**
    * @brief return index of the first element (should be hidden, but isn't)
@@ -1436,7 +1424,7 @@ public:
    *
    * @return the requested output data
    */
-  virtual output_data_t get_output_key(const uint64_t& amount, const uint64_t& index, bool include_commitmemt = true) const = 0;
+  virtual output_data_t get_output_key( const uint64_t& index, bool include_commitmemt = true) const = 0;
 
   /**
    * @brief gets an output's tx hash and index
@@ -1462,7 +1450,7 @@ public:
    *
    * @return the tx hash and output index
    */
-  virtual tx_out_index get_output_tx_and_index(const uint64_t& amount, const uint64_t& index) const = 0;
+  virtual tx_out_index get_output_tx_and_index( const uint64_t& index) const = 0;
 
   /**
    * @brief gets some outputs' tx hashes and indices
@@ -1475,7 +1463,7 @@ public:
    * @param offsets a list of amount-specific output indices
    * @param indices return-by-reference a list of tx hashes and output indices (as pairs)
    */
-  virtual void get_output_tx_and_index(const uint64_t& amount, const std::vector<uint64_t> &offsets, std::vector<tx_out_index> &indices) const = 0;
+  virtual void get_output_tx_and_index(const std::vector<uint64_t> &offsets, std::vector<tx_out_index> &indices) const = 0;
 
   /**
    * @brief gets outputs' data
@@ -1488,7 +1476,7 @@ public:
    * @param offsets a list of amount-specific output indices
    * @param outputs return-by-reference a list of outputs' metadata
    */
-  virtual void get_output_key(const epee::span<const uint64_t> &amounts, const std::vector<uint64_t> &offsets, std::vector<output_data_t> &outputs, bool allow_partial = false) const = 0;
+  virtual void get_output_key( const std::vector<uint64_t> &offsets, std::vector<output_data_t> &outputs, bool allow_partial = false) const = 0;
   
   /*
    * FIXME: Need to check with git blame and ask what this does to
@@ -1593,13 +1581,6 @@ public:
    * @return True if `tx_hash` latest relay status is in `category`.
    */
   bool txpool_tx_matches_category(const crypto::hash& tx_hash, relay_category category);
-
-  /**
-   * @brief prune output data for the given amount
-   *
-   * @param amount the amount for which to prune data
-   */
-  virtual void prune_outputs(uint64_t amount) = 0;
 
   /**
    * @brief get the blockchain pruning seed
@@ -1763,8 +1744,8 @@ public:
    *
    * @return false if the function returns false for any output, otherwise true
    */
-  virtual bool for_all_outputs(std::function<bool(uint64_t amount, const crypto::hash &tx_hash, uint64_t height, size_t tx_idx)> f) const = 0;
-  virtual bool for_all_outputs(uint64_t amount, const std::function<bool(uint64_t height)> &f) const = 0;
+  virtual bool for_all_outputs(std::function<bool(const crypto::hash &tx_hash, uint64_t height, size_t tx_idx)> f) const = 0;
+  virtual bool for_all_outputs( const std::function<bool(uint64_t height)> &f) const = 0;
 
   /**
    * @brief runs a function over all alternative blocks stored
@@ -1826,9 +1807,9 @@ public:
    *
    * @return a set of amount/instances
    */
-  virtual std::map<uint64_t, std::tuple<uint64_t, uint64_t, uint64_t>> get_output_histogram(const std::vector<uint64_t> &amounts, bool unlocked, uint64_t recent_cutoff, uint64_t min_count) const = 0;
+  virtual std::map<uint64_t, std::tuple<uint64_t, uint64_t, uint64_t>> get_output_histogram( bool unlocked, uint64_t recent_cutoff, uint64_t min_count) const = 0;
 
-  virtual bool get_output_distribution(uint64_t amount, uint64_t from_height, uint64_t to_height, std::vector<uint64_t> &distribution, uint64_t &base) const = 0;
+  virtual bool get_output_distribution(uint64_t from_height, uint64_t to_height, std::vector<uint64_t> &distribution, uint64_t &base) const = 0;
 
   /**
    * @brief is BlockchainDB in read-only mode?

@@ -857,14 +857,6 @@ std::list<crypto::hash> wallet2::get_short_chain_history() const
     ids.push_back(m_blockchain.genesis());
   return ids;
 }
-//----------------------------------------------------------------------------------------------------
-void wallet2::parse_block_round(const cryptonote::blobdata &blob, cryptonote::block &bl, crypto::hash &bl_id, bool &error) const
-{
-  error = !cryptonote::parse_and_validate_block_from_blob(blob, bl, bl_id);
-}
-
-
-
 
 //----------------------------------------------------------------------------------------------------
 bool wallet2::refresh(bool trusted_daemon, uint64_t & blocks_fetched, bool& received_money, bool& ok)
@@ -1312,6 +1304,19 @@ bool wallet2::check_connection(uint32_t *version, bool *ssl, uint32_t timeout)
       if(!m_http_client->is_connected(ssl))
         return false;
     }
+  }
+
+   if (!m_rpc_version)
+  {
+    cryptonote::COMMAND_RPC_GET_VERSION::request req_t = AUTO_VAL_INIT(req_t);
+    cryptonote::COMMAND_RPC_GET_VERSION::response resp_t = AUTO_VAL_INIT(resp_t);
+    bool r = invoke_http_json_rpc("/json_rpc", "get_version", req_t, resp_t);
+    if(!r || resp_t.status != CORE_RPC_STATUS_OK) {
+      if(version)
+        *version = 0;
+      return false;
+    }
+    m_rpc_version = resp_t.version;
   }
 
   if (version)
@@ -2118,9 +2123,10 @@ uint64_t wallet2::get_blockchain_height_by_date(uint16_t year, uint8_t month, ui
     }
     cryptonote::block blk_min, blk_mid, blk_max;
     if (res.blocks.size() < 3) throw std::runtime_error("Not enough blocks returned from daemon");
-    if (!parse_and_validate_block_from_blob(res.blocks[0].block, blk_min)) throw std::runtime_error("failed to parse blob at height " + std::to_string(height_min));
-    if (!parse_and_validate_block_from_blob(res.blocks[1].block, blk_mid)) throw std::runtime_error("failed to parse blob at height " + std::to_string(height_mid));
-    if (!parse_and_validate_block_from_blob(res.blocks[2].block, blk_max)) throw std::runtime_error("failed to parse blob at height " + std::to_string(height_max));
+    blk_min = parse_and_validate_block_from_blob(res.blocks[0].block);
+
+   blk_mid = parse_and_validate_block_from_blob(res.blocks[1].block);
+    blk_max=parse_and_validate_block_from_blob(res.blocks[2].block);
     uint64_t timestamp_min = blk_min.timestamp;
     uint64_t timestamp_mid = blk_mid.timestamp;
     uint64_t timestamp_max = blk_max.timestamp;

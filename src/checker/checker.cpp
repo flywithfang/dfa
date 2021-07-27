@@ -122,10 +122,10 @@ tuple<public_key> print_extra(const std::vector<uint8_t> & tx_extra){
     return std::make_tuple(v.tx_key);
 }
 template <class T>
-string to_json_string(T & tx){
+string to_json_string(const T & tx){
    std::ostringstream ost;
   json_archive<true> a(ost);
-  ::serialization::serialize(a,tx);
+  ::serialization::serialize(a,const_cast<T&>(tx));
   auto js= ost.str();
   return js;
 }
@@ -144,7 +144,7 @@ rct::keyV print_in(const transaction & tx){
           r_o =  last+of;
         }
         last = r_o;
-        output_data_t out = db->get_output_key(tk.amount,r_o,true);
+        output_data_t out = db->get_output_key(r_o,true);
         cout<<"  "<<out.height<<",o-k "<<out.pubkey<<","<<out.unlock_time<<",C1="<<out.commitment<<","<<endl;
       }
       const bool spent=db->has_key_image(tk.k_image);
@@ -283,12 +283,11 @@ void check_kimage(const string & ki){
 }
 void construct_genesis_block(){
 
-    const auto sk="533b55261db0bd3092b19c6ab60aeddb546ed6261757d1fc9d80c6198374a806";
+//    const auto sk="533b55261db0bd3092b19c6ab60aeddb546ed6261757d1fc9d80c6198374a806";
     const auto seed="rodent wobbly bubble satin among ecstatic desk richly bypass usage listen guest bimonthly narrate renting idols reef quote value leopard nucleus cafe hookup initiate desk";
     const auto  [recover_key,lang]= ElectrumWords::words_to_bytes(seed);
     account_base acc;
     acc.generate(recover_key,true);
-
     const auto spend_key = acc.get_keys().m_spend_secret_key;
     cout<<string_tools::pod_to_hex(spend_key)<<endl;
     {
@@ -298,6 +297,8 @@ void construct_genesis_block(){
     }
 
     auto addr = acc.get_address();
+    const auto addr_str = cryptonote::get_account_address_as_str(cryptonote::network_type::MAINNET,addr);
+    cout<<"addr:"<<addr_str<<endl;
     auto [r,tx]=cryptonote::construct_miner_tx(0,0,0,0,0,addr);
     if(!r) throw std::runtime_error("generate tx error");
 
@@ -318,6 +319,22 @@ void construct_genesis_block(){
     miner::find_nonce_for_given_block(nullptr,bl, 1, 0);
     bl.invalidate_hashes();
     cout<<to_json_string(bl)<<endl;
+
+    const auto blob = get_block_hashing_blob(bl);
+    cout<<"bl header "<<string_tools::buff_to_hex_nodelimer(blob);
+}
+void cal_block_hash(const string & hex){
+    
+    blobdata bd;
+    auto r =from_hex::to_string(bd,hex);
+    cout<<bd.size()<<endl;
+    if(!r) throw runtime_error("bad hex");
+    
+    
+   const block bl = cryptonote::parse_and_validate_block_from_blob(bd);
+   crypto::hash hash=get_block_hash(bl);
+    cout<<"hash "<<hash<<endl;
+    cout<<to_json_string(bl)<<endl;
 }
 int main(int argc, char const * argv[]){
 
@@ -337,6 +354,9 @@ int main(int argc, char const * argv[]){
   else if(cmd=="genesis"){
     construct_genesis_block();
     return 0;
+  }
+  else if(cmd=="block_hash"){
+    cal_block_hash(args[2]); return 0;
   }
 
    initChain();

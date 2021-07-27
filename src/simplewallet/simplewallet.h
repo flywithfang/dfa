@@ -85,7 +85,7 @@ namespace cryptonote
     std::string get_command_usage(const std::vector<std::string> &args);
   private:
 
-    enum ResetType { ResetNone, ResetSoft, ResetHard, ResetSoftKeepKI };
+    enum ResetType { ResetNone, ResetSoft, ResetHard };
 
     bool handle_command_line(const boost::program_options::variables_map& vm);
 
@@ -314,7 +314,7 @@ namespace cryptonote
     epee::wipeable_string m_electrum_seed;  // electrum-style seed parameter
 
     crypto::secret_key m_recovery_key;  // recovery key (used as random for wallet gen)
-    bool m_restore_deterministic_wallet;  // recover flag
+    bool m_restore_from_seed;  // recover flag
     bool m_allow_mismatched_daemon_version;
     bool m_restoring;           // are we restoring, by whatever method?
     uint64_t m_restore_height;  // optional

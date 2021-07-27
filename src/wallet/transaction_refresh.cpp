@@ -69,6 +69,14 @@ using namespace cryptonote;
 
 namespace tools
 {
+  template <class T>
+string to_json_string(T & tx){
+   std::ostringstream ost;
+  json_archive<true> a(ost);
+  ::serialization::serialize(a,tx);
+  auto js= ost.str();
+  return js;
+}
   //----------------------------------------------------------------------------------------------------
 
   //----------------------------------------------------------------------------------------------------
@@ -333,23 +341,30 @@ void wallet2::pull_and_parse_next_blocks(uint64_t start_height, uint64_t &blocks
     parsed_blocks.resize(blocks.size());
     for (size_t i = 0; i < blocks.size(); ++i)
     {
-      tpool.submit(&waiter, [&]{ 
+      tpool.submit(&waiter, [&,i]{ 
          auto & pb= parsed_blocks[i];
          auto & blob = blocks[i].block;
-         pb.error = !cryptonote::parse_and_validate_block_from_blob(blob, pb.block, pb.hash);
+         pb.block = cryptonote::parse_and_validate_block_from_blob(blob, pb.block);
+         pb.hash = cryptonote::get_block_hash(pb.block);
         }, true);
     }
     THROW_WALLET_EXCEPTION_IF(!waiter.wait(), error::wallet_internal_error, "Exception in thread pool");
     for (size_t i = 0; i < blocks.size(); ++i)
     {
-      auto & b = blocks[i];
-      MDEBUG("find block"<<b.block.size()<<"w "<<b.block_weight<<",tx "<<b.txs.size());
+      const auto & b = blocks[i];
+      auto & pb= parsed_blocks[i];
       if (parsed_blocks[i].error)
       {
         error = true;
         break;
       }
-      parsed_blocks[i].o_indices = std::move(o_indices[i]);
+      pb.o_indices = std::move(o_indices[i]);
+      const auto h=get_block_height(pb.block);
+      const auto hs=string_tools::pod_to_hex(pb.hash).substr(0,6);
+      const auto prev_hs=string_tools::pod_to_hex(pb.block.prev_id).substr(0,6);
+      const auto ts = pb.block.timestamp;
+      MDEBUG("find block "<<h<<"/"<<hs<<"->"<<prev_hs<<","<<b.block.size()<<" w "<<b.block_weight<<",tx "<<b.txs.size());
+      MVERBOSE(to_json_string(pb.block));
     }
 
     boost::mutex error_lock;
@@ -361,7 +376,9 @@ void wallet2::pull_and_parse_next_blocks(uint64_t start_height, uint64_t &blocks
       for (size_t j = 0; j < b.txs.size(); ++j)
       {
         tpool.submit(&waiter, [&, j](){
-          if (!parse_and_validate_tx_base_from_blob(b.txs[j].blob, pb.txes[j]))
+          const auto & tx_blob = b.txs[j].blob;
+          auto & tx= pb.txes[j];
+          if (!parse_and_validate_tx_base_from_blob(tx_blob,tx))
           {
             boost::unique_lock<boost::mutex> lock(error_lock);
             error = true;
@@ -409,8 +426,7 @@ void wallet2::pull_blocks(uint64_t start_height, uint64_t &blocks_start_height, 
   o_indices = std::move(res.output_indices);
   current_height = res.current_height;
 
-  MDEBUG("Pulled blocks: blocks_start_height " << blocks_start_height << ", count " << blocks.size()
-      << ", height " << blocks_start_height + blocks.size() << ", node height " << res.current_height);
+  MDEBUG("Pulled blocks: blocks_start_height " << blocks_start_height << ", count " << blocks.size()<<"/"<<o_indices.size()<< ", node height " << res.current_height);
 }
 
 //----------------------------------------------------------------------------------------------------

@@ -159,7 +159,7 @@ protected:
     {
       block bl;
       blobdata bd = h2b(i);
-      CHECK_AND_ASSERT_THROW_MES(parse_and_validate_block_from_blob(bd, bl), "Invalid block");
+      const bl = parse_and_validate_block_from_blob(bd);
       m_blocks.push_back(std::make_pair(bl, bd));
     }
     for (auto& i : t_transactions)

@@ -160,7 +160,7 @@ namespace
  
   const command_line::arg_descriptor<std::string> arg_mnemonic_language = {"mnemonic-language", sw::tr("Language for mnemonic"), ""};
   const command_line::arg_descriptor<std::string> arg_electrum_seed = {"electrum-seed", sw::tr("Specify Electrum seed for wallet recovery/creation"), ""};
-  const command_line::arg_descriptor<bool> arg_restore_deterministic_wallet = {"restore-deterministic-wallet", sw::tr("Recover wallet using Electrum-style mnemonic seed"), false};
+  
   const command_line::arg_descriptor<bool> arg_restore_from_seed = {"restore-from-seed", sw::tr("alias for --restore-deterministic-wallet"), false};
 
   const command_line::arg_descriptor<bool> arg_allow_mismatched_daemon_version = {"allow-mismatched-daemon-version", sw::tr("Allow communicating with a daemon that uses a different RPC version"), false};
@@ -185,7 +185,6 @@ namespace
 
   const char* USAGE_SET_VARIABLE("set <option> [<value>]");
   const char* USAGE_GET_TX_KEY("get_tx_key <txid>");
-  const char* USAGE_SET_TX_KEY("set_tx_key <txid> <tx_key> [<subaddress>]");
   const char* USAGE_CHECK_TX_KEY("check_tx_key <txid> <txkey> <address>");
   const char* USAGE_GET_TX_PROOF("get_tx_proof <txid> <address> [<message>]");
   const char* USAGE_CHECK_TX_PROOF("check_tx_proof <txid> <address> <signature_file> [<message>]");
@@ -457,21 +456,6 @@ void simple_wallet::handle_transfer_exception(const std::exception_ptr &e, bool 
 
 namespace
 {
-  bool check_file_overwrite(const std::string &filename)
-  {
-    boost::system::error_code errcode;
-    if (boost::filesystem::exists(filename, errcode))
-    {
-      if (boost::ends_with(filename, ".keys"))
-      {
-        fail_msg_writer() << boost::format(sw::tr("File %s likely stores wallet private keys! Use a different file name.")) % filename;
-        return false;
-      }
-      return command_line::is_yes(input_line((boost::format(sw::tr("File %s already exists. Are you sure to overwrite it?")) % filename).str(), true));
-    }
-    return true;
-  }
-
   void print_secret_key(const crypto::secret_key &k)
   {
     static constexpr const char hex[] = u8"0123456789abcdef";
@@ -483,31 +467,6 @@ namespace
       ++ptr;
     }
   }
-}
-
-bool parse_priority(const std::string& arg, uint32_t& priority)
-{
-  auto priority_pos = std::find(
-    allowed_priority_strings.begin(),
-    allowed_priority_strings.end(),
-    arg);
-  if(priority_pos != allowed_priority_strings.end()) {
-    priority = std::distance(allowed_priority_strings.begin(), priority_pos);
-    return true;
-  }
-  return false;
-}
-
-std::string join_priority_strings(const char *delimiter)
-{
-  std::string s;
-  for (size_t n = 0; n < allowed_priority_strings.size(); ++n)
-  {
-    if (!s.empty())
-      s += delimiter;
-    s += allowed_priority_strings[n];
-  }
-  return s;
 }
 
 std::string simple_wallet::get_commands_str()
@@ -1117,28 +1076,11 @@ simple_wallet::simple_wallet()
                                   "  Whether to confirm unsplit txes.\n "
                                   "auto-refresh <1|0>\n "
                                   "  Whether to automatically synchronize new blocks from the daemon.\n "
-                                  "refresh-type <full|optimize-coinbase|no-coinbase|default>\n "
-                                  "  Set the wallet's refresh behaviour.\n "
-                                  "priority [0|1|2|3|4]\n "
-                                  "  Set the fee to default/unimportant/normal/elevated/priority.\n "
-                                  "confirm-missing-payment-id <1|0> (obsolete)\n "
                                   "ask-password <0|1|2   (or never|action|decrypt)>\n "
                                   "  action: ask the password before many actions such as transfer, etc\n "
                                   "  decrypt: same as action, but keeps the spend key encrypted in memory when not needed\n "
                                   "unit <monero|millinero|micronero|nanonero|piconero>\n "
                                   "  Set the default monero (sub-)unit.\n "
-                                  "min-outputs-count [n]\n "
-                                  "  Try to keep at least that many outputs of value at least min-outputs-value.\n "
-                                  "min-outputs-value [n]\n "
-                                  "  Try to keep at least min-outputs-count outputs of at least that value.\n "
-                                  "merge-destinations <1|0>\n "
-                                  "  Whether to merge multiple payments to the same destination address.\n "
-                                  "confirm-backlog <1|0>\n "
-                                  "  Whether to warn if there is transaction backlog.\n "
-                                  "confirm-backlog-threshold [n]\n "
-                                  "  Set a threshold for confirm-backlog to only warn if the transaction backlog is greater than n blocks.\n "
-                                  "confirm-export-overwrite <1|0>\n "
-                                  "  Whether to warn if the file to be exported already exists.\n "
                                   "refresh-from-block-height [n]\n "
                                   "  Set the height before which to ignore blocks.\n "
                                   "auto-low-priority <1|0>\n "
@@ -1147,25 +1089,6 @@ simple_wallet::simple_wallet()
                                   "  Set this if you intend to spend outputs on both DFA AND a key reusing fork.\n "
                                   "key-reuse-mitigation2 <1|0>\n "
                                   "  Set this if you are not sure whether you will spend on a key reusing DFA fork later.\n "
-                                  "subaddress-lookahead <major>:<minor>\n "
-                                  "  Set the lookahead sizes for the subaddress hash table.\n "
-                                  "segregation-height <n>\n "
-                                  "  Set to the height of a key reusing fork you want to use, 0 to use default.\n "
-                                  "ignore-fractional-outputs <1|0>\n "
-                                  "  Whether to ignore fractional outputs that result in net loss when spending due to fee.\n "
-                                  "ignore-outputs-above <amount>\n "
-                                  "  Ignore outputs of amount above this threshold when spending. Value 0 is translated to the maximum value (18 million) which disables this filter.\n "
-                                  "ignore-outputs-below <amount>\n "
-                                  "  Ignore outputs of amount below this threshold when spending.\n "
-                                  "track-uses <1|0>\n "
-                                  "  Whether to keep track of owned outputs uses.\n "
-                               
-                                  "device-name <device_name[:device_spec]>\n "
-                                  "  Device name for hardware wallet.\n "
-                                  "export-format <\"binary\"|\"ascii\">\n "
-                                  "  Save all exported files as binary (cannot be copied and pasted) or ascii (can be).\n "
-                                  "persistent-rpc-client-id <1|0>\n "
-                                  "  Whether to keep using the same client id for RPC payment over wallet restarts.\n"
                                  
                                   "inactivity-lock-timeout <unsigned int>\n "
                                   "  How many seconds to wait before locking the wallet (0 to disable)."));
@@ -1546,7 +1469,7 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm)
 
     std::string old_language;
     // check for recover flag.  if present, require electrum word list (only recovery option for now).
-    if (m_restore_deterministic_wallet )
+    if (m_restore_from_seed )
     {
 
       if (!m_wallet_file.empty())
@@ -1623,7 +1546,7 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm)
       m_wallet_file = m_generate_new;
       boost::optional<epee::wipeable_string> r;
      
-        r = new_wallet(vm, m_recovery_key, m_restore_deterministic_wallet, old_language);
+        r = new_wallet(vm, m_recovery_key, m_restore_from_seed, old_language);
       CHECK_AND_ASSERT_MES(r, false, tr("account creation failed"));
       password = *r;
       welcome = true;
@@ -1756,13 +1679,13 @@ bool simple_wallet::handle_command_line(const boost::program_options::variables_
   m_restore_from_spend_key       = command_line::get_arg(vm, arg_generate_from_spend_key);
   m_mnemonic_language             = command_line::get_arg(vm, arg_mnemonic_language);
   m_electrum_seed                 = command_line::get_arg(vm, arg_electrum_seed);
-  m_restore_deterministic_wallet  = command_line::get_arg(vm, arg_restore_deterministic_wallet) || command_line::get_arg(vm, arg_restore_from_seed);
+  m_restore_from_seed  = command_line::get_arg(vm, arg_restore_from_seed);
   m_allow_mismatched_daemon_version = command_line::get_arg(vm, arg_allow_mismatched_daemon_version);
   m_restore_height                = command_line::get_arg(vm, arg_restore_height);
   m_restore_date                  = command_line::get_arg(vm, arg_restore_date);
   m_use_english_language_names    = command_line::get_arg(vm, arg_use_english_language_names);
   m_restoring                     = !m_restore_from_spend_key.empty() ||
-                                    m_restore_deterministic_wallet ;
+                                    m_restore_from_seed ;
 
   if (!command_line::is_arg_defaulted(vm, arg_restore_date))
   {
@@ -1889,9 +1812,8 @@ boost::optional<epee::wipeable_string> simple_wallet::new_wallet(const boost::pr
   // a seed language is not already specified AND
   // (it is not a wallet restore OR if it was a deprecated wallet
   // that was earlier used before this restore)
-  if ( (mnemonic_language.empty() || mnemonic_language == crypto::ElectrumWords::old_language_name) && (!m_restore_deterministic_wallet ))
+  if ( mnemonic_language.empty() ||  !m_restore_from_seed )
   {
-    
     mnemonic_language = get_mnemonic_language();
     if (mnemonic_language.empty())
       return {};
@@ -3616,10 +3538,7 @@ bool simple_wallet::rescan_blockchain(const std::vector<std::string> &args_)
     {
       reset_type = ResetHard;
     }
-    else if (args_[0] == "soft")
-    {
-      reset_type = ResetSoft;
-    }
+   
     else
     {
       PRINT_USAGE(USAGE_RESCAN_BC);
@@ -4004,7 +3923,6 @@ int main(int argc, char* argv[])
   command_line::add_arg(desc_params, arg_mnemonic_language);
   command_line::add_arg(desc_params, arg_command);
 
-  command_line::add_arg(desc_params, arg_restore_deterministic_wallet );
   command_line::add_arg(desc_params, arg_restore_from_seed );
   command_line::add_arg(desc_params, arg_electrum_seed );
   command_line::add_arg(desc_params, arg_allow_mismatched_daemon_version);
@@ -4042,11 +3960,9 @@ int main(int argc, char* argv[])
 
   cryptonote::simple_wallet w;
   const bool r = w.init(*vm);
-  std::cout<<"init return "<<r<<std::endl;
   CHECK_AND_ASSERT_MES(r, 1, sw::tr("Failed to initialize wallet"));
 
   std::vector<std::string> command = command_line::get_arg(*vm, arg_command);
-  std::cout<<"command "<<command.size()<<std::endl;
   if (!command.empty())
   {
     if (!w.process_command(command))

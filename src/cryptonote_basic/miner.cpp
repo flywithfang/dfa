@@ -198,15 +198,21 @@ namespace cryptonote
         m_last_hash_rates.pop_front();
       if(m_do_print_hashrate)
       {
-        uint64_t total_hr = std::accumulate(m_last_hash_rates.begin(), m_last_hash_rates.end(), 0);
-        float hr = static_cast<float>(total_hr)/static_cast<float>(m_last_hash_rates.size());
-        const auto flags = std::cout.flags();
-        const auto precision = std::cout.precision();
-        std::cout << "hashrate: " << std::setprecision(4) << std::fixed << hr << std::setiosflags(flags) << std::setprecision(precision) << ENDL;
+        print_miner_status();
       }
     }
     m_last_hr_merge_time = misc_utils::get_tick_count();
     m_hashes = 0;
+  }
+  void  miner::print_miner_status()const
+  {
+      uint64_t total_hr = std::accumulate(m_last_hash_rates.begin(), m_last_hash_rates.end(), 0);
+        float hr = static_cast<float>(total_hr)/static_cast<float>(m_last_hash_rates.size());
+        const auto flags = std::cout.flags();
+        const auto precision = std::cout.precision();
+
+        MINFO("diff "<< m_diffic<< " hashrate: " << std::setprecision(4) << std::fixed << hr << std::setiosflags(flags) << std::setprecision(precision) );
+
   }
 //  -----------------------------------------------------------------------------------------------------
   void miner::init_options(boost::program_options::options_description& desc)
@@ -335,7 +341,7 @@ namespace cryptonote
       crypto::hash h;
       const auto threads =diffic <= 100 ? 0 : tools::get_max_concurrency();
       cryptonote::get_block_longhash(pbc, bl, h, height, threads);
-      if(check_hash(h, diffic))
+      if(cryptonote::check_hash(h, diffic))
       {
         bl.invalidate_hashes();
         MINFO("find_nonce_for_given_block "<<h<<"/"<<diffic<<","<<bl.prev_id<<","<<get_block_hash(bl)<<","<<bl.nonce<<",h="<<height);
@@ -385,7 +391,6 @@ namespace cryptonote
     uint64_t height = 0;
     difficulty_type local_diff = 0;
     uint32_t local_template_ver = 0;
-    block b;
     blobdata bd;
     crypto::hash seed_hash{};
     uint64_t seed_height{};
@@ -403,8 +408,7 @@ namespace cryptonote
       if(local_template_ver != m_template_no)
       {
         CRITICAL_REGION_LOCAL(m_template_lock);
-        b = m_template;
-        bd = get_block_hashing_blob(b);
+        bd = get_block_hashing_blob(m_template);
         local_diff = m_diffic;
         height = m_height;
         seed_height = m_seed_height;
@@ -413,6 +417,7 @@ namespace cryptonote
         CHECK_AND_ASSERT_THROW_MES(*pnonce==0,"nonce value not zero!"+std::to_string(*pnonce));
         *pnonce=m_starter_nonce + th_local_index;
         local_template_ver = m_template_no;
+        MINFO("miner"<<string_tools::buff_to_hex_nodelimer(bd)<<",height "<<height<<",diff "<<local_diff<<",seed_height "<<seed_height<<" seed_hash "<<seed_hash<<" nonce"<<*pnonce);
       }
 
       if(!local_template_ver)//no any set_block_template call
@@ -428,10 +433,10 @@ namespace cryptonote
 
       if(cryptonote::check_hash(h, local_diff))
       {
+        const block b=cryptonote::parse_and_validate_block_from_blob(bd);
         //we lucky!
-        MGINFO_GREEN("Found block " << get_block_hash(b) << " at height " << height << " for difficulty: " << local_diff<<",small hash="<<h<<",nonce="<<*pnonce);
+        MGINFO_GREEN("Found block " << get_block_hash(b) << " at height " << height << " diff: " << local_diff<<",small hash="<<h<<",nonce="<<*pnonce);
         cryptonote::block_verification_context bvc;
-        b.nonce=*pnonce;//sync block_template 
         if(!m_phandler->handle_block_found(b, bvc) || !bvc.m_added_to_main_chain)
         {
           MWARNING("block not added main chain! "<<bvc.m_added_to_main_chain);
@@ -441,6 +446,9 @@ namespace cryptonote
       *pnonce +=m_threads_total;
       ++m_hashes;
       ++m_total_hashes;
+      if(m_total_hashes%1000==0){
+        print_miner_status();
+      }
     }
     slow_hash_free_state();
     MGINFO("Miner thread stopped ["<< th_local_index << "]");

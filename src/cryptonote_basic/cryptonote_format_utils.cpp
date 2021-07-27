@@ -1192,33 +1192,19 @@ public:
     return res;
   }
   //---------------------------------------------------------------
-  bool parse_and_validate_block_from_blob(const blobdata_ref& b_blob, block& b, crypto::hash *block_hash)
+  block parse_and_validate_block_from_blob(const blobdata_ref& b_blob)
   {
+    block b;
     std::stringstream ss;
     ss << b_blob;
     binary_archive<false> ba(ss);
     bool r = ::serialization::serialize(ba, b);
-    CHECK_AND_ASSERT_MES(r, false, "Failed to parse block from blob");
+    CHECK_AND_ASSERT_THROW_MES(r, std::string("Failed to parse block from blob"));
     b.invalidate_hashes();
     b.miner_tx.invalidate_hashes();
-    if (block_hash)
-    {
-      calculate_block_hash(b, *block_hash, &b_blob);
-      ++block_hashes_calculated_count;
-      b.set_hash(*block_hash);
-    }
-    return true;
+    return b;
   }
-  //---------------------------------------------------------------
-  bool parse_and_validate_block_from_blob(const blobdata_ref& b_blob, block& b)
-  {
-    return parse_and_validate_block_from_blob(b_blob, b, NULL);
-  }
-  //---------------------------------------------------------------
-  bool parse_and_validate_block_from_blob(const blobdata_ref& b_blob, block& b, crypto::hash &block_hash)
-  {
-    return parse_and_validate_block_from_blob(b_blob, b, &block_hash);
-  }
+ 
   //---------------------------------------------------------------
   blobdata block_to_blob(const block& b)
   {

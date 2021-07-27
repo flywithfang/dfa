@@ -2129,7 +2129,7 @@ static int priority(Level level) {
 
   if (level == Level::Debug) return 4;
   if (level == Level::Verbose) return 5;
-  if (level == Level::Trace) return 6;
+  if (level == Level::Trace) return 5;
   return 7;
 }
 

@@ -1070,7 +1070,7 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
       return true;
     }
 
-    if (req.do_sanity_checks && !cryptonote::tx_sanity_check(tx_blob, m_core.get_blockchain_storage().get_num_mature_outputs(0)))
+    if (req.do_sanity_checks && !cryptonote::tx_sanity_check(tx_blob, m_core.get_blockchain_storage().get_num_mature_outputs()))
     {
       res.status = "Failed";
       res.reason = "Sanity check failed";
@@ -1561,7 +1561,6 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
     crypto::hash seed_hash, next_seed_hash;
     if (!get_block_template(info.address, req.prev_block.empty() ? NULL : &prev_block, blob_reserve, reserved_offset, wdiff, res.height, res.expected_reward, b, res.seed_height, seed_hash, next_seed_hash, error_resp))
       return false;
-    if (b.major_version >= RX_BLOCK_VERSION)
     {
       res.seed_hash = string_tools::pod_to_hex(seed_hash);
       if (seed_hash != next_seed_hash)
@@ -1578,140 +1577,14 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
     res.status = CORE_RPC_STATUS_OK;
     return true;
   }
-  //------------------------------------------------------------------------------------------------------------------------------
-  bool core_rpc_server::on_add_aux_pow(const COMMAND_RPC_ADD_AUX_POW::request& req, COMMAND_RPC_ADD_AUX_POW::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
-  {
-    RPC_TRACKER(add_aux_pow);
-    bool r;
-    if (use_bootstrap_daemon_if_necessary<COMMAND_RPC_ADD_AUX_POW>(invoke_http_mode::JON_RPC, "add_aux_pow", req, res, r))
-      return r;
-
-    if (req.aux_pow.empty())
-    {
-      error_resp.code = CORE_RPC_ERROR_CODE_WRONG_PARAM;
-      error_resp.message = "Empty aux pow hash vector";
-      return false;
-    }
-
-    crypto::hash merkle_root;
-    size_t merkle_tree_depth = 0;
-    std::vector<std::pair<crypto::hash, crypto::hash>> aux_pow;
-    std::vector<crypto::hash> aux_pow_raw;
-    aux_pow.reserve(req.aux_pow.size());
-    aux_pow_raw.reserve(req.aux_pow.size());
-    for (const auto &s: req.aux_pow)
-    {
-      aux_pow.push_back({});
-      if (!epee::string_tools::hex_to_pod(s.id, aux_pow.back().first))
-      {
-        error_resp.code = CORE_RPC_ERROR_CODE_WRONG_PARAM;
-        error_resp.message = "Invalid aux pow id";
-        return false;
-      }
-      if (!epee::string_tools::hex_to_pod(s.hash, aux_pow.back().second))
-      {
-        error_resp.code = CORE_RPC_ERROR_CODE_WRONG_PARAM;
-        error_resp.message = "Invalid aux pow hash";
-        return false;
-      }
-      aux_pow_raw.push_back(aux_pow.back().second);
-    }
-
-    size_t path_domain = 1;
-    while ((1u << path_domain) < aux_pow.size())
-      ++path_domain;
-    uint32_t nonce;
-    const uint32_t max_nonce = 65535;
-    bool collision = true;
-    for (nonce = 0; nonce <= max_nonce; ++nonce)
-    {
-      std::vector<bool> slots(aux_pow.size(), false);
-      collision = false;
-      for (size_t idx = 0; idx < aux_pow.size(); ++idx)
-      {
-        const uint32_t slot = cryptonote::get_aux_slot(aux_pow[idx].first, nonce, aux_pow.size());
-        if (slot >= aux_pow.size())
-        {
-          error_resp.code = CORE_RPC_ERROR_CODE_INTERNAL_ERROR;
-          error_resp.message = "Computed slot is out of range";
-          return false;
-        }
-        if (slots[slot])
-        {
-          collision = true;
-          break;
-        }
-        slots[slot] = true;
-      }
-      if (!collision)
-        break;
-    }
-    if (collision)
-    {
-      error_resp.code = CORE_RPC_ERROR_CODE_INTERNAL_ERROR;
-      error_resp.message = "Failed to find a suitable nonce";
-      return false;
-    }
-
-    crypto::tree_hash((const char(*)[crypto::HASH_SIZE])aux_pow_raw.data(), aux_pow_raw.size(), merkle_root.data);
-    res.merkle_root = epee::string_tools::pod_to_hex(merkle_root);
-    res.merkle_tree_depth = cryptonote::encode_mm_depth(aux_pow.size(), nonce);
-
-    blobdata blocktemplate_blob;
-    if (!epee::string_tools::parse_hexstr_to_binbuff(req.blocktemplate_blob, blocktemplate_blob))
-    {
-      error_resp.code = CORE_RPC_ERROR_CODE_WRONG_PARAM;
-      error_resp.message = "Invalid blocktemplate_blob";
-      return false;
-    }
-
-    block b;
-    if (!parse_and_validate_block_from_blob(blocktemplate_blob, b))
-    {
-      error_resp.code = CORE_RPC_ERROR_CODE_WRONG_BLOCKBLOB;
-      error_resp.message = "Wrong blocktemplate_blob";
-      return false;
-    }
-
-    if (!remove_field_from_tx_extra(b.miner_tx.extra, typeid(cryptonote::tx_extra_merge_mining_tag)))
-    {
-      error_resp.code = CORE_RPC_ERROR_CODE_INTERNAL_ERROR;
-      error_resp.message = "Error removing existing merkle root";
-      return false;
-    }
-    if (!add_mm_merkle_root_to_tx_extra(b.miner_tx.extra, merkle_root, merkle_tree_depth))
-    {
-      error_resp.code = CORE_RPC_ERROR_CODE_INTERNAL_ERROR;
-      error_resp.message = "Error adding merkle root";
-      return false;
-    }
-    b.invalidate_hashes();
-    b.miner_tx.invalidate_hashes();
-
-    const blobdata block_blob = t_serializable_object_to_blob(b);
-    const blobdata hashing_blob = get_block_hashing_blob(b);
-
-    res.blocktemplate_blob = string_tools::buff_to_hex_nodelimer(block_blob);
-    res.blockhashing_blob = string_tools::buff_to_hex_nodelimer(hashing_blob);
-    res.aux_pow = req.aux_pow;
-    res.status = CORE_RPC_STATUS_OK;
-    return true;
-  }
+ 
   //------------------------------------------------------------------------------------------------------------------------------
   bool core_rpc_server::on_submitblock(const COMMAND_RPC_SUBMITBLOCK::request& req, COMMAND_RPC_SUBMITBLOCK::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
   {
+    try{
     PERF_TIMER(submitblock);
     RPCTracker tracker("submitblock", PERF_TIMER_NAME(submitblock));
 
-    {
-      boost::shared_lock<boost::shared_mutex> lock(m_bootstrap_daemon_mutex);
-      if (m_should_use_bootstrap_daemon)
-      {
-        error_resp.code = CORE_RPC_ERROR_CODE_UNSUPPORTED_BOOTSTRAP;
-        error_resp.message = "This command is unsupported for bootstrap daemon";
-        return false;
-      }
-    }
     CHECK_CORE_READY();
     if(req.size()!=1)
     {
@@ -1722,20 +1595,12 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
     blobdata blockblob;
     if(!string_tools::parse_hexstr_to_binbuff(req[0], blockblob))
     {
-      error_resp.code = CORE_RPC_ERROR_CODE_WRONG_BLOCKBLOB;
-      error_resp.message = "Wrong block blob";
-      return false;
+      
     }
     
     // Fixing of high orphan issue for most pools
     // Thanks Boolberry!
-    block b;
-    if(!parse_and_validate_block_from_blob(blockblob, b))
-    {
-      error_resp.code = CORE_RPC_ERROR_CODE_WRONG_BLOCKBLOB;
-      error_resp.message = "Wrong block blob";
-      return false;
-    }
+    const block b =parse_and_validate_block_from_blob(blockblob);
 
     // Fix from Boolberry neglects to check block
     // size, do that with the function below
@@ -1755,6 +1620,12 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
     }
     res.status = CORE_RPC_STATUS_OK;
     return true;
+  }
+  catch(std::exception & ex){
+     error_resp.code = CORE_RPC_ERROR_CODE_WRONG_BLOCKBLOB;
+      error_resp.message = "Wrong block blob";
+      return false;
+  }
   }
  
   uint64_t core_rpc_server::get_block_reward(const block& blk)
@@ -2344,9 +2215,6 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
   bool core_rpc_server::on_get_output_histogram(const COMMAND_RPC_GET_OUTPUT_HISTOGRAM::request& req, COMMAND_RPC_GET_OUTPUT_HISTOGRAM::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
   {
     RPC_TRACKER(get_output_histogram);
-    bool r;
-    if (use_bootstrap_daemon_if_necessary<COMMAND_RPC_GET_OUTPUT_HISTOGRAM>(invoke_http_mode::JON_RPC, "get_output_histogram", req, res, r))
-      return r;
 
     const bool restricted = m_restricted && ctx;
     size_t amounts = req.amounts.size();
@@ -2365,7 +2233,7 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
     std::map<uint64_t, std::tuple<uint64_t, uint64_t, uint64_t>> histogram;
     try
     {
-      histogram = m_core.get_blockchain_storage().get_output_histogram(req.amounts, req.unlocked, req.recent_cutoff, req.min_count);
+      histogram = m_core.get_blockchain_storage().get_output_histogram( req.unlocked, req.recent_cutoff, req.min_count);
     }
     catch (const std::exception &e)
     {

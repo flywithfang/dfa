@@ -182,12 +182,12 @@ std::vector<std::vector<tools::wallet2::get_outs_entry>>  wallet2::get_outs( con
       if (num_outs <= requested_outputs_count)
       {
         for (uint64_t i = 0; i < num_outs; i++)
-          req.outputs.push_back({0, i});
+          req.outputs.push_back({ i});
         // duplicate to make up shortfall: this will be caught after the RPC call,
         // so we can also output the amounts for which we can't reach the required
         // mixin after checking the actual unlockedness
         for (uint64_t i = num_outs; i < requested_outputs_count; ++i)
-          req.outputs.push_back({0, num_outs - 1});
+          req.outputs.push_back({ num_outs - 1});
       }
       else
       {
@@ -244,7 +244,7 @@ std::vector<std::vector<tools::wallet2::get_outs_entry>>  wallet2::get_outs( con
           seen_indices.emplace(i);
 
           picks[type].insert(i);
-          req.outputs.push_back({0, i});
+          req.outputs.push_back({ i});
           ++num_found;
           MDEBUG("picked " << i << ", " << num_found << " now picked");
         }
@@ -258,7 +258,7 @@ std::vector<std::vector<tools::wallet2::get_outs_entry>>  wallet2::get_outs( con
         // we'll error out later
         while (num_found < requested_outputs_count)
         {
-          req.outputs.push_back({0, 0});
+          req.outputs.push_back({ 0});
           ++num_found;
         }
       }

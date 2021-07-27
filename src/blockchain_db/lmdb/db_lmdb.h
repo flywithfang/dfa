@@ -267,17 +267,17 @@ public:
 
   virtual uint64_t get_tx_block_height(const crypto::hash& h) const;
 
-  virtual uint64_t get_num_outputs(const uint64_t& amount) const;
+  virtual uint64_t get_num_outputs() const;
 
-  virtual output_data_t get_output_key(const uint64_t& amount, const uint64_t& index, bool include_commitmemt) const;
-  virtual void get_output_key(const epee::span<const uint64_t> &amounts, const std::vector<uint64_t> &offsets, std::vector<output_data_t> &outputs, bool allow_partial = false) const;
+  virtual output_data_t get_output_key(const uint64_t& index, bool include_commitmemt) const;
+  virtual void get_output_key( const std::vector<uint64_t> &offsets, std::vector<output_data_t> &outputs, bool allow_partial = false) const;
 
   virtual tx_out_index get_output_tx_and_index_from_global(const uint64_t& index) const;
   virtual void get_output_tx_and_index_from_global(const std::vector<uint64_t> &global_indices,
       std::vector<tx_out_index> &tx_out_indices) const;
 
-  virtual tx_out_index get_output_tx_and_index(const uint64_t& amount, const uint64_t& index) const;
-  virtual void get_output_tx_and_index(const uint64_t& amount, const std::vector<uint64_t> &offsets, std::vector<tx_out_index> &indices) const;
+  virtual tx_out_index get_output_tx_and_index( const uint64_t& index) const;
+  virtual void get_output_tx_and_index( const std::vector<uint64_t> &offsets, std::vector<tx_out_index> &indices) const;
 
   virtual std::vector<std::vector<uint64_t>> get_tx_amount_output_indices(const uint64_t tx_id, size_t n_txes) const;
 
@@ -307,8 +307,8 @@ public:
   virtual bool for_all_key_images(std::function<bool(const crypto::key_image&)>) const;
   virtual bool for_blocks_range(const uint64_t& h1, const uint64_t& h2, std::function<bool(uint64_t, const crypto::hash&, const cryptonote::block&)>) const;
   virtual bool for_all_transactions(std::function<bool(const crypto::hash&, const cryptonote::transaction&)>, bool pruned) const;
-  virtual bool for_all_outputs(std::function<bool(uint64_t amount, const crypto::hash &tx_hash, uint64_t height, size_t tx_idx)> f) const;
-  virtual bool for_all_outputs(uint64_t amount, const std::function<bool(uint64_t height)> &f) const;
+  virtual bool for_all_outputs(std::function<bool( const crypto::hash &tx_hash, uint64_t height, size_t tx_idx)> f) const;
+  virtual bool for_all_outputs( const std::function<bool(uint64_t height)> &f) const;
   virtual bool for_all_alt_blocks(std::function<bool(const crypto::hash &blkid, const alt_block_data_t &data, const cryptonote::blobdata_ref *blob)> f, bool include_blob = false) const;
 
   virtual uint64_t add_block( const std::pair<block, blobdata>& blk
@@ -348,9 +348,9 @@ public:
    *
    * @return a set of amount/instances
    */
-  std::map<uint64_t, std::tuple<uint64_t, uint64_t, uint64_t>> get_output_histogram(const std::vector<uint64_t> &amounts, bool unlocked, uint64_t recent_cutoff, uint64_t min_count) const;
+  std::map<uint64_t, std::tuple<uint64_t, uint64_t, uint64_t>> get_output_histogram( bool unlocked, uint64_t recent_cutoff, uint64_t min_count) const;
 
-  bool get_output_distribution(uint64_t amount, uint64_t from_height, uint64_t to_height, std::vector<uint64_t> &distribution, uint64_t &base) const;
+  bool get_output_distribution( uint64_t from_height, uint64_t to_height, std::vector<uint64_t> &distribution, uint64_t &base) const;
 
   // helper functions
   static int compare_uint64(const MDB_val *a, const MDB_val *b);
@@ -365,14 +365,9 @@ private:
   void check_and_resize_for_batch(uint64_t batch_num_blocks, uint64_t batch_bytes);
   uint64_t get_estimated_batch_size(uint64_t batch_num_blocks, uint64_t batch_bytes) const;
 
-  virtual void add_block( const block& blk
-                , size_t block_weight
-                , uint64_t long_term_block_weight
-                , const difficulty_type& cumulative_difficulty
-                , const uint64_t& coins_generated
-                , uint64_t num_rct_outs
-                , const crypto::hash& block_hash
-                );
+  virtual void add_block( const block& blk, size_t block_weight, uint64_t long_term_block_weight
+                , const difficulty_type& cumulative_difficulty, const uint64_t& coins_generated
+                , uint64_t num_rct_outs, const crypto::hash& block_hash);
 
   virtual void remove_block();
 
@@ -380,22 +375,14 @@ private:
 
   virtual void remove_transaction_data(const crypto::hash& tx_hash, const transaction& tx);
 
-  virtual uint64_t add_output(const crypto::hash& tx_hash,
-      const tx_out& tx_output,
-      const uint64_t& local_index,
-      const uint64_t unlock_time,
-      const rct::key *commitment
-      );
+  virtual uint64_t add_output(const crypto::hash& tx_hash,const tx_out& tx_output,const uint64_t& local_index,const uint64_t unlock_time,const rct::key *commitment);
 
-  virtual void add_tx_amount_output_indices(const uint64_t tx_id,
-      const std::vector<uint64_t>& amount_output_indices
-      );
+  virtual void add_tx_amount_output_indices(const uint64_t tx_id,const std::vector<uint64_t>& amount_output_indices);
 
   void remove_tx_outputs(const uint64_t tx_id, const transaction& tx);
 
   void remove_output(const uint64_t amount, const uint64_t& out_index);
 
-  virtual void prune_outputs(uint64_t amount);
 
   virtual void add_spent_key(const crypto::key_image& k_image);
 

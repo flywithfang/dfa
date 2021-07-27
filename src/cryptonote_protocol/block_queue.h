@@ -62,6 +62,7 @@ namespace cryptonote
 
       span(uint64_t start_block_height, std::vector<cryptonote::block_complete_entry> blocks, const boost::uuids::uuid &connection_id, const epee::net_utils::network_address &addr, float rate, size_t size):
         start_block_height(start_block_height), blocks(std::move(blocks)), connection_id(connection_id), nblocks(this->blocks.size()), rate(rate), size(size), time(boost::date_time::min_date_time), origin(addr) {}
+        
       span(uint64_t start_block_height, uint64_t nblocks, const boost::uuids::uuid &connection_id, const epee::net_utils::network_address &addr, boost::posix_time::ptime time):
         start_block_height(start_block_height), connection_id(connection_id), nblocks(nblocks), rate(0.0f), size(0), time(time), origin(addr) {}
 
@@ -104,7 +105,7 @@ namespace cryptonote
     inline bool requested_internal(const crypto::hash &hash) const;
 
   private:
-    block_map blocks;
+    std::set<span> m_spans;
     mutable boost::recursive_mutex mutex;
     std::unordered_set<crypto::hash> requested_hashes;
     std::unordered_set<crypto::hash> have_blocks;

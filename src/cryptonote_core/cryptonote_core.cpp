@@ -1047,8 +1047,6 @@ namespace cryptonote
         results[i].res = false;
     }
 
-    if (valid_events && m_zmq_pub && matches_category(tx_relay, relay_category::legacy))
-      m_zmq_pub(std::move(results));
 
     return ok;
     CATCH_ENTRY_L0("core::handle_incoming_txs()", false);
@@ -1315,7 +1313,7 @@ namespace cryptonote
   //-----------------------------------------------------------------------------------------------
   bool core::get_output_distribution(uint64_t amount, uint64_t from_height, uint64_t to_height, uint64_t &start_height, std::vector<uint64_t> &distribution, uint64_t &base) const
   {
-    return m_blockchain_storage.get_output_distribution(amount, from_height, to_height, start_height, distribution, base);
+    return m_blockchain_storage.get_output_distribution( from_height, to_height, start_height, distribution, base);
   }
   //-----------------------------------------------------------------------------------------------
   bool core::get_tx_outputs_gindexs(const crypto::hash& tx_id, std::vector<uint64_t>& indexs) const
@@ -1338,7 +1336,7 @@ namespace cryptonote
     m_miner.resume();
   }
   //-----------------------------------------------------------------------------------------------
-  block_complete_entry get_block_complete_entry(block& b, tx_memory_pool &pool)
+  block_complete_entry get_block_complete_entry(const block& b, tx_memory_pool &pool)
   {
     block_complete_entry bce;
     bce.block = cryptonote::block_to_blob(b);
@@ -1352,7 +1350,7 @@ namespace cryptonote
     return bce;
   }
   //-----------------------------------------------------------------------------------------------
-  bool core::handle_block_found(block& b, block_verification_context &bvc)
+  bool core::handle_block_found(const block& b, block_verification_context &bvc)
   {
     bvc = {};
     m_miner.pause();
@@ -1421,12 +1419,7 @@ namespace cryptonote
   {
     m_blockchain_storage.safesyncmode(onoff);
   }
-  //-----------------------------------------------------------------------------------------------
-  bool core::add_new_block(const block& b, block_verification_context& bvc)
-  {
-    return m_blockchain_storage.add_new_block(b, bvc);
-  }
-
+ 
   //-----------------------------------------------------------------------------------------------
   bool core::prepare_handle_incoming_blocks(const std::vector<block_complete_entry> &blocks_entry, std::vector<block> &blocks)
   {
@@ -1451,45 +1444,7 @@ namespace cryptonote
     return success;
   }
 
-  //-----------------------------------------------------------------------------------------------
-  bool core::handle_incoming_block(const blobdata& block_blob, const block *b, block_verification_context& bvc, bool update_miner_blocktemplate)
-  {
-    TRY_ENTRY();
-
-    bvc = {};
-
-    if (!check_incoming_block_size(block_blob))
-    {
-      bvc.m_verifivation_failed = true;
-      return false;
-    }
-
-    if (((size_t)-1) <= 0xffffffff && block_blob.size() >= 0x3fffffff)
-      MWARNING("This block's size is " << block_blob.size() << ", closing on the 32 bit limit");
-
-    // load json & DNS checkpoints every 10min/hour respectively,
-    // and verify them with respect to what blocks we already have
-//    CHECK_AND_ASSERT_MES(update_checkpoints(), false, "One or more checkpoints loaded from json or dns conflicted with existing checkpoints.");
-
-    block lb;
-    if (!b)
-    {
-      crypto::hash block_hash;
-      if(!parse_and_validate_block_from_blob(block_blob, lb, block_hash))
-      {
-        LOG_PRINT_L1("Failed to parse and validate new block");
-        bvc.m_verifivation_failed = true;
-        return false;
-      }
-      b = &lb;
-    }
-    add_new_block(*b, bvc);
-    if(update_miner_blocktemplate && bvc.m_added_to_main_chain)
-       update_miner_block_template();
-    return true;
-
-    CATCH_ENTRY_L0("core::handle_incoming_block()", false);
-  }
+  //
   //-----------------------------------------------------------------------------------------------
   // Used by the RPC server to check the size of an incoming
   // block_blob
