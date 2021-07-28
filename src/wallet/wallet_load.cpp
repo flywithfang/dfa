@@ -123,7 +123,7 @@ void wallet2::load(const std::string& _wallet_file, const epee::wipeable_string&
     throw_wallet_ex_if(true, error::file_read_error, "failed to load keys from buffer");
   }
 
-  wallet_keys_unlocker unlocker(*this, m_ask_password == AskPasswordToDecrypt , password);
+  wallet_keys_unlocker unlocker(*this,false , password);
 
   //keys loaded ok!
   //try to load wallet file. but even if we failed, it is not big problem
@@ -212,16 +212,9 @@ void wallet2::wallet_exists(const std::string& file_path, bool& keys_file_exists
 //----------------------------------------------------------------------------------------------------
 void wallet2::setup_keys(const epee::wipeable_string &password)
 {
-  std::cout<<"setup_Keys"<<std::endl;
   crypto::chacha_key key;
   crypto::generate_chacha_key(password.data(), password.size(), key, m_kdf_rounds);
 
-  // re-encrypt, but keep viewkey unencrypted
-  if (m_ask_password == AskPasswordToDecrypt)
-  {
-    m_account.encrypt_keys(key);
-    m_account.decrypt_viewkey(key);
-  }
 
   static_assert(HASH_SIZE == sizeof(crypto::chacha_key), "Mismatched sizes of hash and chacha key");
   epee::mlocked<tools::scrubbed_arr<char, HASH_SIZE+1>> cache_key_data;
@@ -252,16 +245,12 @@ bool wallet2::load_keys(const std::string& keys_file_name, const epee::wipeable_
   // Rewrite with encrypted keys if unencrypted, ignore errors
   if (r && keys_to_encrypt != boost::none)
   {
-    if (m_ask_password == AskPasswordToDecrypt )
-      encrypt_keys(keys_to_encrypt.get());
     bool saved_ret = store_keys(keys_file_name, password, false);
     if (!saved_ret)
     {
       // just moan a bit, but not fatal
       MERROR("Error saving keys file with encrypted keys, not fatal");
     }
-    if (m_ask_password == AskPasswordToDecrypt )
-      decrypt_keys(keys_to_encrypt.get());
     m_keys_file_locker.reset();
   }
   return r;
@@ -295,7 +284,6 @@ std::cout<<"load_keys_buf" << keys_buf.size()<<" pass "<<password.data()<<std::e
   {
     m_auto_refresh = true;
     m_refresh_from_block_height = 0;
-    m_ask_password = AskPasswordToDecrypt;
     cryptonote::set_default_decimal_point(CRYPTONOTE_DISPLAY_DECIMAL_POINT);
     m_max_reorg_depth = ORPHANED_BLOCKS_MAX_COUNT;
     m_inactivity_lock_timeout = DEFAULT_INACTIVITY_LOCK_TIMEOUT;
@@ -330,8 +318,6 @@ std::cout<<"load_keys_buf" << keys_buf.size()<<" pass "<<password.data()<<std::e
   
     GET_FIELD_FROM_JSON_RETURN_ON_ERROR(json, refresh_height, uint64_t, Uint64, false, 0);
     m_refresh_from_block_height = field_refresh_height;
-    GET_FIELD_FROM_JSON_RETURN_ON_ERROR(json, ask_password, AskPasswordType, Int, false, AskPasswordToDecrypt);
-    m_ask_password = field_ask_password;
     GET_FIELD_FROM_JSON_RETURN_ON_ERROR(json, default_decimal_point, int, Int, false, CRYPTONOTE_DISPLAY_DECIMAL_POINT);
     cryptonote::set_default_decimal_point(field_default_decimal_point);
     GET_FIELD_FROM_JSON_RETURN_ON_ERROR(json, max_reorg_depth, uint64_t, Uint64, false, ORPHANED_BLOCKS_MAX_COUNT);

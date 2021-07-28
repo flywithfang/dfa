@@ -118,8 +118,7 @@ typedef cryptonote::simple_wallet sw;
 #define SCOPED_WALLET_UNLOCK_ON_BAD_PASSWORD(code) \
   LOCK_IDLE_SCOPE(); \
   boost::optional<tools::password_container> pwd_container = boost::none; \
-  if (m_wallet->ask_password() && !(pwd_container = get_and_verify_password())) { code; } \
-  tools::wallet_keys_unlocker unlocker(*m_wallet, pwd_container);
+  if (!(pwd_container = get_and_verify_password())) { code; } 
 
 #define SCOPED_WALLET_UNLOCK() SCOPED_WALLET_UNLOCK_ON_BAD_PASSWORD(return true;)
 
@@ -172,7 +171,7 @@ namespace
 
   const char* USAGE_SET_DAEMON("set_daemon <host>[:<port>] [trusted|untrusted|this-is-probably-a-spy-node]");
   const char* USAGE_SHOW_BALANCE("balance [detail]");
-  const char* USAGE_INCOMING_TRANSFERS("incoming_transfers [available|unavailable] [verbose] [uses] [index=<N1>[,<N2>[,...]]]");
+  const char* USAGE_INCOMING_TRANSFERS("receipts");
   const char* USAGE_TRANSFER("transfer [index=<N1>[,<N2>,...]] [<priority>] [<ring_size>] (<URI> | <address> <amount>) [<payment_id>]");
   const char* USAGE_SWEEP_ALL("sweep_all [index=<N1>[,<N2>,...] | index=all] [<priority>] [<ring_size>] [outputs=<N>] <address> [<payment_id (obsolete)>]");
   const char* USAGE_SWEEP_BELOW("sweep_below <amount_threshold> [index=<N1>[,<N2>,...]] [<priority>] [<ring_size>] <address> [<payment_id (obsolete)>]");
@@ -786,37 +785,6 @@ bool simple_wallet::set_auto_refresh(const std::vector<std::string> &args/* = st
 }
 
 
-bool simple_wallet::set_ask_password(const std::vector<std::string> &args/* = std::vector<std::string>()*/)
-{
-  const auto pwd_container = get_and_verify_password();
-  if (pwd_container)
-  {
-    tools::wallet2::AskPasswordType ask = tools::wallet2::AskPasswordToDecrypt;
-    if (args[1] == "never" || args[1] == "0")
-      ask = tools::wallet2::AskPasswordNever;
-    else if (args[1] == "action" || args[1] == "1")
-      ask = tools::wallet2::AskPasswordOnAction;
-    else if (args[1] == "encrypt" || args[1] == "decrypt" || args[1] == "2")
-      ask = tools::wallet2::AskPasswordToDecrypt;
-    else
-    {
-      fail_msg_writer() << tr("invalid argument: must be either 0/never, 1/action, or 2/encrypt/decrypt");
-      return true;
-    }
-
-    const tools::wallet2::AskPasswordType cur_ask = m_wallet->ask_password();
-    {
-      if (cur_ask == tools::wallet2::AskPasswordToDecrypt && ask != tools::wallet2::AskPasswordToDecrypt)
-        m_wallet->decrypt_keys(pwd_container->password());
-      else if (cur_ask != tools::wallet2::AskPasswordToDecrypt && ask == tools::wallet2::AskPasswordToDecrypt)
-        m_wallet->encrypt_keys(pwd_container->password());
-    }
-    m_wallet->ask_password(ask);
-    m_wallet->rewrite(m_wallet_file, pwd_container->password());
-  }
-  return true;
-}
-
 bool simple_wallet::set_unit(const std::vector<std::string> &args/* = std::vector<std::string>()*/)
 {
   const std::string &unit = args[1];
@@ -989,24 +957,22 @@ simple_wallet::simple_wallet()
                            boost::bind(&simple_wallet::on_command, this, &simple_wallet::show_balance, _1),
                            tr(USAGE_SHOW_BALANCE),
                            tr("Show the wallet's balance of the currently selected account."));
-  m_cmd_binder.set_handler("incoming_transfers",
+  m_cmd_binder.set_handler("receipts",
                            boost::bind(&simple_wallet::on_command, this, &simple_wallet::show_incoming_transfers,_1),
                            tr(USAGE_INCOMING_TRANSFERS),
-                           tr("Show the incoming transfers, all or filtered by availability and address index.\n\n"
-                              "Output format:\n"
-                              "Amount, Spent(\"T\"|\"F\"), \"locked\"|\"unlocked\", RingCT, Global Index, Transaction Hash, Address Index, [Public Key, Key Image] "));
+                           tr("Show the in-transfers  "));
 
   m_cmd_binder.set_handler("bc_height",
                            boost::bind(&simple_wallet::on_command, this, &simple_wallet::show_blockchain_height, _1),
                            tr("Show the blockchain height."));
   m_cmd_binder.set_handler("transfer", boost::bind(&simple_wallet::on_command, this, &simple_wallet::transfer, _1),
                            tr(USAGE_TRANSFER),
-                           tr("Transfer <amount> to <address>. If the parameter \"index=<N1>[,<N2>,...]\" is specified, the wallet uses outputs received by addresses of those indices. If omitted, the wallet randomly chooses address indices to be used. In any case, it tries its best not to combine outputs across multiple addresses. <priority> is the priority of the transaction. The higher the priority, the higher the transaction fee. Valid values in priority order (from lowest to highest) are: unimportant, normal, elevated, priority. If omitted, the default value (see the command \"set priority\") is used. <ring_size> is the number of inputs to include for untraceability. Multiple payments can be made at once by adding URI_2 or <address_2> <amount_2> etcetera (before the payment ID, if it's included)"));
+                           tr("Transfer <amount> to <address>."));
 
 
   m_cmd_binder.set_handler("sweep_all", boost::bind(&simple_wallet::on_command, this, &simple_wallet::sweep_all, _1),
                            tr(USAGE_SWEEP_ALL),
-                           tr("Send all unlocked balance to an address. If the parameter \"index=<N1>[,<N2>,...]\" or \"index=all\" is specified, the wallet sweeps outputs received by those or all address indices, respectively. If omitted, the wallet randomly chooses an address index to be used. If the parameter \"outputs=<N>\" is specified and  N > 0, wallet splits the transaction into N even outputs."));
+                           tr("Send all unlocked balance to an address. "));
 
   m_cmd_binder.set_handler("sweep_below",
                            boost::bind(&simple_wallet::on_command, this, &simple_wallet::sweep_below, _1),
@@ -1041,8 +1007,6 @@ simple_wallet::simple_wallet()
                            tr("Available options:\n "
                                   "seed language\n "
                                   "  Set the wallet's seed language.\n "
-                                  "always-confirm-transfers <1|0>\n "
-                                  "  Whether to confirm unsplit txes.\n "
                                   "auto-refresh <1|0>\n "
                                   "  Whether to automatically synchronize new blocks from the daemon.\n "
                                   "ask-password <0|1|2   (or never|action|decrypt)>\n "
@@ -1052,13 +1016,6 @@ simple_wallet::simple_wallet()
                                   "  Set the default monero (sub-)unit.\n "
                                   "refresh-from-block-height [n]\n "
                                   "  Set the height before which to ignore blocks.\n "
-                                  "auto-low-priority <1|0>\n "
-                                  "  Whether to automatically use the low priority fee level when it's safe to do so.\n "
-                                  "segregate-pre-fork-outputs <1|0>\n "
-                                  "  Set this if you intend to spend outputs on both DFA AND a key reusing fork.\n "
-                                  "key-reuse-mitigation2 <1|0>\n "
-                                  "  Set this if you are not sure whether you will spend on a key reusing DFA fork later.\n "
-                                 
                                   "inactivity-lock-timeout <unsigned int>\n "
                                   "  How many seconds to wait before locking the wallet (0 to disable)."));
   m_cmd_binder.set_handler("encrypted_seed",
@@ -1164,16 +1121,9 @@ bool simple_wallet::set_variable(const std::vector<std::string> &args)
       seed_language = crypto::ElectrumWords::get_english_name_for(seed_language);
     std::string priority_string = "invalid";
     std::string ask_password_string = "invalid";
-    switch (m_wallet->ask_password())
-    {
-      case tools::wallet2::AskPasswordNever: ask_password_string = "never"; break;
-      case tools::wallet2::AskPasswordOnAction: ask_password_string = "action"; break;
-      case tools::wallet2::AskPasswordToDecrypt: ask_password_string = "decrypt"; break;
-    }
   
     success_msg_writer() << "seed = " << seed_language;
     success_msg_writer() << "auto-refresh = " << m_wallet->auto_refresh();
-    success_msg_writer() << "ask-password = " << m_wallet->ask_password() << " (" << ask_password_string << ")";
     success_msg_writer() << "unit = " << cryptonote::get_unit(cryptonote::get_default_decimal_point());
     success_msg_writer() << "max-reorg-depth = " << m_wallet->max_reorg_depth();
     success_msg_writer() << "refresh-from-block-height = " << m_wallet->get_refresh_from_block_height();
@@ -1621,8 +1571,6 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm)
   }
 
 
-  m_wallet->callback(this);
-
   if (welcome)
     message_writer(console_color_yellow, true) << tr("If you are new to DFA, type \"welcome\" for a brief overview.");
 
@@ -1862,8 +1810,7 @@ boost::optional<epee::wipeable_string> simple_wallet::open_wallet(const boost::p
       return {};
     }
 
-    m_wallet->callback(this);
-    std::cout<<"open_wallet "<<m_wallet_file<<","<<password.data()<<std::endl;
+    MINFO("open wallet "<<m_wallet_file);
     m_wallet->load(m_wallet_file, password);
     std::string prefix;
     bool ready;
@@ -3149,41 +3096,21 @@ bool simple_wallet::get_transfers(std::vector<std::string>& local_args, std::vec
 {
   bool in = true;
   bool out = true;
-  bool pending = true;
-  bool failed = true;
   bool pool = true;
-  bool coinbase = true;
   uint64_t min_height = 0;
   uint64_t max_height = (uint64_t)-1;
 
   // optional in/out selector
   if (local_args.size() > 0) {
-    if (local_args[0] == "in" || local_args[0] == "incoming") {
-      out = pending = failed = false;
+    if (local_args[0] == "in" ) {
+      out = false;
       local_args.erase(local_args.begin());
     }
-    else if (local_args[0] == "out" || local_args[0] == "outgoing") {
-      in = pool = coinbase = false;
+    else if (local_args[0] == "out" ) {
+      in = pool = false;
       local_args.erase(local_args.begin());
     }
-    else if (local_args[0] == "pending") {
-      in = out = failed = coinbase = false;
-      local_args.erase(local_args.begin());
-    }
-    else if (local_args[0] == "failed") {
-      in = out = pending = pool = coinbase = false;
-      local_args.erase(local_args.begin());
-    }
-    else if (local_args[0] == "pool") {
-      in = out = pending = failed = coinbase = false;
-      local_args.erase(local_args.begin());
-    }
-    else if (local_args[0] == "coinbase") {
-      in = out = pending = failed = pool = false;
-      coinbase = true;
-      local_args.erase(local_args.begin());
-    }
-    else if (local_args[0] == "all" || local_args[0] == "both") {
+    else if (local_args[0] == "all" ) {
       local_args.erase(local_args.begin());
     }
   }
@@ -3213,32 +3140,28 @@ bool simple_wallet::get_transfers(std::vector<std::string>& local_args, std::vec
     local_args.erase(local_args.begin());
   }
 
-  const uint64_t last_block_height = m_wallet->get_blockchain_current_height();
+  const uint64_t top_height = m_wallet->get_blockchain_current_height();
 
   if (in) {
-    std::list<std::pair<crypto::hash, tools::wallet2::pool_transfer_in>> payments;
-    m_wallet->get_unconfirmed_transfer_in(payments, min_height, max_height);
-    for (auto & kv : payments) {
-      const auto &pd = kv.second;
-      if (!pd.m_coinbase && !in)
-        continue;
+    std::vector<tools::wallet2::transfer_details> payments;
+    m_wallet->get_confirmed_transfer_in(payments, min_height, max_height);
+    for (auto & pd : payments) {
 
-      const std::string type = pd.m_coinbase ? tr("block") : tr("in");
-      const bool unlocked = m_wallet->is_transfer_unlocked(pd.m_unlock_time, pd.m_block_height);
+      const std::string type = tr("in");
+      const bool unlocked = m_wallet->is_transfer_unlocked(pd);
       std::string locked_msg = "unlocked";
       if (!unlocked)
       {
         locked_msg = "locked";
         if (pd.m_unlock_time < CRYPTONOTE_MAX_BLOCK_NUMBER)
         {
-          uint64_t bh = std::max(pd.m_unlock_time, pd.m_block_height + CRYPTONOTE_DEFAULT_TX_SPENDABLE_AGE);
-          if (bh >= last_block_height)
-            locked_msg = std::to_string(bh - last_block_height) + " blks";
+          if (pd.m_unlock_time >= top_height)
+            locked_msg = std::to_string(pd.m_unlock_time - top_height) + " blks";
         }
         else
         {
           const uint64_t adjusted_time = m_wallet->get_daemon_adjusted_time();
-          uint64_t threshold = adjusted_time + (m_wallet->use_fork_rules(2, 0) ? CRYPTONOTE_LOCKED_TX_ALLOWED_DELTA_SECONDS_V2 : CRYPTONOTE_LOCKED_TX_ALLOWED_DELTA_SECONDS_V1);
+          uint64_t threshold = adjusted_time + CRYPTONOTE_LOCKED_TX_ALLOWED_DELTA_SECONDS_V2 ;
           if (threshold < pd.m_unlock_time)
             locked_msg = get_human_readable_timespan(std::chrono::seconds(pd.m_unlock_time - threshold));
         }
@@ -3246,11 +3169,11 @@ bool simple_wallet::get_transfers(std::vector<std::string>& local_args, std::vec
       transfers.push_back({
         type,
         pd.m_block_height,
-        pd.m_timestamp,
+        pd.m_block_time,
         type,
         true,
         pd.m_amount,
-        pd.m_tx_hash,
+        pd.m_txid,
         0,
         "",
         "",
@@ -3312,15 +3235,9 @@ bool simple_wallet::get_transfers(std::vector<std::string>& local_args, std::vec
           "locked"
         });
       }
-    }
-    catch (const std::exception& e)
-    {
-      fail_msg_writer() << "Failed to get pool state:" << e.what();
-    }
-  }
 
-  // print unconfirmed last
-  if (pending || failed) {
+
+      {
     std::list<std::pair<crypto::hash, tools::wallet2::unconfirmed_transfer_out>> upayments;
     m_wallet->get_unconfirmed_payments_out(upayments);
     for (auto & kv : upayments) {
@@ -3329,7 +3246,7 @@ bool simple_wallet::get_transfers(std::vector<std::string>& local_args, std::vec
       const auto  addr = get_account_address_as_str(m_wallet->nettype(),pd.m_addr);
       
       bool is_failed = pd.m_state == tools::wallet2::unconfirmed_transfer_out::failed;
-      if ((failed && is_failed) || (!is_failed && pending)) {
+       
         transfers.push_back({
           (is_failed ? "failed" : "pending"),
           (is_failed ? "failed" : "pending"),
@@ -3343,9 +3260,16 @@ bool simple_wallet::get_transfers(std::vector<std::string>& local_args, std::vec
           "",
           "-"
         });
-      }
     }
   }
+    }
+    catch (const std::exception& e)
+    {
+      fail_msg_writer() << "Failed to get pool state:" << e.what();
+    }
+  }
+
+   
   // sort by block, then by timestamp (unconfirmed last)
   std::sort(transfers.begin(), transfers.end(), [](const transfer_view& a, const transfer_view& b) -> bool {
     if (a.confirmed && !b.confirmed)
@@ -3633,25 +3557,24 @@ bool simple_wallet::show_transfer(const std::vector<std::string> &args)
   }
   crypto::hash txid = *reinterpret_cast<const crypto::hash*>(txid_data.data());
 
-  const uint64_t last_block_height = m_wallet->get_blockchain_current_height();
+  const uint64_t top_height = m_wallet->get_blockchain_current_height();
 
-  std::list<std::pair<crypto::hash, tools::wallet2::pool_transfer_in>> payments;
-  m_wallet->get_unconfirmed_transfer_in(payments, 0, (uint64_t)-1);
-  for (auto i = payments.begin(); i != payments.end(); ++i) {
-    const auto &pd = i->second;
-    if (pd.m_tx_hash == txid) {
+    std::vector<tools::wallet2::transfer_details> payments;
+  m_wallet->get_confirmed_transfer_in(payments, 0, (uint64_t)-1);
+  for (const auto & pd : payments) {
+    if (pd.m_txid == txid) {
       success_msg_writer() << "Incoming transaction found";
       success_msg_writer() << "txid: " << txid;
       success_msg_writer() << "Height: " << pd.m_block_height;
-      success_msg_writer() << "Timestamp: " << tools::get_human_readable_timestamp(pd.m_timestamp);
+      success_msg_writer() << "Timestamp: " << tools::get_human_readable_timestamp(pd.m_block_time);
       success_msg_writer() << "Amount: " << print_money(pd.m_amount);
       if (pd.m_unlock_time < CRYPTONOTE_MAX_BLOCK_NUMBER)
       {
         uint64_t bh = std::max(pd.m_unlock_time, pd.m_block_height + CRYPTONOTE_DEFAULT_TX_SPENDABLE_AGE);
-        if (bh >= last_block_height)
-          success_msg_writer() << "Locked: " << (bh - last_block_height) << " blocks to unlock";
+        if (bh >= top_height)
+          success_msg_writer() << "Locked: " << (bh - top_height) << " blocks to unlock";
         else
-          success_msg_writer() << std::to_string(last_block_height - bh) << " confirmations";
+          success_msg_writer() << std::to_string(top_height - bh) << " confirmations";
       }
       else
       {

@@ -189,16 +189,18 @@ void wallet2::remove_obsolete_pool_transfer_in(const std::vector<crypto::hash> &
     {
       MINFO("Removing " << txid << " from unconfirmed payments, not found in pool");
       m_pool_transfers_in.erase(pit);
-      if (0 != m_callback)
-        m_callback->on_pool_tx_removed(txid);
     }
   }
 }
 
 //----------------------------------------------------------------------------------------------------
-void wallet2::get_unconfirmed_transfer_in(std::list<std::pair<crypto::hash,wallet2::pool_transfer_in>>& payments, uint64_t min_height,uint64_t max_height) const
+void wallet2::get_confirmed_transfer_in(std::vector<transfer_details>& payments, uint64_t min_height,uint64_t max_height) const
 {
- 
+ for (auto td : m_transfers_in) {
+    if (td.m_block_height <= min_height || td.m_block_height > max_height)
+      continue;
+    payments.push_back(td);
+  }
 }
 
 //----------------------------------------------------------------------------------------------------

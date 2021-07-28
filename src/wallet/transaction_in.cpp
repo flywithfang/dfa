@@ -134,7 +134,7 @@ wallet2::pending_tx wallet2::transfer_selected_rct(const cryptonote::tx_destinat
     });
     throw_wallet_ex_if(it_real == in.decoys.end(), error::wallet_internal_error,"real output not found");
 
-    in.real_out_tx_key = get_tx_pub_key_from_extra(td.m_tx);
+    in.real_out_tx_key =  td.m_tx_key;
     in.real_output = it_real - in.decoys.begin();
     in.real_output_in_tx_index = td.m_internal_output_index;
     in.noise = td.m_noise;

@@ -216,8 +216,15 @@ private:
     void crop(size_t height) { m_blockchain.resize(height - m_offset); }
     void clear() { m_offset = 0; m_blockchain.clear(); }
     bool empty() const { return m_blockchain.empty() && m_offset == 0; }
-    void trim(size_t height) { while (height > m_offset && m_blockchain.size() > 1) { m_blockchain.pop_front(); ++m_offset; } m_blockchain.shrink_to_fit(); }
-    void refill(const crypto::hash &hash) { m_blockchain.push_back(hash); --m_offset; }
+    void trim(size_t height) { 
+      while (height > m_offset && m_blockchain.size() > 1)
+       { m_blockchain.pop_front(); ++m_offset; } 
+     m_blockchain.shrink_to_fit(); 
+   }
+    void refill(const crypto::hash &hash) { 
+      m_blockchain.push_back(hash);
+       --m_offset; 
+     }
 
     template <class t_archive>
     inline void serialize(t_archive &a, const unsigned int ver)
@@ -254,11 +261,6 @@ private:
   public:
     static constexpr const std::chrono::seconds rpc_timeout = std::chrono::minutes(3) + std::chrono::seconds(30);
 
-    enum AskPasswordType {
-      AskPasswordNever = 0,
-      AskPasswordOnAction = 1,
-      AskPasswordToDecrypt = 2,
-    };
 
     static const char* tr(const char* str);
 
@@ -296,19 +298,23 @@ private:
     struct transfer_details
     {
       uint64_t m_block_height;
-      cryptonote::transaction_prefix m_tx;
+      //cryptonote::transaction_prefix m_tx;
+      crypto::public_key m_otk;
+      crypto::public_key m_tx_key;
       crypto::hash m_txid;
+      uint64_t m_unlock_time;
       uint64_t m_internal_output_index;
       uint64_t m_global_output_index;
-      bool m_spent;
+      bool     m_spent;
       uint64_t m_spent_height;
       crypto::key_image m_key_image; //TODO: key_image stored twice :(
       rct::key m_noise;
       uint64_t m_amount;
+      uint64_t m_block_time;
 
       uint64_t amount() const { return m_amount; }
       const crypto::public_key& otk()const{
-          return boost::get<const cryptonote::txout_to_key>(m_tx.vout[m_internal_output_index].target).key;
+          return m_otk;
       }
       const crypto::public_key &get_public_key() const {
         return otk();
@@ -324,44 +330,20 @@ private:
   }                 
   template <bool W, template <bool> class Archive>      
   bool do_serialize_object(Archive<W> &ar){
-        //FIELD(m_block_height)
-         do {             
-            ar.tag("m_block_height");           
-            bool r = ::do_serialize(ar, m_block_height);    
-
-            MDEBUG("read wallet block height "<<m_block_height) ;
-            if (!r || !ar.stream().good()) return false;  
-        } while(0);
-         do {             
-            ar.tag("m_tx");           
-            bool r = ::do_serialize(ar, m_tx);     
-            if (!r || !ar.stream().good()) return false;  
-        } while(0);
-         do {             
-            ar.tag("m_txid");           
-            bool r = ::do_serialize(ar, m_txid);     
-            if (!r || !ar.stream().good()) return false;  
-        } while(0);
-         do {             
-            ar.tag("m_internal_output_index");           
-            bool r = ::do_serialize(ar, m_internal_output_index);     
-            if (!r || !ar.stream().good()) return false;  
-        } while(0);
-         do {             
-            ar.tag("m_global_output_index");           
-            bool r = ::do_serialize(ar, m_global_output_index);     
-            if (!r || !ar.stream().good()) return false;  
-        } while(0);
-         do {             
-            ar.tag("m_spent");           
-            bool r = ::do_serialize(ar, m_spent);     
-            if (!r || !ar.stream().good()) return false;  
-        } while(0);
-
-        FIELD(m_spent_height)
+        FIELD(m_block_height)
+        FIELD(m_otk)
+        FIELD(m_tx_key)
+        FIELD(m_txid)
+        VARINT_FIELD(m_unlock_time)
+        VARINT_FIELD(m_internal_output_index)
+        VARINT_FIELD(m_global_output_index)
+        FIELD(m_spent)
+        VARINT_FIELD(m_spent_height)
         FIELD(m_key_image)
         FIELD(m_noise)
-        FIELD(m_amount)
+        VARINT_FIELD(m_amount)
+        VARINT_FIELD(m_block_time)
+
         return ar.stream().good();      
   }
     };
@@ -639,10 +621,6 @@ private:
 
     void stop() { m_run.store(false, std::memory_order_relaxed);  }
 
-    i_wallet2_callback* callback() const { return m_callback; }
-    void callback(i_wallet2_callback* callback) { m_callback = callback; }
-
-
     /*!
      * \brief Checks if deterministic wallet
      */
@@ -685,7 +663,7 @@ private:
     bool sanity_check(const std::vector<wallet2::pending_tx> &ptx_vector, std::vector<cryptonote::tx_destination_entry> dsts) const;
     bool check_connection(uint32_t *version = NULL, bool *ssl = NULL, uint32_t timeout = 200000);
     void get_transfers(wallet2::transfer_container& incoming_transfers) const;
-    void get_unconfirmed_transfer_in(std::list<std::pair<crypto::hash,wallet2::pool_transfer_in>>& payments, uint64_t min_height, uint64_t max_height = (uint64_t)-1) const;
+    void get_confirmed_transfer_in(std::vector<transfer_details>& payments, uint64_t min_height, uint64_t max_height = (uint64_t)-1) const;
     void get_payments_out(std::list<std::pair<crypto::hash,wallet2::confirmed_transfer_out>>& confirmed_payments,uint64_t min_height, uint64_t max_height = (uint64_t)-1) const;
     void get_unconfirmed_payments_out(std::list<std::pair<crypto::hash,wallet2::unconfirmed_transfer_out>>& unconfirmed_payments) const;
     void get_unconfirmed_transfer_in(std::list<std::pair<crypto::hash,wallet2::pool_transfer_in>>& unconfirmed_payments) const;
@@ -770,8 +748,6 @@ private:
     void default_mixin(uint32_t m) { m_default_mixin = m; }
     bool auto_refresh() const { return m_auto_refresh; }
     void auto_refresh(bool r) { m_auto_refresh = r; }
-    AskPasswordType ask_password() const { return m_ask_password; }
-    void ask_password(AskPasswordType ask) { m_ask_password = ask; }
 
     uint32_t inactivity_lock_timeout()const { return m_inactivity_lock_timeout; }
     void inactivity_lock_timeout(uint32_t seconds) { m_inactivity_lock_timeout = seconds; }
@@ -835,7 +811,6 @@ private:
     bool verify_with_public_key(const std::string &data, const crypto::public_key &public_key, const std::string &signature) const;
 
    
-    crypto::public_key get_tx_pub_key_from_received_outs(const tools::wallet2::transfer_details &td) const;
 
 
     std::string encrypt(const char *plaintext, size_t len, const crypto::secret_key &skey, bool authenticated = true) const;
@@ -993,8 +968,6 @@ std::tuple<bool, uint64_t,std::vector<cryptonote::block_complete_entry> , std::v
     std::string get_rpc_status(const std::string &s) const;
     void throw_on_rpc_response_error(bool r, const epee::json_rpc::error &error, const std::string &status, const char *method) const;
 
-    void prompt_password();
-
     bool spends_one_of_ours(const cryptonote::transaction &tx) const;
 
     cryptonote::account_base m_account;
@@ -1008,23 +981,21 @@ std::tuple<bool, uint64_t,std::vector<cryptonote::block_complete_entry> , std::v
 
     hashchain m_blockchain;
     serializable_unordered_map<crypto::hash, unconfirmed_transfer_out> m_pool_transfer_outs;
+     serializable_unordered_map<crypto::hash, pool_transfer_in> m_pool_transfers_in;
+
+    std::vector<transfer_details> m_transfers_in;
+    serializable_unordered_map<crypto::key_image, size_t> m_key_images;
+    serializable_unordered_map<crypto::public_key, size_t> m_otks;
     serializable_unordered_map<crypto::hash, confirmed_transfer_out> m_confirmed_transfer_outs;
 
     serializable_unordered_map<crypto::hash, crypto::secret_key> m_tx_secs;
    
-    serializable_unordered_map<crypto::hash, pool_transfer_in> m_pool_transfers_in;
-    std::vector<transfer_details> m_transfers_in;
-    serializable_unordered_map<crypto::key_image, size_t> m_key_images;
-    serializable_unordered_map<crypto::public_key, size_t> m_otks;
-   
-
     uint64_t m_upper_transaction_weight_limit; //TODO: auto-calc this value or request from daemon, now use some fixed value
 
     std::atomic<bool> m_run;
 
     boost::recursive_mutex m_daemon_rpc_mutex;
 
-    i_wallet2_callback* m_callback;
     cryptonote::network_type m_nettype;
     uint64_t m_kdf_rounds;
     std::string seed_language; /*!< Language of the mnemonics (seed). */
@@ -1037,7 +1008,6 @@ std::tuple<bool, uint64_t,std::vector<cryptonote::block_complete_entry> , std::v
     // m_refresh_from_block_height was defaulted to zero.*/
     bool m_explicit_refresh_from_block_height;
     bool m_confirm_non_default_ring_size;
-    AskPasswordType m_ask_password;
     uint64_t m_max_reorg_depth;
     uint32_t m_inactivity_lock_timeout;
     bool m_is_initialized;
@@ -1070,6 +1040,7 @@ namespace boost
 {
   namespace serialization
   {
+     /*
     template <class Archive>
     inline typename std::enable_if<!Archive::is_loading::value, void>::type initialize_transfer_details(Archive &a, tools::wallet2::transfer_details &x, const boost::serialization::version_type ver)
     {
@@ -1098,7 +1069,7 @@ namespace boost
       a & x.m_txid;
     }
 
-   /*
+  
     template <class Archive>
     inline void serialize(Archive &a, tools::wallet2::unconfirmed_transfer_out &x, const boost::serialization::version_type ver)
     {
@@ -1110,7 +1081,7 @@ namespace boost
       a & x.m_state;
       a & x.m_timestamp;
     }
-    */
+
 
     template <class Archive>
     inline void serialize(Archive &a, tools::wallet2::confirmed_transfer_out &x, const boost::serialization::version_type ver)
@@ -1174,6 +1145,7 @@ namespace boost
       a & x.dst;
       a & x.selected_transfers;
     }
+        */
   }
 }
 

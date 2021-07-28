@@ -450,9 +450,8 @@ std::string wallet2::get_spend_proof(const crypto::hash &txid, const std::string
 
     // derive the real output keypair
     const transfer_details& in_td = m_transfers_in[found->second];
-    const txout_to_key* const in_tx_out_pkey = boost::get<txout_to_key>(std::addressof(in_td.m_tx.vout[in_td.m_internal_output_index].target));
-    throw_wallet_ex_if(in_tx_out_pkey == nullptr, error::wallet_internal_error, "Output is not txout_to_key");
-    const crypto::public_key in_tx_pub_key = get_tx_pub_key_from_extra(in_td.m_tx);
+ 
+    const crypto::public_key in_tx_pub_key = in_td.m_tx_key;
     keypair otk_p;
     crypto::key_image in_img;
     throw_wallet_ex_if(!generate_key_image_helper(m_account.get_keys(),in_tx_pub_key,  in_td.m_internal_output_index, otk_p, in_img, m_account.get_device()),

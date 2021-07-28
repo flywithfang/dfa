@@ -293,7 +293,7 @@ std::vector<std::vector<tools::wallet2::get_outs_entry>>  wallet2::get_outs( con
       auto & decoys= outs.back();
       decoys.reserve(fake_outputs_count + 1);
       const rct::key commitment =  rct::commit(td.amount(), td.m_noise) ;
-      const auto & otk=boost::get<txout_to_key>(td.m_tx.vout[td.m_internal_output_index].target).key;
+      const auto & otk=td.m_otk;
       //uint64_t num_outs  = rct_offsets[rct_offsets.size() - CRYPTONOTE_DEFAULT_TX_SPENDABLE_AGE];
 
       // make sure the real outputs we asked for are really included, along

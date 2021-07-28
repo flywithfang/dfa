@@ -275,12 +275,6 @@ void wallet2::refresh(uint64_t start_height, uint64_t & blocks_fetched, bool& re
       blobs = std::move(next_blobs);
       parsed_blocks = std::move(next_parsed_blocks);
     }
-    catch (const tools::error::password_needed&)
-    {
-      blocks_fetched += added_blocks;
-      throw_wallet_ex_if(!waiter.wait(), error::wallet_internal_error, "Exception in thread pool");
-      throw;
-    }
     catch (const error::reorg_depth_error&)
     {
       throw_wallet_ex_if(!waiter.wait(), error::wallet_internal_error, "Exception in thread pool");
@@ -342,7 +336,7 @@ std::tuple<bool, uint64_t,std::vector<block_complete_entry> , std::vector<wallet
          auto & pb= parsed_blocks[i];
          auto & blob = blobs[i].block;
          try{
-                  pb.block = cryptonote::parse_and_validate_block_from_blob(blob);
+         pb.block = cryptonote::parse_and_validate_block_from_blob(blob);
          pb.hash = cryptonote::get_block_hash(pb.block);
        }catch(std::exception & ){
         ex= std::current_exception();
@@ -554,8 +548,6 @@ void wallet2::process_new_blockchain_entry( const cryptonote::block_complete_ent
   }
   m_blockchain.push_back(bl_id);
 
-  if (0 != m_callback)
-    m_callback->on_new_block(height, b);
 }
 
 
@@ -604,20 +596,22 @@ void wallet2::process_new_transaction(const cryptonote::transaction& tx, const s
             td.m_block_height = height;
             td.m_internal_output_index = o;
             td.m_global_output_index = o_indices[o];
-            td.m_tx = tx;
             td.m_txid = txid;
+            td.m_otk = otk;
+            td.m_tx_key=tc.primary.tx_key;
             td.m_key_image = scan.ki;
             td.m_amount = amount;
             td.m_noise = scan.noise;
-            set_unspent(m_transfers_in.size()-1);
+            td.m_spent = false;
+            td.m_spent_height = 0;
+            td.m_block_time = ts;
+
             m_key_images[td.m_key_image] = m_transfers_in.size()-1;
 
             m_otks[otk] = m_transfers_in.size()-1;
 
             MINFO("Received money: " << print_money(td.amount()) << ", with height: " << height);
-            if (0 != m_callback)
-              m_callback->on_money_received(height, txid, tx, td.m_amount, spends_one_of_ours(tx), td.m_tx.unlock_time);
-            }
+          }
         }
       else 
         {
@@ -653,8 +647,7 @@ void wallet2::process_new_transaction(const cryptonote::transaction& tx, const s
       payment.m_double_spend_seen=double_spend_seen;
       m_pool_transfers_in[txid]=payment;
 
-      if (0 != m_callback)
-        m_callback->on_unconfirmed_money_received(height, txid, tx, payment.m_amount);
+    
       MINFO("transfer in found in pool" << ": "  << " / " << payment.m_tx_hash << " / " << payment.m_amount);
   }
 
@@ -677,8 +670,6 @@ void wallet2::process_new_transaction(const cryptonote::transaction& tx, const s
       {
         MINFO("Spent money: " << print_money(amount) << ", with tx: " << txid);
         set_spent(it->second, height);
-        if (0 != m_callback)
-          m_callback->on_money_spent(height, txid, tx, amount, tx);
       }
     }
   }
@@ -691,30 +682,10 @@ void wallet2::process_new_transaction(const cryptonote::transaction& tx, const s
 
 }
 
- void wallet2::prompt_password()
- {
-   // if keys are encrypted, ask for password
-  if (m_ask_password == AskPasswordToDecrypt  )
-  {
-    static critical_section password_lock;
-    CRITICAL_REGION_LOCAL(password_lock);
-    if (!m_encrypt_keys_after_refresh)
-    {
-      boost::optional<epee::wipeable_string> pwd = m_callback->on_get_password( "output found");
-      throw_wallet_ex_if(!pwd, error::password_needed, tr("Password is needed to compute key image for incoming monero"));
-      throw_wallet_ex_if(!verify_password(*pwd), error::password_needed, tr("Invalid password: password is needed to compute key image for incoming monero"));
-      decrypt_keys(*pwd);
-      m_encrypt_keys_after_refresh = *pwd;
-    }
-  }
-
- }
-
 //----------------------------------------------------------------------------------------------------
 wallet2::tx_scan_info_t wallet2::scan_output(const cryptonote::transaction &tx, bool miner_tx, const is_out_data & tc,size_t i)
 {
   tx_scan_info_t scan{};
-    prompt_password();
     bool r = cryptonote::generate_key_image_helper(m_account.get_keys(),  tc.tx_key, i, scan.otk_p, scan.ki, m_account.get_device());
       
       const auto otk= boost::get<cryptonote::txout_to_key>(tx.vout[i].target).key;
@@ -780,12 +751,6 @@ void wallet2::fast_refresh(uint64_t stop_height, uint64_t &blocks_start_height, 
         if (!(current_index % 1024))
           MINFO( "Skipped block by height: " << current_index);
         m_blockchain.push_back(bl_id);
-
-        if (0 != m_callback)
-        { // FIXME: this isn't right, but simplewallet just logs that we got a block.
-          cryptonote::block dummy;
-          m_callback->on_new_block(current_index, dummy);
-        }
       }
       else if(bl_id != m_blockchain[current_index])
       {
@@ -854,7 +819,7 @@ wallet2::tx_cache_data wallet2::cache_tx_data(const cryptonote::transaction& tx)
         MWARNING("Failed to generate key derivation from tx pubkey, skipping");
         memcpy(&kA, rct::identity().bytes, sizeof(tc.primary.kA));
       }
-
+    //tx_key,otk,i, a,B
     auto oi=0;
     for (const auto & o : tx.vout)
     {
@@ -898,4 +863,43 @@ void wallet2::process_outgoing( const cryptonote::transaction &tx, uint64_t heig
   ctd.m_unlock_time = tx.unlock_time;
 
 }
+
+
+//----------------------------------------------------------------------------------------------------
+std::list<crypto::hash> wallet2::get_short_chain_history() const
+{
+  std::list<crypto::hash> ids;
+  size_t current_multiplier = 1;
+  size_t blockchain_size = std::max(m_blockchain.size() , m_blockchain.offset());
+  size_t local_size = blockchain_size - m_blockchain.offset();
+  if(!local_size)
+  {
+    ids.push_back(m_blockchain.genesis());
+    return ids;
+  }
+  size_t back_offset = 1;
+  bool base_included = false;
+   size_t i = 0;
+  while(back_offset < local_size)
+  {
+    const auto index=local_size-back_offset;
+    ids.push_back(m_blockchain[m_blockchain.offset() +index ]);
+    if(index == 0)
+      base_included = true;
+    if(i < 10)
+    {
+      ++back_offset;
+    }else
+    {
+      back_offset += current_multiplier *= 2;
+    }
+    ++i;
+  }
+  if(!base_included)
+    ids.push_back(m_blockchain[m_blockchain.offset()]);
+  if(m_blockchain.offset())
+    ids.push_back(m_blockchain.genesis());
+  return ids;
+}
+
 }

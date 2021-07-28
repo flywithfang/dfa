@@ -395,7 +395,7 @@ wallet_keys_unlocker::wallet_keys_unlocker(wallet2 &w, const boost::optional<too
   boost::lock_guard<boost::mutex> lock(lockers_lock);
   if (lockers++ > 0)
     locked = false;
-  if (!locked || w.ask_password() != tools::wallet2::AskPasswordToDecrypt )
+  if (!locked  )
   {
     locked = false;
     return;
@@ -445,14 +445,12 @@ wallet2::wallet2(network_type nettype, uint64_t kdf_rounds, bool unattended, std
   m_http_client(http_client_factory->create()),
   m_upper_transaction_weight_limit(0),
   m_run(true),
-  m_callback(0),
   m_nettype(nettype),
   m_always_confirm_transfers(true),
   m_auto_refresh(true),
   m_first_refresh_done(false),
   m_refresh_from_block_height(0),
   m_explicit_refresh_from_block_height(true),
-  m_ask_password(AskPasswordToDecrypt),
   m_max_reorg_depth(ORPHANED_BLOCKS_MAX_COUNT),
   m_inactivity_lock_timeout(DEFAULT_INACTIVITY_LOCK_TIMEOUT),
   m_is_initialized(false),
@@ -730,42 +728,6 @@ void wallet2::comfirm_pool_transfer_out(const cryptonote::transaction& tx, uint6
   }
 }
 
-//----------------------------------------------------------------------------------------------------
-std::list<crypto::hash> wallet2::get_short_chain_history() const
-{
-  std::list<crypto::hash> ids;
-  size_t current_multiplier = 1;
-  size_t blockchain_size = std::max(m_blockchain.size() , m_blockchain.offset());
-  size_t local_size = blockchain_size - m_blockchain.offset();
-  if(!local_size)
-  {
-    ids.push_back(m_blockchain.genesis());
-    return ids;
-  }
-  size_t current_back_offset = 1;
-  bool base_included = false;
-   size_t i = 0;
-  while(current_back_offset < local_size)
-  {
-    const auto index=local_size-current_back_offset;
-    ids.push_back(m_blockchain[m_blockchain.offset() +index ]);
-    if(index == 0)
-      base_included = true;
-    if(i < 10)
-    {
-      ++current_back_offset;
-    }else
-    {
-      current_back_offset += current_multiplier *= 2;
-    }
-    ++i;
-  }
-  if(!base_included)
-    ids.push_back(m_blockchain[m_blockchain.offset()]);
-  if(m_blockchain.offset())
-    ids.push_back(m_blockchain.genesis());
-  return ids;
-}
 
 //----------------------------------------------------------------------------------------------------
 void wallet2::detach_blockchain(uint64_t height)
@@ -886,13 +848,6 @@ boost::optional<wallet2::keys_file_data> wallet2::get_keys_file_data(const epee:
   crypto::chacha_key key;
   crypto::generate_chacha_key(password.data(), password.size(), key, m_kdf_rounds);
 
-  if (m_ask_password == AskPasswordToDecrypt )
-  {
-    account.encrypt_viewkey(key);
-    account.decrypt_keys(key);
-  }
-
-
   account.encrypt_keys(key);
 
   bool r = epee::serialization::store_t_to_binary(account, account_data);
@@ -922,9 +877,6 @@ boost::optional<wallet2::keys_file_data> wallet2::get_keys_file_data(const epee:
 
   value2.SetUint64(m_refresh_from_block_height);
   json.AddMember("refresh_height", value2, json.GetAllocator());
-
-  value2.SetInt(m_ask_password);
-  json.AddMember("ask_password", value2, json.GetAllocator());
 
   value2.SetUint64(m_max_reorg_depth);
   json.AddMember("max_reorg_depth", value2, json.GetAllocator());
@@ -957,8 +909,6 @@ boost::optional<wallet2::keys_file_data> wallet2::get_keys_file_data(const epee:
 //----------------------------------------------------------------------------------------------------
 void wallet2::change_password(const std::string &filename, const epee::wipeable_string &original_password, const epee::wipeable_string &new_password)
 {
-  if (m_ask_password == AskPasswordToDecrypt )
-    decrypt_keys(original_password);
   setup_keys(new_password);
   rewrite(filename, new_password);
   if (!filename.empty())
@@ -1540,7 +1490,7 @@ void wallet2::rescan_blockchain(bool refresh)
 //----------------------------------------------------------------------------------------------------
 bool wallet2::is_transfer_unlocked(const transfer_details& td)
 {
-  return is_transfer_unlocked(td.m_tx.unlock_time, td.m_block_height);
+  return is_transfer_unlocked(td.m_unlock_time, td.m_block_height);
 }
 //----------------------------------------------------------------------------------------------------
 bool wallet2::is_transfer_unlocked(uint64_t unlock_time, uint64_t block_height)
@@ -1842,29 +1792,6 @@ bool wallet2::verify_with_public_key(const std::string &data, const crypto::publ
   memcpy(&s, decoded.data(), sizeof(s));
   return crypto::check_signature(hash, public_key, s);
 }
-//----------------------------------------------------------------------------------------------------
-crypto::public_key wallet2::get_tx_pub_key_from_received_outs(const tools::wallet2::transfer_details &td) const
-{
-  std::vector<tx_extra_field> tx_extra_fields;
-  if(!parse_tx_extra(td.m_tx.extra, tx_extra_fields))
-  {
-    // Extra may only be partially parsed, it's OK if tx_extra_fields contains public key
-  }
-
-  // Due to a previous bug, there might be more than one tx pubkey in extra, one being
-  // the result of a previously discarded signature.
-  // For speed, since scanning for outputs is a slow process, we check whether extra
-  // contains more than one pubkey. If not, the first one is returned. If yes, they're
-  // checked for whether they yield at least one output
-  tx_extra_pub_key pub_key_field;
-  throw_wallet_ex_if(!find_tx_extra_field_by_type(tx_extra_fields, pub_key_field, 0), error::wallet_internal_error,
-      "Public key wasn't found in the transaction extra");
-  const crypto::public_key tx_pub_key = pub_key_field.pub_key;
-    // easy case, just one found
-    return tx_pub_key;
- 
-}
-
 
 //----------------------------------------------------------------------------------------------------
 std::string wallet2::encrypt(const char *plaintext, size_t len, const crypto::secret_key &skey, bool authenticated) const
