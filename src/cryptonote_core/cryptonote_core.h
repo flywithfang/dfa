@@ -324,6 +324,7 @@ namespace cryptonote
       * @param top_id return-by-reference hash of the block
       */
      void get_blockchain_top(uint64_t& height, crypto::hash& top_id) const;
+     std::tuple<uint64_t, crypto::hash>  get_blockchain_top() const;
 
      /**
       * @copydoc Blockchain::get_blocks(uint64_t, size_t, std::vector<std::pair<cryptonote::blobdata,block>>&, std::vector<transaction>&) const
@@ -354,7 +355,7 @@ namespace cryptonote
      template<class t_ids_container, class t_blocks_container, class t_missed_container>
      bool get_blocks(const t_ids_container& block_ids, t_blocks_container& blocks, t_missed_container& missed_bs) const
      {
-       return m_blockchain_storage.get_blocks(block_ids, blocks, missed_bs);
+       return m_blockchain.get_blocks(block_ids, blocks, missed_bs);
      }
 
      /**
@@ -608,14 +609,14 @@ namespace cryptonote
       *
       * @return a reference to the Blockchain instance
       */
-     Blockchain& get_blockchain_storage(){return m_blockchain_storage;}
+     Blockchain& get_blockchain_storage(){return m_blockchain;}
 
      /**
       * @brief gets the Blockchain instance (const)
       *
       * @return a const reference to the Blockchain instance
       */
-     const Blockchain& get_blockchain_storage()const{return m_blockchain_storage;}
+     const Blockchain& get_blockchain_storage()const{return m_blockchain;}
 
      /**
       * @copydoc tx_memory_pool::print_pool
@@ -1032,7 +1033,7 @@ namespace cryptonote
      uint64_t m_test_drop_download_height = 0; //!< height under which to drop incoming blocks, if doing so
 
      tx_memory_pool m_mempool; //!< transaction pool instance
-     Blockchain m_blockchain_storage; //!< Blockchain instance
+     Blockchain m_blockchain; //!< Blockchain instance
 
      i_cryptonote_protocol* m_pprotocol; //!< cryptonote protocol instance
 

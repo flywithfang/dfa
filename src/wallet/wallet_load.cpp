@@ -99,28 +99,28 @@ void wallet2::load(const std::string& _wallet_file, const epee::wipeable_string&
 
   // determine if loading from file system or string buffer
   bool use_fs = !_wallet_file.empty();
-  THROW_WALLET_EXCEPTION_IF((use_fs && !keys_buf.empty()) || (!use_fs && keys_buf.empty()), error::file_read_error, "must load keys either from file system or from buffer");\
+  throw_wallet_ex_if((use_fs && !keys_buf.empty()) || (!use_fs && keys_buf.empty()), error::file_read_error, "must load keys either from file system or from buffer");\
 
   boost::system::error_code e;
   if (use_fs)
   {
     bool exists = boost::filesystem::exists(m_keys_file, e);
-    THROW_WALLET_EXCEPTION_IF(e || !exists, error::file_not_found, m_keys_file);
+    throw_wallet_ex_if(e || !exists, error::file_not_found, m_keys_file);
     lock_keys_file();
-    THROW_WALLET_EXCEPTION_IF(!is_keys_file_locked(), error::wallet_internal_error, "internal error: \"" + m_keys_file + "\" is opened by another wallet program");
+    throw_wallet_ex_if(!is_keys_file_locked(), error::wallet_internal_error, "internal error: \"" + m_keys_file + "\" is opened by another wallet program");
 
     // this temporary unlocking is necessary for Windows (otherwise the file couldn't be loaded).
     unlock_keys_file();
     if (!load_keys(m_keys_file, password))
     {
-      THROW_WALLET_EXCEPTION_IF(true, error::file_read_error, m_keys_file);
+      throw_wallet_ex_if(true, error::file_read_error, m_keys_file);
     }
     LOG_PRINT_L0("Loaded wallet keys file, with public address: " << m_account.get_public_address_str(m_nettype));
     lock_keys_file();
   }
   else if (!load_keys_buf(keys_buf, password))
   {
-    THROW_WALLET_EXCEPTION_IF(true, error::file_read_error, "failed to load keys from buffer");
+    throw_wallet_ex_if(true, error::file_read_error, "failed to load keys from buffer");
   }
 
   wallet_keys_unlocker unlocker(*this, m_ask_password == AskPasswordToDecrypt , password);
@@ -140,7 +140,7 @@ void wallet2::load(const std::string& _wallet_file, const epee::wipeable_string&
     if (use_fs)
     {
       load_from_file(m_wallet_file, cache_file_buf, std::numeric_limits<size_t>::max());
-      THROW_WALLET_EXCEPTION_IF(!r, error::file_read_error, m_wallet_file);
+      throw_wallet_ex_if(!r, error::file_read_error, m_wallet_file);
     }
 
     // try to read it as an encrypted cache
@@ -149,16 +149,13 @@ void wallet2::load(const std::string& _wallet_file, const epee::wipeable_string&
       LOG_PRINT_L1("Trying to decrypt cache data");
 
       r = ::serialization::parse_binary(use_fs ? cache_file_buf : cache_buf, cache_file_data);
-      THROW_WALLET_EXCEPTION_IF(!r, error::wallet_internal_error, "internal error: failed to deserialize \"" + m_wallet_file + '\"');
+      throw_wallet_ex_if(!r, error::wallet_internal_error, "internal error: failed to deserialize \"" + m_wallet_file + '\"');
       std::string cache_data;
       cache_data.resize(cache_file_data.cache_data.size());
       crypto::chacha20(cache_file_data.cache_data.data(), cache_file_data.cache_data.size(), m_cache_key, cache_file_data.iv, &cache_data[0]);
 
-      try {
         bool loaded = false;
 
-        try
-        {
           std::stringstream iss;
           iss << cache_data;
           binary_archive<false> ar(iss);
@@ -175,73 +172,12 @@ void wallet2::load(const std::string& _wallet_file, const epee::wipeable_string&
               if (::serialization::check_stream_state(ar))
                 loaded = true;
           }
-        }
-        catch(...) { }
-
-        if (!loaded)
-        {
-          std::stringstream iss;
-          iss << cache_data;
-          boost::archive::portable_binary_iarchive ar(iss);
-          ar >> *this;
-        }
-      }
-      catch(...)
-      {
-        // try with previous scheme: direct from keys
-        crypto::chacha_key key;
-        generate_chacha_key_from_secret_keys(key);
-        crypto::chacha20(cache_file_data.cache_data.data(), cache_file_data.cache_data.size(), key, cache_file_data.iv, &cache_data[0]);
-        try {
-          std::stringstream iss;
-          iss << cache_data;
-          boost::archive::portable_binary_iarchive ar(iss);
-          ar >> *this;
-        }
-        catch (...)
-        {
-          crypto::chacha8(cache_file_data.cache_data.data(), cache_file_data.cache_data.size(), key, cache_file_data.iv, &cache_data[0]);
-          try
-          {
-            std::stringstream iss;
-            iss << cache_data;
-            boost::archive::portable_binary_iarchive ar(iss);
-            ar >> *this;
-          }
-          catch (...)
-          {
-            LOG_PRINT_L0("Failed to open portable binary, trying unportable");
-            if (use_fs) boost::filesystem::copy_file(m_wallet_file, m_wallet_file + ".unportable", boost::filesystem::copy_option::overwrite_if_exists);
-            std::stringstream iss;
-            iss.str("");
-            iss << cache_data;
-            boost::archive::binary_iarchive ar(iss);
-            ar >> *this;
-          }
-        }
-      }
     }
     catch (...)
     {
-      LOG_PRINT_L1("Failed to load encrypted cache, trying unencrypted");
-      try {
-        std::stringstream iss;
-        iss << cache_file_buf;
-        boost::archive::portable_binary_iarchive ar(iss);
-        ar >> *this;
-      }
-      catch (...)
-      {
-        LOG_PRINT_L0("Failed to open portable binary, trying unportable");
-        if (use_fs) boost::filesystem::copy_file(m_wallet_file, m_wallet_file + ".unportable", boost::filesystem::copy_option::overwrite_if_exists);
-        std::stringstream iss;
-        iss.str("");
-        iss << cache_file_buf;
-        boost::archive::binary_iarchive ar(iss);
-        ar >> *this;
-      }
+      LOG_PRINT_L1("Failed to load encrypted cache");
     }
-    THROW_WALLET_EXCEPTION_IF(
+    throw_wallet_ex_if(
       m_account_public_address.m_spend_public_key != m_account.get_keys().m_account_address.m_spend_public_key ||
       m_account_public_address.m_view_public_key  != m_account.get_keys().m_account_address.m_view_public_key,
       error::wallet_files_doesnt_correspond, m_keys_file, m_wallet_file);
@@ -307,7 +243,7 @@ bool wallet2::load_keys(const std::string& keys_file_name, const epee::wipeable_
 {
   std::string keys_file_buf;
   bool r = load_from_file(keys_file_name, keys_file_buf);
-  THROW_WALLET_EXCEPTION_IF(!r, error::file_read_error, keys_file_name);
+  throw_wallet_ex_if(!r, error::file_read_error, keys_file_name);
 
   // Load keys from buffer
   boost::optional<crypto::chacha_key> keys_to_encrypt;
@@ -344,7 +280,7 @@ std::cout<<"load_keys_buf" << keys_buf.size()<<" pass "<<password.data()<<std::e
   wallet2::keys_file_data keys_file_data;
   bool encrypted_secret_keys = false;
   bool r = ::serialization::parse_binary(keys_buf, keys_file_data);
-  THROW_WALLET_EXCEPTION_IF(!r, error::wallet_internal_error, "internal error: failed to deserialize keys buffer");
+  throw_wallet_ex_if(!r, error::wallet_internal_error, "internal error: failed to deserialize keys buffer");
   crypto::chacha_key key;
   crypto::generate_chacha_key(password.data(), password.size(), key, m_kdf_rounds);
   std::string account_data;
@@ -404,7 +340,7 @@ std::cout<<"load_keys_buf" << keys_buf.size()<<" pass "<<password.data()<<std::e
 
     GET_FIELD_FROM_JSON_RETURN_ON_ERROR(json, nettype, uint8_t, Uint, false, static_cast<uint8_t>(m_nettype));
     // The network type given in the program argument is inconsistent with the network type saved in the wallet
-    THROW_WALLET_EXCEPTION_IF(static_cast<uint8_t>(m_nettype) != field_nettype, error::wallet_internal_error,
+    throw_wallet_ex_if(static_cast<uint8_t>(m_nettype) != field_nettype, error::wallet_internal_error,
     (boost::format("%s wallet cannot be opened as %s wallet")
     % (field_nettype == 0 ? "Mainnet" : field_nettype == 1 ? "Testnet" : "Stagenet")
     % (m_nettype == MAINNET ? "mainnet" : m_nettype == TESTNET ? "testnet" : "stagenet")).str());
@@ -424,7 +360,7 @@ std::cout<<"load_keys_buf" << keys_buf.size()<<" pass "<<password.data()<<std::e
   }
   std::cout<<"load account keys"<<std::endl;
   r = epee::serialization::load_t_from_binary(m_account, account_data);
-  THROW_WALLET_EXCEPTION_IF(!r, error::invalid_password);
+  throw_wallet_ex_if(!r, error::invalid_password);
 
 
   if (r)
@@ -442,7 +378,7 @@ std::cout<<"load_keys_buf" << keys_buf.size()<<" pass "<<password.data()<<std::e
   hw::device &hwdev = m_account.get_device();
   r = r && hwdev.verify_keys(keys.m_view_secret_key,  keys.m_account_address.m_view_public_key);
     r = r && hwdev.verify_keys(keys.m_spend_secret_key, keys.m_account_address.m_spend_public_key);
-  THROW_WALLET_EXCEPTION_IF(!r, error::wallet_files_doesnt_correspond, m_keys_file, m_wallet_file);
+  throw_wallet_ex_if(!r, error::wallet_files_doesnt_correspond, m_keys_file, m_wallet_file);
 
   if (r)
     setup_keys(password);

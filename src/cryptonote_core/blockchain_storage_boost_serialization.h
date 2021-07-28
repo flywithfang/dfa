@@ -50,7 +50,7 @@ namespace boost
     {
       ar & ei.bl;
       ar & ei.height;
-      ar & ei.cumulative_difficulty;
+      ar & ei.cum_diff;
       ar & ei.block_cumulative_size;
       ar & ei.already_generated_coins;
     }

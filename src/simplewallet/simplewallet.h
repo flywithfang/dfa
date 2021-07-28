@@ -85,8 +85,6 @@ namespace cryptonote
     std::string get_command_usage(const std::vector<std::string> &args);
   private:
 
-    enum ResetType { ResetNone, ResetSoft, ResetHard };
-
     bool handle_command_line(const boost::program_options::variables_map& vm);
 
     bool run_console_handler();
@@ -135,7 +133,6 @@ namespace cryptonote
     bool set_persistent_rpc_client_id(const std::vector<std::string> &args = std::vector<std::string>());
     bool help(const std::vector<std::string> &args = std::vector<std::string>());
     bool apropos(const std::vector<std::string> &args);
-    bool scan_tx(const std::vector<std::string> &args);
     bool set_daemon(const std::vector<std::string> &args);
     bool save_bc(const std::vector<std::string> &args);
     bool refresh(const std::vector<std::string> &args);
@@ -168,7 +165,7 @@ namespace cryptonote
     bool check_spend_proof(const std::vector<std::string> &args);
     bool show_transfers(const std::vector<std::string> &args);
     bool rescan_blockchain(const std::vector<std::string> &args);
-    bool refresh_main(uint64_t start_height, ResetType reset, bool is_init = false);
+    bool refresh_main(uint64_t start_height,  bool is_init = false);
     bool status(const std::vector<std::string> &args);
     bool wallet_info(const std::vector<std::string> &args);
     bool show_transfer(const std::vector<std::string> &args);
@@ -203,7 +200,7 @@ namespace cryptonote
       uint64_t amount;
       crypto::hash hash;
       uint64_t fee;
-      std::pair<std::string, uint64_t> outputs;
+      std::string addr;
       std::string note;
       std::string unlocked;
     };

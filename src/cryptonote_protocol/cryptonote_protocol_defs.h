@@ -149,7 +149,8 @@ namespace cryptonote
         if (is_store)
         {
           txs.reserve(this_ref.txs.size());
-          for (const auto &e: this_ref.txs) txs.push_back(e.blob);
+          for (const auto &e: this_ref.txs) 
+            txs.push_back(e.blob);
         }
         epee::serialization::selector<is_store>::serialize(txs, stg, hparent_section, "txs");
         if (!is_store)
@@ -157,7 +158,8 @@ namespace cryptonote
           block_complete_entry &self = const_cast<block_complete_entry&>(this_ref);
           self.txs.clear();
           self.txs.reserve(txs.size());
-          for (auto &e: txs) self.txs.push_back({std::move(e), crypto::null_hash});
+          for (auto &e: txs) 
+            self.txs.push_back({std::move(e), crypto::null_hash});
         }
       }
     END_KV_SERIALIZE_MAP()
@@ -293,7 +295,7 @@ namespace cryptonote
   struct CORE_SYNC_DATA
   {
     uint64_t current_height;
-    uint64_t cumulative_difficulty;
+    uint64_t cum_diff;
     uint64_t cumulative_difficulty_top64;
     crypto::hash  top_id;
     uint8_t top_version;
@@ -301,7 +303,7 @@ namespace cryptonote
 
     BEGIN_KV_SERIALIZE_MAP()
       KV_SERIALIZE(current_height)
-      KV_SERIALIZE(cumulative_difficulty)
+      KV_SERIALIZE(cum_diff)
       if (is_store)
         KV_SERIALIZE(cumulative_difficulty_top64)
       else
@@ -337,7 +339,7 @@ namespace cryptonote
     {
       uint64_t start_height;
       uint64_t total_height;
-      uint64_t cumulative_difficulty;
+      uint64_t cum_diff;
       uint64_t cumulative_difficulty_top64;
       std::vector<crypto::hash> m_block_ids;
       std::vector<uint64_t> m_block_weights;
@@ -346,7 +348,7 @@ namespace cryptonote
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(start_height)
         KV_SERIALIZE(total_height)
-        KV_SERIALIZE(cumulative_difficulty)
+        KV_SERIALIZE(cum_diff)
         if (is_store)
           KV_SERIALIZE(cumulative_difficulty_top64)
         else

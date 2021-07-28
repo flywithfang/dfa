@@ -444,7 +444,7 @@ namespace cryptonote
     m_core.get_blockchain_top(hshd.current_height, hshd.top_id);
     hshd.top_version = m_core.get_ideal_hard_fork_version(hshd.current_height);
     difficulty_type wide_cumulative_difficulty = m_core.get_block_cumulative_difficulty(hshd.current_height);
-    hshd.cumulative_difficulty = (wide_cumulative_difficulty & 0xffffffffffffffff).convert_to<uint64_t>();
+    hshd.cum_diff = (wide_cumulative_difficulty & 0xffffffffffffffff).convert_to<uint64_t>();
     hshd.cumulative_difficulty_top64 = ((wide_cumulative_difficulty >> 64) & 0xffffffffffffffff).convert_to<uint64_t>();
     hshd.current_height +=1;
     hshd.pruning_seed = m_core.get_blockchain_pruning_seed();
@@ -1186,7 +1186,7 @@ namespace cryptonote
     const boost::posix_time::ptime now = boost::posix_time::microsec_clock::universal_time();
     uint64_t start_height = std::numeric_limits<uint64_t>::max();
     cryptonote::block b;
-    for(const block_complete_entry& block_entry: arg.blocks)
+    for(const auto & block_entry: arg.blocks)
     {
       if (m_stopping)
       {
@@ -1196,6 +1196,7 @@ namespace cryptonote
       crypto::hash block_hash;
       try{
       b = parse_and_validate_block_from_blob(block_entry.block);
+      block_hash = get_block_hash(b);
     }catch(const std::exception & ex)
       {
         LOG_ERROR_CCONTEXT("sent wrong block: failed to parse and validate block: "

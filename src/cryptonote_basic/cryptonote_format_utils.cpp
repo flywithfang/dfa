@@ -342,15 +342,9 @@ namespace cryptonote
   uint64_t get_transaction_weight(const transaction &tx, size_t blob_size)
   {
     CHECK_AND_ASSERT_MES(!tx.pruned, std::numeric_limits<uint64_t>::max(), "get_transaction_weight does not support pruned txes");
-    if (tx.version < 2)
-      return blob_size;
-    const rct::rctSig &rv = tx.rct_signatures;
-    if (!rct::is_rct_bulletproof(rv.type))
-      return blob_size;
-    const size_t n_padded_outputs = rct::n_bulletproof_max_amounts(rv.p.bulletproofs);
-    uint64_t bp_clawback = get_transaction_weight_clawback(tx, n_padded_outputs);
-    CHECK_AND_ASSERT_THROW_MES_L1(bp_clawback <= std::numeric_limits<uint64_t>::max() - blob_size, "Weight overflow");
-    return blob_size + bp_clawback;
+
+     return blob_size;
+
   }
   //---------------------------------------------------------------
   uint64_t get_pruned_transaction_weight(const transaction &tx)
@@ -366,35 +360,9 @@ namespace cryptonote
     std::ostringstream s;
     binary_archive<true> a(s);
     ::serialization::serialize(a, const_cast<transaction&>(tx));
-    uint64_t weight = s.str().size(), extra;
+    uint64_t weight = s.str().size();
 
-    // nbps (technically varint)
-    weight += 1;
-
-    // calculate deterministic bulletproofs size (assumes canonical BP format)
-    size_t nrl = 0, n_padded_outputs;
-    while ((n_padded_outputs = (1u << nrl)) < tx.vout.size())
-      ++nrl;
-    nrl += 6;
-    extra = 32 * (9 + 2 * nrl) + 2;
-    weight += extra;
-
-    // calculate deterministic CLSAG/MLSAG data size
-    const size_t ring_size = boost::get<cryptonote::txin_to_key>(tx.vin[0]).key_offsets.size();
-    if (tx.rct_signatures.type == rct::RCTTypeCLSAG)
-      extra = tx.vin.size() * (ring_size + 2) * 32;
-    else
-      extra = tx.vin.size() * (ring_size * (1 + 1) * 32 + 32 /* cc */);
-    weight += extra;
-
-    // calculate deterministic pseudoOuts size
-    extra =  32 * (tx.vin.size());
-    weight += extra;
-
-    // clawback
-    uint64_t bp_clawback = get_transaction_weight_clawback(tx, n_padded_outputs);
-    CHECK_AND_ASSERT_THROW_MES_L1(bp_clawback <= std::numeric_limits<uint64_t>::max() - weight, "Weight overflow");
-    weight += bp_clawback;
+   
 
     return weight;
   }
@@ -413,7 +381,7 @@ namespace cryptonote
       ::serialization::serialize(a, const_cast<transaction&>(tx));
       blob_size = s.str().size();
     }
-    return get_transaction_weight(tx, blob_size);
+    return blob_size;
   }
   //---------------------------------------------------------------
   bool get_tx_fee(const transaction& tx, uint64_t & fee)
@@ -1199,7 +1167,13 @@ public:
     ss << b_blob;
     binary_archive<false> ba(ss);
     bool r = ::serialization::serialize(ba, b);
-    CHECK_AND_ASSERT_THROW_MES(r, std::string("Failed to parse block from blob"));
+    if(!r)
+    {
+      std::ostringstream ost;
+      ost<<"Failed to parse block from blob ";
+      ost<<to_hex::string(to_byte_span(to_span(b_blob)));
+     throw std::runtime_error(ost.str());
+    }
     b.invalidate_hashes();
     b.miner_tx.invalidate_hashes();
     return b;

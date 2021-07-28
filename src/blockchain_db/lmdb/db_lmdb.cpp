@@ -611,31 +611,32 @@ bool BlockchainLMDB::need_resize(uint64_t threshold_size) const
   // needed at the beginning of the batch transaction and pass in the
   // additional size needed.
   uint64_t size_used = mst.ms_psize * mei.me_last_pgno;
-
-  MDEBUG("DB map size:     " << mei.me_mapsize);
-  MDEBUG("Space used:      " << size_used);
-  MDEBUG("Space remaining: " << mei.me_mapsize - size_used);
-  MDEBUG("Size threshold:  " << threshold_size);
   float resize_percent = RESIZE_PERCENT;
-  MDEBUG(boost::format("Percent used: %.04f  Percent threshold: %.04f") % (100.*size_used/mei.me_mapsize) % (100.*resize_percent));
+  bool need=false;
 
   if (threshold_size > 0)
   {
     if (mei.me_mapsize - size_used < threshold_size)
     {
       MINFO("Threshold met (size-based)");
-      return true;
+     need=true;
     }
-    else
-      return false;
   }
 
   if ((double)size_used / mei.me_mapsize  > resize_percent)
   {
     MINFO("Threshold met (percent-based)");
-    return true;
+    need=true;
   }
-  return false;
+  if(need){
+    MINFO("DB map size:     " << mei.me_mapsize/1024/1024<<" G");
+    MINFO("Space used:      " << size_used);
+    MINFO("Space remaining: " << mei.me_mapsize - size_used);
+    MINFO("Size threshold:  " << threshold_size);
+    MINFO(boost::format("Percent used: %.04f  Percent threshold: %.04f") % (100.*size_used/mei.me_mapsize) % (100.*resize_percent));
+
+  }
+  return need;
 #else
   return false;
 #endif
@@ -748,7 +749,7 @@ estim:
   return threshold_size;
 }
 
-void BlockchainLMDB::add_block(const block& blk, size_t block_weight, uint64_t long_term_block_weight, const difficulty_type& cumulative_difficulty, const uint64_t& coins_generated,uint64_t num_rct_outs, const crypto::hash& blk_hash)
+void BlockchainLMDB::add_block(const block& blk, size_t block_weight, uint64_t long_term_block_weight, const difficulty_type& cum_diff, const uint64_t& coins_generated,uint64_t num_rct_outs, const crypto::hash& blk_hash)
 {
   MVERBOSE("BlockchainLMDB::" << __func__);
   check_open();
@@ -795,8 +796,8 @@ void BlockchainLMDB::add_block(const block& blk, size_t block_weight, uint64_t l
   bi.bi_timestamp = blk.timestamp;
   bi.bi_coins = coins_generated;
   bi.bi_weight = block_weight;
-  bi.bi_diff_hi = ((cumulative_difficulty >> 64) & 0xffffffffffffffff).convert_to<uint64_t>();
-  bi.bi_diff_lo = (cumulative_difficulty & 0xffffffffffffffff).convert_to<uint64_t>();
+  bi.bi_diff_hi = ((cum_diff >> 64) & 0xffffffffffffffff).convert_to<uint64_t>();
+  bi.bi_diff_lo = (cum_diff & 0xffffffffffffffff).convert_to<uint64_t>();
   bi.bi_hash = blk_hash;
   bi.bi_cum_rct = num_rct_outs;
   if (m_height>0)
@@ -3103,13 +3104,14 @@ bool BlockchainLMDB::get_blocks_from(uint64_t start_height, size_t min_block_cou
 
     blocks.resize(blocks.size() + 1);
     auto &current_block = blocks.back();
-
-    current_block.first.first.assign(reinterpret_cast<char*>(v.mv_data), v.mv_size);
+    auto & blob_data =current_block.first.first;
+    blob_data.assign(reinterpret_cast<char*>(v.mv_data), v.mv_size);
     size += v.mv_size;
 
     const cryptonote::block b=parse_and_validate_block_from_blob(current_block.first.first);
 
-    current_block.first.second = get_miner_tx_hash ? cryptonote::get_transaction_hash(b.miner_tx) : crypto::null_hash;
+    const auto miner_tx_hash = get_miner_tx_hash ? cryptonote::get_transaction_hash(b.miner_tx) : crypto::null_hash;;
+    current_block.first.second = miner_tx_hash;
 
     // get the tx_id for the first tx (the first block's coinbase tx)
     if (h == start_height)
@@ -3140,8 +3142,8 @@ bool BlockchainLMDB::get_blocks_from(uint64_t start_height, size_t min_block_cou
     }
 
     op = MDB_NEXT;
-
-    current_block.second.reserve(b.tx_hashes.size());
+    auto & txes = current_block.second;
+    txes.reserve(b.tx_hashes.size());
     num_txes += b.tx_hashes.size() + (skip_coinbase ? 0 : 1);
     for (const auto &tx_hash: b.tx_hashes)
     {
@@ -3159,8 +3161,8 @@ bool BlockchainLMDB::get_blocks_from(uint64_t start_height, size_t min_block_cou
           throw0(DB_ERROR(lmdb_error("Error attempting to retrieve transaction data from the db: ", result).c_str()));
         tx_blob.append(reinterpret_cast<const char*>(v.mv_data), v.mv_size);
       }
-      current_block.second.push_back(std::make_pair(tx_hash, std::move(tx_blob)));
-      size += current_block.second.back().second.size();
+      txes.push_back(std::make_pair(tx_hash, std::move(tx_blob)));
+      size += txes.back().second.size();
     }
 
     if (blocks.size() >= min_block_count && num_txes >= max_tx_count)
@@ -4054,7 +4056,7 @@ void BlockchainLMDB::block_rtxn_abort() const
   memset(&m_tinfo->m_ti_rflags, 0, sizeof(m_tinfo->m_ti_rflags));
 }
 
-uint64_t BlockchainLMDB::add_block(const std::pair<block, blobdata>& blk, size_t block_weight, uint64_t long_term_block_weight, const difficulty_type& cumulative_difficulty, const uint64_t& coins_generated,
+uint64_t BlockchainLMDB::add_block(const std::pair<block, blobdata>& blk, size_t block_weight, uint64_t long_term_block_weight, const difficulty_type& cum_diff, const uint64_t& coins_generated,
     const std::vector<std::pair<transaction, blobdata>>& txs)
 {
   MVERBOSE("BlockchainLMDB::" << __func__);
@@ -4073,7 +4075,7 @@ uint64_t BlockchainLMDB::add_block(const std::pair<block, blobdata>& blk, size_t
 
   try
   {
-    BlockchainDB::add_block(blk, block_weight, long_term_block_weight, cumulative_difficulty, coins_generated, txs);
+    BlockchainDB::add_block(blk, block_weight, long_term_block_weight, cum_diff, coins_generated, txs);
   }
   catch (const DB_ERROR_TXN_START& e)
   {

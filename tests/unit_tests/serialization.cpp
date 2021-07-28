@@ -648,9 +648,9 @@ TEST(Serialization, portability_wallet)
     std::vector<transfer_details>                                   m_transfers_in               // TODO
     cryptonote::account_public_address                              m_account_public_address
     std::unordered_map<crypto::key_image, size_t>                   m_key_images
-    std::unordered_map<crypto::hash, unconfirmed_transfer_out>  m_unconfirmed_txs
+    std::unordered_map<crypto::hash, unconfirmed_transfer_out>  m_pool_transfer_outs
     std::unordered_map<crypto::hash, crypto::secret_key>            m_tx_secs
-    std::unordered_map<crypto::hash, confirmed_transfer_out>    m_confirmed_txs
+    std::unordered_map<crypto::hash, confirmed_transfer_out>    m_confirmed_transfer_outs
     std::unordered_map<crypto::public_key, size_t>                  m_otks
   */
   // blockchain
@@ -673,7 +673,7 @@ TEST(Serialization, portability_wallet)
     ASSERT_EQ_MAP(2, w.m_key_images, ki[2]);
   }
   // unconfirmed txs
-  ASSERT_TRUE(w.m_unconfirmed_txs.size() == 0);
+  ASSERT_TRUE(w.m_pool_transfer_outs.size() == 0);
 
   // tx keys
   ASSERT_TRUE(w.m_tx_secs.size() == 2);
@@ -693,7 +693,7 @@ TEST(Serialization, portability_wallet)
     }
   }
   // confirmed txs
-  ASSERT_TRUE(w.m_confirmed_txs.size() == 1);
+  ASSERT_TRUE(w.m_confirmed_transfer_outs.size() == 1);
 
   // unconfirmed payments
   ASSERT_TRUE(w.m_pool_transfers_in.size() == 0);

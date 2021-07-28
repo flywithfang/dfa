@@ -117,7 +117,7 @@ std::vector<std::vector<tools::wallet2::get_outs_entry>>  wallet2::get_outs( con
     // check whether we're shortly after the fork
     uint64_t height;
     boost::optional<std::string> result = m_node_rpc_proxy.get_height(height);
-    THROW_WALLET_EXCEPTION_IF(result, error::wallet_internal_error, "Failed to get height");
+    throw_wallet_ex_if(result, error::wallet_internal_error, "Failed to get height");
 
     // if we have at least one rct out, get the distribution, or fall back to the previous system
     uint64_t rct_start_height;
@@ -131,9 +131,9 @@ std::vector<std::vector<tools::wallet2::get_outs_entry>>  wallet2::get_outs( con
 
     {
       // check we're clear enough of rct start, to avoid corner cases below
-      THROW_WALLET_EXCEPTION_IF(rct_offsets.size() <= CRYPTONOTE_DEFAULT_TX_SPENDABLE_AGE,
+      throw_wallet_ex_if(rct_offsets.size() <= CRYPTONOTE_DEFAULT_TX_SPENDABLE_AGE,
           error::get_output_distribution, "Not enough rct outputs");
-      THROW_WALLET_EXCEPTION_IF(rct_offsets.back() <= max_rct_index,
+      throw_wallet_ex_if(rct_offsets.back() <= max_rct_index,
           error::get_output_distribution, "Daemon reports suspicious number of rct outputs");
     }
 
@@ -168,7 +168,7 @@ std::vector<std::vector<tools::wallet2::get_outs_entry>>  wallet2::get_outs( con
         // the base offset of the first rct output in the first unlocked block (or the one to be if there's none)
         num_outs = rct_offsets[rct_offsets.size() - CRYPTONOTE_DEFAULT_TX_SPENDABLE_AGE];
         MINFO("" << num_outs << " unlocked rct outputs");
-        THROW_WALLET_EXCEPTION_IF(num_outs == 0, error::wallet_internal_error,
+        throw_wallet_ex_if(num_outs == 0, error::wallet_internal_error,
             "histogram reports no unlocked rct outputs, not even ours");
       }
 
@@ -196,7 +196,7 @@ std::vector<std::vector<tools::wallet2::get_outs_entry>>  wallet2::get_outs( con
         {
           num_found = 1;
           seen_indices.emplace(td.m_global_output_index);
-          req.outputs.push_back({0, td.m_global_output_index});
+          req.outputs.push_back({ td.m_global_output_index});
           MINFO("Selecting real output: " << td.m_global_output_index );
         }
 
@@ -230,7 +230,7 @@ std::vector<std::vector<tools::wallet2::get_outs_entry>>  wallet2::get_outs( con
           uint64_t i;
           const char *type = "";
           {
-            THROW_WALLET_EXCEPTION_IF(!gamma, error::wallet_internal_error, "No gamma picker");
+            throw_wallet_ex_if(!gamma, error::wallet_internal_error, "No gamma picker");
             // gamma distribution
             {
               do i = gamma->pick(); while (i >= num_outs);
@@ -277,7 +277,7 @@ std::vector<std::vector<tools::wallet2::get_outs_entry>>  wallet2::get_outs( con
 
       bool r = epee::net_utils::invoke_http_bin("/get_outs.bin", req, daemon_resp, *m_http_client, rpc_timeout);
       THROW_ON_RPC_RESPONSE_ERROR(r, {}, daemon_resp, "get_outs.bin", error::get_outs_error, get_rpc_status(daemon_resp.status));
-      THROW_WALLET_EXCEPTION_IF(daemon_resp.outs.size() != req.outputs.size(), error::wallet_internal_error,
+      throw_wallet_ex_if(daemon_resp.outs.size() != req.outputs.size(), error::wallet_internal_error,
         "daemon returned wrong response for get_outs.bin, wrong amounts count = " +
         std::to_string(daemon_resp.outs.size()) + ", expected " +  std::to_string(req.outputs.size()));
     }
@@ -310,7 +310,7 @@ std::vector<std::vector<tools::wallet2::get_outs_entry>>  wallet2::get_outs( con
             if (daemon_resp.outs[i].commitment == commitment)
               real_out_found = true;
       }
-      THROW_WALLET_EXCEPTION_IF(!real_out_found, error::wallet_internal_error,
+      throw_wallet_ex_if(!real_out_found, error::wallet_internal_error,
           "Daemon response did not include the requested real output");
 
       // pick real out first (it will be sorted when done)
@@ -347,7 +347,7 @@ std::vector<std::vector<tools::wallet2::get_outs_entry>>  wallet2::get_outs( con
       }
       base += requested_outputs_count;
     }
-    THROW_WALLET_EXCEPTION_IF(!scanty_outs.empty(), error::not_enough_outs_to_mix, scanty_outs, fake_outputs_count);
+    throw_wallet_ex_if(!scanty_outs.empty(), error::not_enough_outs_to_mix, scanty_outs, fake_outputs_count);
   }
   else
   {

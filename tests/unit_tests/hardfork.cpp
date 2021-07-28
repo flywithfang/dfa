@@ -50,7 +50,7 @@ public:
   virtual void add_block( const block& blk
                         , size_t block_weight
                         , uint64_t long_term_block_weight
-                        , const difficulty_type& cumulative_difficulty
+                        , const difficulty_type& cum_diff
                         , const uint64_t& coins_generated
                         , uint64_t num_rct_outs
                         , const crypto::hash& blk_hash

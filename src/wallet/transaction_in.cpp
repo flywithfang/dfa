@@ -82,10 +82,10 @@ wallet2::pending_tx wallet2::transfer_selected_rct(const cryptonote::tx_destinat
   // calculate total amount being sent to all destinations
   // throw if total amount overflows uint64_t
   {
-    THROW_WALLET_EXCEPTION_IF(0 == dt.amount, error::zero_amount);
+    throw_wallet_ex_if(0 == dt.amount, error::zero_amount);
     needed_money += dt.amount;
     MINFO("transfer: adding " << print_money(dt.amount) << ", for a total of " << print_money (needed_money));
-    THROW_WALLET_EXCEPTION_IF(needed_money < dt.amount, error::tx_sum_overflow, dt, fee, m_nettype);
+    throw_wallet_ex_if(needed_money < dt.amount, error::tx_sum_overflow, dt, fee, m_nettype);
   }
 
   uint64_t found_money = 0;
@@ -95,7 +95,7 @@ wallet2::pending_tx wallet2::transfer_selected_rct(const cryptonote::tx_destinat
   }
 
   MINFO("wanted " << print_money(needed_money) << ", found " << print_money(found_money) << ", fee " << print_money(fee));
-  THROW_WALLET_EXCEPTION_IF(found_money < needed_money, error::not_enough_unlocked_money, found_money, needed_money - fee, fee);
+  throw_wallet_ex_if(found_money < needed_money, error::not_enough_unlocked_money, found_money, needed_money - fee, fee);
 
   if (outs.empty())
      get_outs(outs, selected_transfers, fake_outputs_count); // may throw
@@ -112,8 +112,8 @@ wallet2::pending_tx wallet2::transfer_selected_rct(const cryptonote::tx_destinat
     in.amount = td.amount();
     //paste mixin transaction
 
-    THROW_WALLET_EXCEPTION_IF(outs.size() < dst_index + 1 ,  error::wallet_internal_error, "outs.size() < dst_index + 1"); 
-    THROW_WALLET_EXCEPTION_IF(outs[dst_index].size() < fake_outputs_count ,  error::wallet_internal_error, "fake_outputs_count > random outputs found");
+    throw_wallet_ex_if(outs.size() < dst_index + 1 ,  error::wallet_internal_error, "outs.size() < dst_index + 1"); 
+    throw_wallet_ex_if(outs[dst_index].size() < fake_outputs_count ,  error::wallet_internal_error, "fake_outputs_count > random outputs found");
       
     typedef cryptonote::tx_source_entry::output_entry tx_output_entry;
     for (size_t i = 0; i < fake_outputs_count + 1; ++i)
@@ -132,7 +132,7 @@ wallet2::pending_tx wallet2::transfer_selected_rct(const cryptonote::tx_destinat
     {
       return a.first == td.m_global_output_index;
     });
-    THROW_WALLET_EXCEPTION_IF(it_real == in.decoys.end(), error::wallet_internal_error,"real output not found");
+    throw_wallet_ex_if(it_real == in.decoys.end(), error::wallet_internal_error,"real output not found");
 
     in.real_out_tx_key = get_tx_pub_key_from_extra(td.m_tx);
     in.real_output = it_real - in.decoys.begin();
@@ -159,7 +159,7 @@ wallet2::pending_tx wallet2::transfer_selected_rct(const cryptonote::tx_destinat
   auto sources_copy = sources;
   bool r = cryptonote::construct_tx_and_get_tx_key(m_account.get_keys(),  sources, splitted_dsts, change_dts.addr, extra, tx, unlock_time, tx_sec);
   MINFO("constructed tx, r="<<r);
-  THROW_WALLET_EXCEPTION_IF(!r, error::tx_not_constructed, sources, dt, unlock_time, m_nettype);
+  throw_wallet_ex_if(!r, error::tx_not_constructed, sources, dt, unlock_time, m_nettype);
 
   // work out the permutation done on sources
   std::vector<size_t> ins_order;
@@ -169,13 +169,13 @@ wallet2::pending_tx wallet2::transfer_selected_rct(const cryptonote::tx_destinat
     for (size_t j = 0; j < sources_copy.size(); ++j)
     {
         const auto & old=sources_copy[j];
-      THROW_WALLET_EXCEPTION_IF((size_t)old.real_output >= old.decoys.size(),error::wallet_internal_error, "Invalid real_output");
+      throw_wallet_ex_if((size_t)old.real_output >= old.decoys.size(),error::wallet_internal_error, "Invalid real_output");
     
       if (old.decoys[old.real_output].second.otk == ne.decoys[ne.real_output].second.otk)
         ins_order.push_back(j);
     }
   }
-  THROW_WALLET_EXCEPTION_IF(ins_order.size() != sources.size(), error::wallet_internal_error, "Failed to work out sources permutation");
+  throw_wallet_ex_if(ins_order.size() != sources.size(), error::wallet_internal_error, "Failed to work out sources permutation");
 
   MINFO("gathering key images");
   std::string key_images;
@@ -185,7 +185,7 @@ wallet2::pending_tx wallet2::transfer_selected_rct(const cryptonote::tx_destinat
     key_images += boost::to_string(in.k_image) + " ";
     return true;
   });
-  THROW_WALLET_EXCEPTION_IF(!all_are_txin_to_key, error::unexpected_txin_type, tx);
+  throw_wallet_ex_if(!all_are_txin_to_key, error::unexpected_txin_type, tx);
   MINFO("gathered key images " + std::to_string(tx.vin.size()));
 
   ptx.key_images = key_images;

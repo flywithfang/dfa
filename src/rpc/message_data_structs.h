@@ -186,7 +186,7 @@ namespace rpc
     std::string nettype;
     crypto::hash top_block_hash;
     cryptonote::difficulty_type wide_cumulative_difficulty;
-    uint64_t cumulative_difficulty;
+    uint64_t cum_diff;
     uint64_t block_size_limit;
     uint64_t block_weight_limit;
     uint64_t block_size_median;

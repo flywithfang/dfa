@@ -395,7 +395,7 @@ namespace cryptonote
     res.stagenet = net_type == STAGENET;
     res.nettype = net_type == MAINNET ? "mainnet" : net_type == TESTNET ? "testnet" : net_type == STAGENET ? "stagenet" : "fakechain";
     store_difficulty(m_core.get_blockchain_storage().get_db().get_block_cumulative_difficulty(res.height - 1),
-        res.cumulative_difficulty, res.wide_cumulative_difficulty, res.cumulative_difficulty_top64);
+        res.cum_diff, res.wide_cumulative_difficulty, res.cumulative_difficulty_top64);
     res.block_size_limit = res.block_weight_limit = m_core.get_blockchain_storage().get_current_cumulative_block_weight_limit();
     res.block_size_median = res.block_weight_median = m_core.get_blockchain_storage().get_current_cumulative_block_weight_median();
     res.adjusted_time = m_core.get_blockchain_storage().get_adjusted_time(res.height);
@@ -464,13 +464,11 @@ namespace cryptonote
     // quick check for noop
     if (!req.block_ids.empty())
     {
-      uint64_t last_block_height;
-      crypto::hash last_block_hash;
-      m_core.get_blockchain_top(last_block_height, last_block_hash);
-      if (last_block_hash == req.block_ids.front())
+      const auto [height,top_hash]=m_core.get_blockchain_top(last_block_height, last_block_hash);
+      if (top_hash == req.block_ids.front())
       {
         res.start_height = 0;
-        res.current_height = m_core.get_current_blockchain_height();
+        res.current_height = height;
         res.status = CORE_RPC_STATUS_OK;
         return true;
       }
@@ -480,7 +478,7 @@ namespace cryptonote
 
 
     std::vector<std::pair<std::pair<cryptonote::blobdata, crypto::hash>, std::vector<std::pair<crypto::hash, cryptonote::blobdata> > > > bs;
-    if(!m_core.find_blockchain_supplement(req.start_height, req.block_ids, bs, res.current_height, res.start_height, req.prune, !req.no_miner_tx, max_blocks, COMMAND_RPC_GET_BLOCKS_FAST_MAX_TX_COUNT))
+    if(!m_core.find_blockchain_supplement(req.start_height, req.block_ids, bs, res.current_height, res.start_height, req.prune, true, max_blocks, COMMAND_RPC_GET_BLOCKS_FAST_MAX_TX_COUNT))
     {
       res.status = "Failed";
       add_host_fail(ctx);
@@ -500,10 +498,9 @@ namespace cryptonote
       res.output_indices.push_back(COMMAND_RPC_GET_BLOCKS_FAST::block_output_indices());
       ntxes += bd.second.size();
       res.output_indices.back().indices.reserve(1 + bd.second.size());
-      if (req.no_miner_tx)
-        res.output_indices.back().indices.push_back(COMMAND_RPC_GET_BLOCKS_FAST::tx_output_indices());
+      
       res.blocks.back().txs.reserve(bd.second.size());
-      for (std::vector<std::pair<crypto::hash, cryptonote::blobdata>>::iterator i = bd.second.begin(); i != bd.second.end(); ++i)
+      for (auto i = bd.second.begin(); i != bd.second.end(); ++i)
       {
         res.blocks.back().txs.push_back({std::move(i->second), crypto::null_hash});
         i->second.clear();
@@ -511,17 +508,17 @@ namespace cryptonote
         size += res.blocks.back().txs.back().blob.size();
       }
 
-      const size_t n_txes_to_lookup = bd.second.size() + (req.no_miner_tx ? 0 : 1);
+      const size_t n_txes_to_lookup = bd.second.size() + 1;
       if (n_txes_to_lookup > 0)
       {
         std::vector<std::vector<uint64_t>> indices;
-        bool r = m_core.get_tx_outputs_gindexs(req.no_miner_tx ? bd.second.front().first : bd.first.second, n_txes_to_lookup, indices);
+        bool r = m_core.get_tx_outputs_gindexs(bd.first.second, n_txes_to_lookup, indices);
         if (!r)
         {
           res.status = "Failed";
           return true;
         }
-        if (indices.size() != n_txes_to_lookup || res.output_indices.back().indices.size() != (req.no_miner_tx ? 1 : 0))
+        if (indices.size() != n_txes_to_lookup || res.output_indices.back().indices.size() != 0)
         {
           res.status = "Failed";
           return true;
@@ -962,9 +959,6 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
   bool core_rpc_server::on_is_key_image_spent(const COMMAND_RPC_IS_KEY_IMAGE_SPENT::request& req, COMMAND_RPC_IS_KEY_IMAGE_SPENT::response& res, const connection_context *ctx)
   {
     RPC_TRACKER(is_key_image_spent);
-    bool ok;
-    if (use_bootstrap_daemon_if_necessary<COMMAND_RPC_IS_KEY_IMAGE_SPENT>(invoke_http_mode::JON, "/is_key_image_spent", req, res, ok))
-      return ok;
 
     const bool restricted = m_restricted && ctx;
     const bool request_has_rpc_origin = ctx != NULL;
@@ -1653,7 +1647,7 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
     store_difficulty(m_core.get_blockchain_storage().block_difficulty(height),
         response.difficulty, response.wide_difficulty, response.difficulty_top64);
     store_difficulty(m_core.get_blockchain_storage().get_db().get_block_cumulative_difficulty(height),
-        response.cumulative_difficulty, response.wide_cumulative_difficulty, response.cumulative_difficulty_top64);
+        response.cum_diff, response.wide_cumulative_difficulty, response.cumulative_difficulty_top64);
     response.reward = get_block_reward(blk);
     response.block_size = response.block_weight = m_core.get_blockchain_storage().get_db().get_block_weight(height);
     response.num_txes = blk.tx_hashes.size();
@@ -2305,7 +2299,7 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
       std::vector<std::pair<Blockchain::block_extended_info, std::vector<crypto::hash>>> chains = m_core.get_blockchain_storage().get_alternative_chains();
       for (const auto &i: chains)
       {
-        difficulty_type wdiff = i.first.cumulative_difficulty;
+        difficulty_type wdiff = i.first.cum_diff;
         res.chains.push_back(COMMAND_RPC_GET_ALTERNATE_CHAINS::chain_info{epee::string_tools::pod_to_hex(get_block_hash(i.first.bl)), i.first.height, i.second.size(), 0, "", 0, {}, std::string()});
         store_difficulty(wdiff, res.chains.back().difficulty, res.chains.back().wide_difficulty, res.chains.back().difficulty_top64);
         res.chains.back().block_hashes.reserve(i.second.size());

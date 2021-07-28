@@ -94,7 +94,7 @@ namespace cryptonote
        return {false,tx};
     }
 
-    MINFO("construct_miner_tx: reward " << print_money(block_reward) <<", fee " << fee << ",height "<<height<<",coins"<<already_generated_coins);
+    MDEBUG("construct_miner_tx: reward " << print_money(block_reward) <<", fee " << fee << ",height "<<height<<",coins"<<already_generated_coins);
     block_reward += fee;
 
     {
@@ -113,7 +113,6 @@ namespace cryptonote
 
       tx_out out{block_reward,tk};
       tx.vout.push_back(out);
-      MINFO("txkey "<<txkey.pub<<",output amount "<<print_money(out.amount)<<" one_time_dest "<<tk.key);
     }
 
     tx.invalidate_hashes();

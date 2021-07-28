@@ -256,7 +256,7 @@
     static constexpr unsigned int max_blocks_checked = 150;
 
     const time_t now = time(NULL);
-    const std::vector<time_t> timestamps = m_blockchain_storage.get_last_block_timestamps(max_blocks_checked);
+    const std::vector<time_t> timestamps = m_blockchain.get_last_block_timestamps(max_blocks_checked);
 
     static const unsigned int seconds[] = { 5400, 3600, 1800, 1200, 600 };
     for (size_t n = 0; n < sizeof(seconds)/sizeof(seconds[0]); ++n)
@@ -301,5 +301,5 @@
    //-----------------------------------------------------------------------------------------------
   bool core::update_blockchain_pruning()
   {
-    return m_blockchain_storage.update_blockchain_pruning();
+    return m_blockchain.update_blockchain_pruning();
   }

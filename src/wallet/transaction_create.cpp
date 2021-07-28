@@ -146,7 +146,7 @@ std::vector<wallet2::pending_tx> wallet2::transfer(cryptonote::tx_destination_en
   
   //ensure device is let in NONE mode in any case
   hw::device &hwdev = m_account.get_device();
-    THROW_WALLET_EXCEPTION_IF(0 == dt.amount, error::zero_amount);
+    throw_wallet_ex_if(0 == dt.amount, error::zero_amount);
   // early out if we know we can't make it anyway
   // we could also check for being within FEE_PER_KB, but if the fee calculation
   // ever changes, this might be missed, so let this go through
@@ -165,7 +165,7 @@ std::vector<wallet2::pending_tx> wallet2::transfer(cryptonote::tx_destination_en
 
   const auto total_need= dt.amount+fee;
   // first check overall balance is enough, then unlocked one, so we throw distinct exceptions
-  THROW_WALLET_EXCEPTION_IF(dt.amount > unlocked_balance, error::not_enough_unlocked_money,unlocked_balance, dt.amount, 0);
+  throw_wallet_ex_if(dt.amount > unlocked_balance, error::not_enough_unlocked_money,unlocked_balance, dt.amount, 0);
 
   MINFO("Starting with " << unused.size() );
 
@@ -240,7 +240,7 @@ std::vector<wallet2::pending_tx> wallet2::__sweep(const cryptonote::account_publ
 
 std::vector<wallet2::pending_tx> wallet2::sweep_transfers(uint64_t below, const cryptonote::account_public_address &address,   const size_t fake_outs_count, const uint64_t unlock_time, const std::vector<uint8_t>& extra)
 {
-  THROW_WALLET_EXCEPTION_IF(unlocked_balance() == 0, error::wallet_internal_error, "No unlocked balance in the specified account");
+  throw_wallet_ex_if(unlocked_balance() == 0, error::wallet_internal_error, "No unlocked balance in the specified account");
 
   std::vector<size_t> selected;
 
@@ -257,7 +257,7 @@ std::vector<wallet2::pending_tx> wallet2::sweep_transfers(uint64_t below, const 
       }
     }
   }
-  THROW_WALLET_EXCEPTION_IF(selected.empty(), error::wallet_internal_error, "The smallest amount found is not below the specified threshold");
+  throw_wallet_ex_if(selected.empty(), error::wallet_internal_error, "The smallest amount found is not below the specified threshold");
 
   return __sweep(address,selected,unlock_time,extra,fake_outs_count);
  
@@ -286,21 +286,16 @@ void wallet2::commit_tx(pending_tx& ptx)
     // sanity checks
     for (size_t idx: ptx.selected_transfers)
     {
-      THROW_WALLET_EXCEPTION_IF(idx >= m_transfers_in.size(), error::wallet_internal_error,
+      throw_wallet_ex_if(idx >= m_transfers_in.size(), error::wallet_internal_error,
           "Bad output index in selected transfers: " + boost::lexical_cast<std::string>(idx));
     }
   }
   crypto::hash txid= get_transaction_hash(ptx.tx);
-  cryptonote::tx_destination_entry dst=ptx.dst;
-  uint64_t amount_in = 0;
-  for(size_t idx: ptx.selected_transfers)
-    amount_in += m_transfers_in[idx].amount();
 
-  add_unconfirmed_tx(ptx.tx, amount_in, dst,  ptx.change_dts.amount);
-  if ( ptx.tx_sec != crypto::null_skey)
-  {
-    m_tx_secs[txid] = ptx.tx_sec;
-  }
+  add_pool_transfer_out(ptx);
+  throw_w_ex_if(ptx.tx_sec==null_skey, "bad tx sec");
+  
+  m_tx_secs[txid] = ptx.tx_sec;
 
   MINFO("transaction " << txid << " generated ok and sent to daemon, key_images: [" << ptx.key_images << "]");
 
@@ -331,7 +326,7 @@ bool wallet2::sanity_check(const std::vector<wallet2::pending_tx> &ptx_vector, s
 {
   MDEBUG("sanity_check: " << ptx_vector.size() << " txes, " << dsts.size() << " destinations");
 
-  THROW_WALLET_EXCEPTION_IF(ptx_vector.empty(), error::wallet_internal_error, "No transactions");
+  throw_wallet_ex_if(ptx_vector.empty(), error::wallet_internal_error, "No transactions");
 
   // check every party in there does receive at least the required amount
   std::unordered_map<account_public_address, std::pair<uint64_t, bool>> required;
@@ -358,7 +353,7 @@ bool wallet2::sanity_check(const std::vector<wallet2::pending_tx> &ptx_vector, s
   {
     if (ptx.change_dts.amount == 0)
       continue;
-    THROW_WALLET_EXCEPTION_IF(ptx.change_dts.addr.m_spend_public_key != m_account.get_spend_public_key(),
+    throw_wallet_ex_if(ptx.change_dts.addr.m_spend_public_key != m_account.get_spend_public_key(),
          error::wallet_internal_error, "Change address is not ours");
     required[ptx.change_dts.addr].first += ptx.change_dts.amount;
     required[ptx.change_dts.addr].second = false;
@@ -385,7 +380,7 @@ bool wallet2::sanity_check(const std::vector<wallet2::pending_tx> &ptx_vector, s
     ss << "Total received by " << cryptonote::get_account_address_as_str(m_nettype,  address) << ": "
         << cryptonote::print_money(total_received) << ", expected " << cryptonote::print_money(r.second.first);
     MDEBUG(ss.str());
-    THROW_WALLET_EXCEPTION_IF(total_received < r.second.first, error::wallet_internal_error, ss.str());
+    throw_wallet_ex_if(total_received < r.second.first, error::wallet_internal_error, ss.str());
   }
 
   return true;

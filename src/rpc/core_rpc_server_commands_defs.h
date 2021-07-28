@@ -167,13 +167,11 @@ namespace cryptonote
       std::list<crypto::hash> block_ids; //*first 10 blocks id goes sequential, next goes in pow(2,n) offset, like 2, 4, 8, 16, 32, 64 and so on, and the last one is always genesis block */
       uint64_t    start_height;
       bool        prune;
-      bool        no_miner_tx;
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE_PARENT(rpc_access_request_base)
         KV_SERIALIZE_CONTAINER_POD_AS_BLOB(block_ids)
         KV_SERIALIZE(start_height)
         KV_SERIALIZE(prune)
-        KV_SERIALIZE_OPT(no_miner_tx, false)
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<request_t> request;
@@ -639,7 +637,7 @@ namespace cryptonote
       bool stagenet;
       std::string nettype;
       std::string top_block_hash;
-      uint64_t cumulative_difficulty;
+      uint64_t cum_diff;
       std::string wide_cumulative_difficulty;
       uint64_t cumulative_difficulty_top64;
       uint64_t block_size_limit;
@@ -680,7 +678,7 @@ namespace cryptonote
         KV_SERIALIZE(stagenet)
         KV_SERIALIZE(nettype)
         KV_SERIALIZE(top_block_hash)
-        KV_SERIALIZE(cumulative_difficulty)
+        KV_SERIALIZE(cum_diff)
         KV_SERIALIZE(wide_cumulative_difficulty)
         KV_SERIALIZE(cumulative_difficulty_top64)
         KV_SERIALIZE(block_size_limit)
@@ -912,7 +910,7 @@ namespace cryptonote
       uint64_t difficulty;
       std::string wide_difficulty;
       uint64_t difficulty_top64;
-      uint64_t cumulative_difficulty;
+      uint64_t cum_diff;
       std::string wide_cumulative_difficulty;
       uint64_t cumulative_difficulty_top64;
       uint64_t reward;
@@ -936,7 +934,7 @@ namespace cryptonote
         KV_SERIALIZE(difficulty)
         KV_SERIALIZE(wide_difficulty)
         KV_SERIALIZE(difficulty_top64)
-        KV_SERIALIZE(cumulative_difficulty)
+        KV_SERIALIZE(cum_diff)
         KV_SERIALIZE(wide_cumulative_difficulty)
         KV_SERIALIZE(cumulative_difficulty_top64)
         KV_SERIALIZE(reward)

@@ -52,7 +52,7 @@ static int test_wide_difficulty(const char *filename)
     data.exceptions(fstream::badbit);
     data.clear(data.rdstate());
     uint64_t timestamp;
-    cryptonote::difficulty_type difficulty, cumulative_difficulty = 0;
+    cryptonote::difficulty_type difficulty, cum_diff = 0;
     size_t n = 0;
     while (data >> timestamp >> difficulty) {
         size_t begin, end;
@@ -73,7 +73,7 @@ static int test_wide_difficulty(const char *filename)
             return 1;
         }
         timestamps.push_back(timestamp);
-        cumulative_difficulties.push_back(cumulative_difficulty += difficulty);
+        cumulative_difficulties.push_back(cum_diff += difficulty);
         ++n;
     }
     if (!data.eof()) {

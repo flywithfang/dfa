@@ -433,7 +433,8 @@ namespace cryptonote
 
       if(cryptonote::check_hash(h, local_diff))
       {
-        const block b=cryptonote::parse_and_validate_block_from_blob(bd);
+        auto b = m_template;
+        b.nonce = *pnonce;
         //we lucky!
         MGINFO_GREEN("Found block " << get_block_hash(b) << " at height " << height << " diff: " << local_diff<<",small hash="<<h<<",nonce="<<*pnonce);
         cryptonote::block_verification_context bvc;

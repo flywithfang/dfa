@@ -73,11 +73,11 @@ namespace tools
 //----------------------------------------------------------------------------------------------------
 void wallet2::update_pool_state( bool refreshed)
 {
-  MTRACE("update_pool_state start");
+  MDEBUG("update_pool_state start");
 
   auto keys_reencryptor = epee::misc_utils::create_scope_leave_handler([&, this]() {
     if (m_encrypt_keys_after_refresh)
-    {
+    { 
       encrypt_keys(*m_encrypt_keys_after_refresh);
       m_encrypt_keys_after_refresh = boost::none;
     }
@@ -92,14 +92,14 @@ void wallet2::update_pool_state( bool refreshed)
     bool r = epee::net_utils::invoke_http_json("/get_transaction_pool_hashes.bin", req, res, *m_http_client, rpc_timeout);
     THROW_ON_RPC_RESPONSE_ERROR(r, {}, res, "get_transaction_pool_hashes.bin", error::get_tx_pool_error);
   }
-  MTRACE("update_pool_state got pool");
+  MDEBUG("update_pool_state got pool");
 
   // remove any pending tx that's not in the pool
   // TODO: set tx_propagation_timeout to CRYPTONOTE_DANDELIONPP_EMBARGO_AVERAGE * 3 / 2 after v15 hardfork
   constexpr const std::chrono::seconds tx_propagation_timeout{500};
   const auto now = std::chrono::system_clock::now();
-  auto it = m_unconfirmed_txs.begin();
-  while (it != m_unconfirmed_txs.end())
+  auto it = m_pool_transfer_outs.begin();
+  while (it != m_pool_transfer_outs.end())
   {
     const crypto::hash &txid = it->first;
     bool found = false;
@@ -154,7 +154,7 @@ void wallet2::update_pool_state( bool refreshed)
       }
     }
   }
-  MTRACE("update_pool_state done first loop");
+  MDEBUG("update_pool_state done first loop");
 
   // remove pool txes to us that aren't in the pool anymore
   // but only if we just refreshed, so that the tx can go in
@@ -163,7 +163,7 @@ void wallet2::update_pool_state( bool refreshed)
   if (refreshed)
     remove_obsolete_pool_transfer_in(res.tx_hashes);
 
-  MTRACE("update_pool_state end");
+  MDEBUG("update_pool_state end");
 }
 
 
@@ -204,7 +204,7 @@ void wallet2::get_unconfirmed_transfer_in(std::list<std::pair<crypto::hash,walle
 //----------------------------------------------------------------------------------------------------
 void wallet2::get_payments_out(std::list<std::pair<crypto::hash,wallet2::confirmed_transfer_out>>& confirmed_payments,uint64_t min_height, uint64_t max_height) const
 {
-  for (auto i = m_confirmed_txs.begin(); i != m_confirmed_txs.end(); ++i) {
+  for (auto i = m_confirmed_transfer_outs.begin(); i != m_confirmed_transfer_outs.end(); ++i) {
     if (i->second.m_block_height <= min_height || i->second.m_block_height > max_height)
       continue;
     confirmed_payments.push_back(*i);
@@ -213,7 +213,7 @@ void wallet2::get_payments_out(std::list<std::pair<crypto::hash,wallet2::confirm
 //----------------------------------------------------------------------------------------------------
 void wallet2::get_unconfirmed_payments_out(std::list<std::pair<crypto::hash,wallet2::unconfirmed_transfer_out>>& unconfirmed_payments) const
 {
-  for (auto i = m_unconfirmed_txs.begin(); i != m_unconfirmed_txs.end(); ++i) {
+  for (auto i = m_pool_transfer_outs.begin(); i != m_pool_transfer_outs.end(); ++i) {
    
     unconfirmed_payments.push_back(*i);
   }

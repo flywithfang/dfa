@@ -38,6 +38,7 @@
 #include "crypto/hash.h"
 #include "cryptonote_config.h"
 #include "difficulty.h"
+#include "misc_log_ex.h"
 
 #undef MONERO_DEFAULT_LOG_CATEGORY
 #define MONERO_DEFAULT_LOG_CATEGORY "difficulty"
@@ -204,18 +205,19 @@ namespace cryptonote {
     static_assert(DIFFICULTY_WINDOW >= 2, "Window is too small");
     assert(length <= DIFFICULTY_WINDOW);
     sort(history_tss.begin(), history_tss.end());
-    const size_t cut_begin=0, cut_end=length;
-   
     uint64_t time_span = history_tss[length - 1] - history_tss[0];
     if (time_span == 0) {
       time_span = 1;
     }
     difficulty_type total_work = history_diffs[length - 1] - history_diffs[0];
     assert(total_work > 0);
-    boost::multiprecision::uint256_t res =  (boost::multiprecision::uint256_t(total_work) * block_time + time_span - 1) / time_span;
-    if(res > max128bit)
+    boost::multiprecision::uint256_t d =  (boost::multiprecision::uint256_t(total_work) * block_time + time_span - 1) / time_span;
+    
+    if(d > max128bit)
       return 0; 
-    return res.convert_to<difficulty_type>();
+     const auto block_diff = d.convert_to<difficulty_type>();
+     MDEBUG("block_diff" << static_cast<uint64_t>(block_diff) << ",total_work "<<total_work<<", time_span "<<time_span);
+     return block_diff;
   }
 
   std::string hex(difficulty_type v)

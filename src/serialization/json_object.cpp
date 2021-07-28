@@ -1175,7 +1175,7 @@ void toJsonValue(rapidjson::Writer<epee::byte_stream>& dest, const cryptonote::r
   INSERT_INTO_JSON_OBJECT(dest, stagenet, info.stagenet);
   INSERT_INTO_JSON_OBJECT(dest, nettype, info.nettype);
   INSERT_INTO_JSON_OBJECT(dest, top_block_hash, info.top_block_hash);
-  INSERT_INTO_JSON_OBJECT(dest, cumulative_difficulty, info.cumulative_difficulty);
+  INSERT_INTO_JSON_OBJECT(dest, cum_diff, info.cum_diff);
   INSERT_INTO_JSON_OBJECT(dest, block_size_limit, info.block_size_limit);
   INSERT_INTO_JSON_OBJECT(dest, block_weight_limit, info.block_weight_limit);
   INSERT_INTO_JSON_OBJECT(dest, block_size_median, info.block_size_median);
@@ -1209,7 +1209,7 @@ void fromJsonValue(const rapidjson::Value& val, cryptonote::rpc::DaemonInfo& inf
   GET_FROM_JSON_OBJECT(val, info.stagenet, stagenet);
   GET_FROM_JSON_OBJECT(val, info.nettype, nettype);
   GET_FROM_JSON_OBJECT(val, info.top_block_hash, top_block_hash);
-  GET_FROM_JSON_OBJECT(val, info.cumulative_difficulty, cumulative_difficulty);
+  GET_FROM_JSON_OBJECT(val, info.cum_diff, cum_diff);
   GET_FROM_JSON_OBJECT(val, info.block_size_limit, block_size_limit);
   GET_FROM_JSON_OBJECT(val, info.block_weight_limit, block_weight_limit);
   GET_FROM_JSON_OBJECT(val, info.block_size_median, block_size_median);
