@@ -46,7 +46,6 @@
 using namespace epee;
 
 #include "cryptonote_config.h"
-#include "cryptonote_core/tx_sanity_check.h"
 
 #include "wallet2.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"

@@ -16,7 +16,6 @@
 using namespace epee;
 
 #include "cryptonote_config.h"
-#include "cryptonote_core/tx_sanity_check.h"
 
 #include "wallet2.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
@@ -90,21 +89,9 @@ std::pair<std::set<uint64_t>, size_t> outs_unique(const std::vector<std::vector<
 
 void wallet2::get_outs(std::vector<std::vector<tools::wallet2::get_outs_entry>> &outs, const std::vector<size_t> &selected_transfers, size_t fake_outputs_count)
 {
-  std::vector<uint64_t> rct_offsets;
-  for (size_t attempts = 3; attempts > 0; --attempts)
-  {
+    std::vector<uint64_t> rct_offsets;
     outs= get_outs(selected_transfers, fake_outputs_count, rct_offsets);
 
-    const auto unique = outs_unique(outs);
-    if (tx_sanity_check(unique.first, unique.second, rct_offsets.empty() ? 0 : rct_offsets.back()))
-    {
-      return;
-    }
-
- 
-  }
-
-  THROW_WALLET_EXCEPTION(error::wallet_internal_error, tr("Transaction sanity check failed"));
 }
 
 std::vector<std::vector<tools::wallet2::get_outs_entry>>  wallet2::get_outs( const std::vector<size_t> &selected_transfers, size_t fake_outputs_count, std::vector<uint64_t> &rct_offsets)

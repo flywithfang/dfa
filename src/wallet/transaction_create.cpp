@@ -16,7 +16,6 @@
 using namespace epee;
 
 #include "cryptonote_config.h"
-#include "cryptonote_core/tx_sanity_check.h"
 
 #include "wallet2.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
@@ -279,8 +278,8 @@ void wallet2::commit_tx(pending_tx& ptx)
     {
       const boost::lock_guard<boost::recursive_mutex> lock{m_daemon_rpc_mutex};
 
-      bool r = epee::net_utils::invoke_http_json("/sendrawtransaction", req, daemon_send_resp, *m_http_client, rpc_timeout);
-      THROW_ON_RPC_RESPONSE_ERROR(r, {}, daemon_send_resp, "sendrawtransaction", error::tx_rejected, ptx.tx, get_rpc_status(daemon_send_resp.status), get_text_reason(daemon_send_resp));
+      bool r = epee::net_utils::invoke_http_json("/send_raw_transaction", req, daemon_send_resp, *m_http_client, rpc_timeout);
+      THROW_ON_RPC_RESPONSE_ERROR(r, {}, daemon_send_resp, "send_raw_transaction", error::tx_rejected, ptx.tx, get_rpc_status(daemon_send_resp.status), get_text_reason(daemon_send_resp));
     }
 
     // sanity checks

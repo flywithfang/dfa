@@ -2,26 +2,10 @@
 template<class t_connection_context>
 class async_protocol_handler_config
 {
-
+private:
   typedef  async_protocol_handler<t_connection_context>  AsyncConn;
   typedef boost::unordered_map<boost::uuids::uuid, AsyncConn* > connections_map;
 
-  void add_connection(AsyncConn* pc);
-  void del_connection(AsyncConn* pc);
-
-  AsyncConn* find_connection(boost::uuids::uuid connection_id) const;
-  int find_and_lock_connection(boost::uuids::uuid connection_id, AsyncConn*& aph);
-
-  friend class async_protocol_handler<t_connection_context>;
-
-  
-  void (*m_pcommands_handler_destroy)(levin_commands_handler<t_connection_context>*);
-
-  void delete_connections (size_t count, bool incoming);
-
-  critical_section m_connects_lock;
-  connections_map m_connects;
-  levin_commands_handler<t_connection_context>* m_pcommands_handler;
 public:
   typedef t_connection_context connection_context;
   uint64_t m_initial_max_packet_size;
@@ -50,5 +34,29 @@ public:
   ~async_protocol_handler_config() { set_handler(NULL, NULL); }
   void del_out_connections(size_t count);
   void del_in_connections(size_t count);
+
+
+private:
+
+
+  void add_connection(AsyncConn* pc);
+  void del_connection(AsyncConn* pc);
+
+  AsyncConn* find_connection(boost::uuids::uuid connection_id) const;
+  int find_and_lock_connection(boost::uuids::uuid connection_id, AsyncConn*& aph);
+
+  friend class async_protocol_handler<t_connection_context>;
+
+  
+  void (*m_pcommands_handler_destroy)(levin_commands_handler<t_connection_context>*);
+
+  void delete_connections (size_t count, bool incoming);
+
+private:
+  
+  critical_section m_connects_lock;
+  connections_map m_connects;
+  levin_commands_handler<t_connection_context>* m_pcommands_handler;
+
 };
 

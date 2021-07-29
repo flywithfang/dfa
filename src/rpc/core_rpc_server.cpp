@@ -46,7 +46,6 @@ using namespace epee;
 #include "cryptonote_basic/account.h"
 #include "cryptonote_basic/cryptonote_basic_impl.h"
 #include "cryptonote_basic/merge_mining.h"
-#include "cryptonote_core/tx_sanity_check.h"
 #include "misc_language.h"
 #include "net/parse.h"
 #include "storages/http_abstract_invoke.h"
@@ -464,7 +463,7 @@ namespace cryptonote
     // quick check for noop
     if (!req.block_ids.empty())
     {
-      const auto [height,top_hash]=m_core.get_blockchain_top(last_block_height, last_block_hash);
+      const auto [height,top_hash]=m_core.get_blockchain_top();
       if (top_hash == req.block_ids.front())
       {
         res.start_height = 0;
@@ -1057,13 +1056,6 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
       return true;
     }
 
-    if (req.do_sanity_checks && !cryptonote::tx_sanity_check(tx_blob, m_core.get_blockchain_storage().get_num_mature_outputs()))
-    {
-      res.status = "Failed";
-      res.reason = "Sanity check failed";
-      res.sanity_check_failed = true;
-      return true;
-    }
     res.sanity_check_failed = false;
 
     if (!skip_validation)
@@ -2504,58 +2496,7 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
 
     return true;
   }
-  //------------------------------------------------------------------------------------------------------------------------------
-  bool core_rpc_server::on_relay_tx(const COMMAND_RPC_RELAY_TX::request& req, COMMAND_RPC_RELAY_TX::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
-  {
-    RPC_TRACKER(relay_tx);
-    CHECK_PAYMENT_MIN1(req, res, req.txids.size() * COST_PER_TX_RELAY, false);
-
-    const bool restricted = m_restricted && ctx;
-
-    bool failed = false;
-    res.status = "";
-    for (const auto &str: req.txids)
-    {
-      crypto::hash txid;
-      if(!epee::string_tools::hex_to_pod(str, txid))
-      {
-        if (!res.status.empty()) res.status += ", ";
-        res.status += std::string("invalid transaction id: ") + str;
-        failed = true;
-        continue;
-      }
-
-      //TODO: The get_pool_transaction could have an optional meta parameter
-      bool broadcasted = false;
-      cryptonote::blobdata txblob;
-      if ((broadcasted = m_core.get_pool_transaction(txid, txblob, relay_category::broadcasted)) || (!restricted && m_core.get_pool_transaction(txid, txblob, relay_category::all)))
-      {
-        // The settings below always choose i2p/tor if enabled. Otherwise, do fluff iff previously relayed else dandelion++ stem.
-        NOTIFY_NEW_TRANSACTIONS::request r;
-        r.txs.push_back(std::move(txblob));
-        const auto tx_relay = broadcasted ? relay_method::fluff : relay_method::local;
-        m_core.get_protocol()->relay_transactions(r, boost::uuids::nil_uuid(), epee::net_utils::zone::invalid, tx_relay);
-        //TODO: make sure that tx has reached other nodes here, probably wait to receive reflections from other nodes
-      }
-      else
-      {
-        if (!res.status.empty()) res.status += ", ";
-        res.status += std::string("transaction not found in pool: ") + str;
-        failed = true;
-        continue;
-      }
-    }
-
-    if (failed)
-    {
-      error_resp.code = CORE_RPC_ERROR_CODE_INTERNAL_ERROR;
-      error_resp.message = res.status;
-      return false;
-    }
-
-    res.status = CORE_RPC_STATUS_OK;
-    return true;
-  }
+ 
   //------------------------------------------------------------------------------------------------------------------------------
   bool core_rpc_server::on_sync_info(const COMMAND_RPC_SYNC_INFO::request& req, COMMAND_RPC_SYNC_INFO::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
   {

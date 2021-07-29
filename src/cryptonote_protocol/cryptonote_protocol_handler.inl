@@ -172,7 +172,6 @@ namespace cryptonote
       context.m_needed_objects.clear();
       context.m_expect_height = m_core.get_current_blockchain_height();
       m_core.get_short_chain_history(r.block_ids);
-      handler_request_blocks_history( r.block_ids ); // change the limit(?), sleep(?)
       r.prune = m_sync_pruned_blocks;
       context.m_last_request_time = boost::posix_time::microsec_clock::universal_time();
       context.m_expect_response = NOTIFY_RESPONSE_CHAIN_ENTRY::ID;
@@ -532,7 +531,6 @@ namespace cryptonote
       context.m_expect_height = m_core.get_current_blockchain_height();
       m_core.get_short_chain_history(r.block_ids);
       r.prune = m_sync_pruned_blocks;
-      handler_request_blocks_history( r.block_ids ); // change the limit(?), sleep(?)
       context.m_last_request_time = boost::posix_time::microsec_clock::universal_time();
       context.m_expect_response = NOTIFY_RESPONSE_CHAIN_ENTRY::ID;
       MLOG_P2P_MESSAGE("-->>NOTIFY_REQUEST_CHAIN: m_block_ids.size()=" << r.block_ids.size() );
@@ -816,11 +814,11 @@ namespace cryptonote
           NOTIFY_REQUEST_CHAIN::request r = {};
           context.m_expect_height = m_core.get_current_blockchain_height();
           m_core.get_short_chain_history(r.block_ids);
-          handler_request_blocks_history( r.block_ids ); // change the limit(?), sleep(?)
           r.prune = m_sync_pruned_blocks;
           context.m_last_request_time = boost::posix_time::microsec_clock::universal_time();
           context.m_expect_response = NOTIFY_RESPONSE_CHAIN_ENTRY::ID;
           MLOG_P2P_MESSAGE("-->>NOTIFY_REQUEST_CHAIN: m_block_ids.size()=" << r.block_ids.size() );
+
           post_notify<NOTIFY_REQUEST_CHAIN>(r, context);
           MLOG_PEER_STATE("requesting chain");
         }            
@@ -2386,7 +2384,6 @@ skip:
         }
       }
 
-      handler_request_blocks_history( r.block_ids ); // change the limit(?), sleep(?)
       r.prune = m_sync_pruned_blocks;
 
       //std::string blob; // for calculate size of request

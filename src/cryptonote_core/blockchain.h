@@ -1007,12 +1007,7 @@ namespace cryptonote
 
     void cancel();
 
-    /**
-     * @brief called when we see a tx originating from a block
-     *
-     * Used for handling txes from historical blocks in a fast way
-     */
-    void on_new_tx_from_block(const cryptonote::transaction &tx);
+   
 
     /**
      * @brief returns the timestamps of the last N blocks

@@ -187,7 +187,7 @@ namespace
   const char* USAGE_CHECK_TX_PROOF("check_tx_proof <txid> <address> <signature_file> [<message>]");
   const char* USAGE_GET_SPEND_PROOF("get_spend_proof <txid> [<message>]");
   const char* USAGE_CHECK_SPEND_PROOF("check_spend_proof <txid> <signature_file> [<message>]");
-  const char* USAGE_SHOW_TRANSFERS("show_transfers [in|out|all|pending|failed|pool|coinbase] [index=<N1>[,<N2>,...]] [<min_height> [<max_height>]]");
+  const char* USAGE_SHOW_TRANSFERS("show_transfers [in|out|all] [<min_height> [<max_height>]]");
   const char* USAGE_RESCAN_BC("rescan_bc [hard|soft|keep_ki] [start_height=0]");
   const char* USAGE_SHOW_TRANSFER("show_transfer <txid>");
   const char* USAGE_LOCK("lock");
@@ -840,22 +840,23 @@ bool simple_wallet::set_inactivity_lock_timeout(const std::vector<std::string> &
   tools::fail_msg_writer() << tr("Inactivity lock timeout disabled on Windows");
   return true;
 #endif
-  const auto pwd_container = get_and_verify_password();
-  if (pwd_container)
+ // const auto pwd_container = get_and_verify_password();
+ // if (pwd_container)
   {
     uint32_t r;
     if (epee::string_tools::get_xtype_from_string(r, args[1]))
     {
       m_wallet->inactivity_lock_timeout(r);
-      m_wallet->rewrite(m_wallet_file, pwd_container->password());
+  //    m_wallet->rewrite(m_wallet_file, pwd_container->password());
+       m_wallet->store();
     }
     else
     {
       tools::fail_msg_writer() << tr("Invalid number of seconds");
     }
   }
-  else 
-   throw std::runtime_error("no pwd");
+ // else 
+ //  throw std::runtime_error("no pwd");
   return true;
 }
 
@@ -3304,7 +3305,7 @@ bool simple_wallet::show_transfers(const std::vector<std::string> &args_)
   {
     const auto color = transfer.type == "failed" ? console_color_red : transfer.confirmed ? ((transfer.direction == "in" || transfer.direction == "block") ? console_color_green : console_color_magenta) : console_color_default;
 
-      auto formatter = boost::format("%8.8llu %6.6s %8.8s %25.25s %20.20s %s %s %14.14s %s %s - %s");
+    auto formatter = boost::format("%8.8llu %6.6s %8.8s %25.25s %20.20s  %s %14.14s %s - %s");
 
     message_writer(color, false) << formatter
       % transfer.block

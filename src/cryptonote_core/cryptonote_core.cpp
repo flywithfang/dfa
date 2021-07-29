@@ -986,12 +986,12 @@ namespace cryptonote
         continue;
       if(m_mempool.have_tx(results[i].hash, relay_category::legacy))
       {
-        LOG_PRINT_L2("tx " << results[i].hash << "already have transaction in tx_pool");
+        MWARNING("tx " << results[i].hash << "already have transaction in tx_pool");
         already_have[i] = true;
       }
       else if(m_blockchain.have_tx(results[i].hash))
       {
-        LOG_PRINT_L2("tx " << results[i].hash << " already have transaction in blockchain");
+        MWARNING("tx " << results[i].hash << " already have transaction in blockchain");
         already_have[i] = true;
       }
       else
@@ -1032,8 +1032,6 @@ namespace cryptonote
         ok = false;
         continue;
       }
-      if (tx_relay == relay_method::block)
-        get_blockchain_storage().on_new_tx_from_block(results[i].tx);
       if (already_have[i])
         continue;
 
@@ -1259,15 +1257,20 @@ namespace cryptonote
   //-----------------------------------------------------------------------------------------------
   bool core::add_new_tx(transaction& tx, const crypto::hash& tx_hash, const cryptonote::blobdata &blob, size_t tx_weight, tx_verification_context& tvc, relay_method tx_relay, bool relayed)
   {
+    if (cryptonote::is_coinbase(tx))
+  {
+    MERROR("Transaction is coinbase");
+    return false;
+  }
     if(m_mempool.have_tx(tx_hash, relay_category::legacy))
     {
-      LOG_PRINT_L2("tx " << tx_hash << "already have transaction in tx_pool");
+      MWARNING("tx " << tx_hash << "already have transaction in tx_pool");
       return true;
     }
 
     if(m_blockchain.have_tx(tx_hash))
     {
-      LOG_PRINT_L2("tx " << tx_hash << " already have transaction in blockchain");
+      MWARNING("tx " << tx_hash << " already have transaction in blockchain");
       return true;
     }
 
