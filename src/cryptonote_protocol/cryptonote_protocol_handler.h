@@ -113,7 +113,9 @@ namespace cryptonote
     bool on_idle();
     bool init(const boost::program_options::variables_map& vm);
     bool deinit();
+
     void set_p2p_endpoint(nodetool::i_p2p_endpoint<connection_context>* p2p);
+    
     //bool process_handshake_data(const blobdata& data, cryptonote_connection_context& context);
     bool process_payload_sync_data(const CORE_SYNC_DATA& hshd, cryptonote_connection_context& context, bool is_inital);
     bool get_payload_sync_data(epee::byte_slice& data);
@@ -169,10 +171,13 @@ namespace cryptonote
     bool request_txpool_complement(cryptonote_connection_context &context);
     void hit_score(cryptonote_connection_context &context, int32_t score);
 
+
     t_core& m_core;
 
     nodetool::p2p_endpoint_stub<connection_context> m_p2p_stub;
+
     nodetool::i_p2p_endpoint<connection_context>* m_p2p;
+    
     std::atomic<uint32_t> m_syncronized_connections_count;
     std::atomic<bool> m_synchronized;
     std::atomic<bool> m_stopping;
@@ -206,15 +211,15 @@ namespace cryptonote
 
     boost::mutex m_bad_peer_check_lock;
 
-    template<class t_parameter>
-      bool post_notify(typename t_parameter::request& arg, cryptonote_connection_context& context)
+    template<class MSG>
+      bool post_notify(typename MSG::request& arg, cryptonote_connection_context& context)
       {
-        LOG_PRINT_L2("[" << epee::net_utils::print_connection_context_short(context) << "] post " << typeid(t_parameter).name() << " -->");
+        MDEBUG("[" << epee::net_utils::print_connection_context_short(context) << "] post " << typeid(MSG).name() << " -->");
 
         epee::levin::message_writer out{256 * 1024}; // optimize for block responses
         epee::serialization::store_t_to_binary(arg, out.buffer);
         //handler_response_blocks_now(blob.size()); // XXX
-        return m_p2p->invoke_notify_to_peer(t_parameter::ID, std::move(out), context);
+        return m_p2p->invoke_notify_to_peer(MSG::ID, std::move(out), context);
       }
   };
 

@@ -162,6 +162,7 @@ namespace net_utils
       m_port = binded_endpoint.port();
       MINFO("start accept (IPv4) "<<address<<":"<<port);
       new_connection_.reset(new connection<t_protocol_handler>(io_service_, m_state, m_connection_type, m_state->ssl_options().support));
+      
       acceptor_.async_accept(new_connection_->socket(),	boost::bind(&MyType::handle_accept_ipv4, this,boost::asio::placeholders::error));
     }
     catch (const std::exception &e)
@@ -393,7 +394,7 @@ POP_WARNINGS
   void boosted_tcp_server<t_protocol_handler>::send_stop_signal()
   {
     m_stop_signal_sent = true;
-    typename connection<t_protocol_handler>::shared_state *state = static_cast<typename connection<t_protocol_handler>::shared_state*>(m_state.get());
+    auto *state = static_cast<typename connection<t_protocol_handler>::shared_state*>(m_state.get());
     state->stop_signal_sent = true;
     TRY_ENTRY();
     connections_mutex.lock();

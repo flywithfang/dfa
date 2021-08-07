@@ -27,10 +27,9 @@
 # THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 set(daemon_sources
-  command_parser_executor.cpp
+  command_parser.cpp
   command_server.cpp
   daemon.cpp
-  executor.cpp
   main.cpp
   rpc_command_executor.cpp
 )
@@ -38,14 +37,9 @@ set(daemon_sources
 set(daemon_headers)
 
 set(daemon_private_headers
-  command_parser_executor.h
+  command_parser.h
   command_server.h
-  core.h
   daemon.h
-  executor.h
-  p2p.h
-  protocol.h
-  rpc.h
   rpc_command_executor.h
 
   # cryptonote_protocol

@@ -73,10 +73,7 @@ namespace cryptonote
 
     typedef epee::net_utils::connection_context_base connection_context;
     typedef  epee::http_server_impl_base<core_rpc_server> super_type;
-    core_rpc_server(
-        core& cr
-      , nodetool::node_server<cryptonote::t_cryptonote_protocol_handler<cryptonote::core> >& p2p
-      );
+    core_rpc_server(core& cr, nodetool::node_server<cryptonote::t_cryptonote_protocol_handler<cryptonote::core> >& p2p);
     ~core_rpc_server();
 
     static void init_options(boost::program_options::options_description& desc);

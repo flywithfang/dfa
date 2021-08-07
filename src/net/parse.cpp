@@ -71,11 +71,7 @@ namespace net
 
         if (host_str.empty())
             return make_error_code(net::error::invalid_host);
-        if (host_str_ref.ends_with(".onion"))
-            return tor_address::make(address, default_port);
-        if (host_str_ref.ends_with(".i2p"))
-            return i2p_address::make(address, default_port);
-
+      
         boost::system::error_code ec;
         boost::asio::ip::address_v6 v6 = boost::asio::ip::address_v6::from_string(host_str, ec);
         ipv6 = !ec;

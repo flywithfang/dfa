@@ -55,18 +55,6 @@ namespace
     constexpr const boost::chrono::milliseconds future_poll_interval{500};
     constexpr const std::chrono::seconds socks_connect_timeout{P2P_DEFAULT_SOCKS_CONNECT_TIMEOUT};
 
-    std::int64_t get_max_connections(const boost::iterator_range<boost::string_ref::const_iterator> value) noexcept
-    {
-        // -1 is default, 0 is error
-        if (value.empty())
-            return -1;
-
-        std::uint32_t out = 0;
-        if (epee::string_tools::get_xtype_from_string(out, std::string{value.begin(), value.end()}))
-            return out;
-        return 0;
-    }
-
     template<typename T>
     epee::net_utils::network_address get_address(const boost::string_ref value)
     {
@@ -170,74 +158,6 @@ namespace nodetool
     };
     const command_line::arg_descriptor<uint32_t> arg_max_connections_per_ip = {"max-connections-per-ip", "Maximum number of connections allowed from the same IP address", 1};
 
-    boost::optional<std::vector<proxy>> get_proxies(boost::program_options::variables_map const& vm)
-    {
-        namespace ip = boost::asio::ip;
-
-        std::vector<proxy> proxies{};
-
-        const std::vector<std::string> args = command_line::get_arg(vm, arg_tx_proxy);
-        proxies.reserve(args.size());
-
-        for (const boost::string_ref arg : args)
-        {
-            proxies.emplace_back();
-
-            auto next = boost::algorithm::make_split_iterator(arg, boost::algorithm::first_finder(","));
-            CHECK_AND_ASSERT_MES(!next.eof() && !next->empty(), boost::none, "No network type for --" << arg_tx_proxy.name);
-            const boost::string_ref zone{next->begin(), next->size()};
-
-            ++next;
-            CHECK_AND_ASSERT_MES(!next.eof() && !next->empty(), boost::none, "No ipv4:port given for --" << arg_tx_proxy.name);
-            const boost::string_ref proxy{next->begin(), next->size()};
-
-            ++next;
-            for (unsigned count = 0; !next.eof(); ++count, ++next)
-            {
-                if (2 <= count)
-                {
-                    MERROR("Too many ',' characters given to --" << arg_tx_proxy.name);
-                    return boost::none;
-                }
-
-                if (boost::string_ref{next->begin(), next->size()} == "disable_noise")
-                    proxies.back().noise = false;
-                else
-                {
-                    proxies.back().max_connections = get_max_connections(*next);
-                    if (proxies.back().max_connections == 0)
-                    {
-                        MERROR("Invalid max connections given to --" << arg_tx_proxy.name);
-                        return boost::none;
-                    }
-                }
-            }
-
-            switch (epee::net_utils::zone_from_string(zone))
-            {
-            case epee::net_utils::zone::tor:
-                proxies.back().zone = epee::net_utils::zone::tor;
-                break;
-            case epee::net_utils::zone::i2p:
-                proxies.back().zone = epee::net_utils::zone::i2p;
-                break;
-            default:
-                MERROR("Invalid network for --" << arg_tx_proxy.name);
-                return boost::none;
-            }
-
-            std::uint32_t ip = 0;
-            std::uint16_t port = 0;
-            if (!epee::string_tools::parse_peer_from_string(ip, port, std::string{proxy}) || port == 0)
-            {
-                MERROR("Invalid ipv4:port given for --" << arg_tx_proxy.name);
-                return boost::none;
-            }
-            proxies.back().address = ip::tcp::endpoint{ip::address_v4{boost::endian::native_to_big(ip)}, port};
-        }
-
-        return proxies;
-    }
 
     bool is_filtered_command(const epee::net_utils::network_address& address, int command)
     {

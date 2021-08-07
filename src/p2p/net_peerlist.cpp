@@ -49,28 +49,7 @@ namespace nodetool
   {
     constexpr unsigned CURRENT_PEERLIST_STORAGE_ARCHIVE_VER = 6;
  
-    struct by_zone
-    {
-      using zone = epee::net_utils::zone;
-
-      template<typename T>
-      bool operator()(const T& left, const zone right) const
-      {
-        return left.adr.get_zone() < right;
-      }
-
-      template<typename T>
-      bool operator()(const zone left, const T& right) const
-      {
-        return left < right.adr.get_zone();
-      }
-
-      template<typename T, typename U>
-      bool operator()(const T& left, const U& right) const
-      {
-        return left.adr.get_zone() < right.adr.get_zone();
-      }
-    };
+  
 
     template<typename Elem, typename Archive>
     std::vector<Elem> load_peers(Archive& a, unsigned ver)
@@ -104,18 +83,6 @@ namespace nodetool
         a & elem;
     }
  
-    template<typename T>
-    std::vector<T> do_take_zone(std::vector<T>& src, epee::net_utils::zone zone)
-    {
-      const auto start = std::lower_bound(src.begin(), src.end(), zone, by_zone{});
-      const auto end = std::upper_bound(start, src.end(), zone, by_zone{});
-
-      std::vector<T> out{};
-      out.assign(std::make_move_iterator(start), std::make_move_iterator(end));
-      src.erase(start, end);
-      return out;
-    }
-
     template<typename Container, typename T>
     void add_peers(Container& dest, std::vector<T>&& src)
     {
@@ -176,9 +143,7 @@ namespace nodetool
 
       if (src.good())
       {
-        std::sort(out.m_types.white.begin(), out.m_types.white.end(), by_zone{});
-        std::sort(out.m_types.gray.begin(), out.m_types.gray.end(), by_zone{});
-        std::sort(out.m_types.anchor.begin(), out.m_types.anchor.end(), by_zone{});
+     
         return {std::move(out)};
       }
     }
@@ -247,12 +212,9 @@ namespace nodetool
     return store(dest_file, other);
   }
 
-  peerlist_types peerlist_storage::take_zone(epee::net_utils::zone zone)
+  peerlist_types peerlist_storage::take_zone()
   {
-    peerlist_types out{};
-    out.white = do_take_zone(m_types.white, zone);
-    out.gray = do_take_zone(m_types.gray, zone);
-    out.anchor = do_take_zone(m_types.anchor, zone);
+    peerlist_types out = std::move(m_types);
     return out;
   }
 

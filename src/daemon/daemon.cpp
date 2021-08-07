@@ -37,10 +37,6 @@
 #include "common/password.h"
 #include "common/util.h"
 #include "cryptonote_basic/events.h"
-#include "daemon/core.h"
-#include "daemon/p2p.h"
-#include "daemon/protocol.h"
-#include "daemon/rpc.h"
 #include "daemon/command_server.h"
 #include "daemon/command_line_args.h"
 #include "net/net_ssl.h"
@@ -55,85 +51,60 @@ using namespace epee;
 
 namespace daemonize {
 
-
-
 struct t_internals {
 private:
-  t_protocol protocol;
+  typedef cryptonote::t_cryptonote_protocol_handler<cryptonote::core> t_protocol_raw;
+  typedef nodetool::node_server<t_protocol_raw> t_node_server;
+private:
+  std::string m_rpc_port;
+  t_protocol_raw m_protocol;
+  cryptonote::core m_core;
+  t_node_server m_p2p;
+  std::unique_ptr<cryptonote::core_rpc_server> m_rpc;
+
 public:
-  t_core core;
-  t_p2p p2p;
-  std::vector<std::unique_ptr<t_rpc>> rpcs;
-
-  t_internals(
-      boost::program_options::variables_map const & vm
-    )
-    : core{vm}
-    , protocol{vm, core, command_line::get_arg(vm, cryptonote::arg_offline)}
-    , p2p{vm, protocol}
+  t_internals(boost::program_options::variables_map const & vm): m_core{nullptr}, m_protocol{ m_core,nullptr, command_line::get_arg(vm, cryptonote::arg_offline)}, m_p2p{m_protocol}
   {
+    MGINFO("Initializing cryptonote protocol...");
+    if (!m_protocol.init(vm))
+    {
+      throw std::runtime_error("Failed to initialize cryptonote protocol.");
+    }
+    MGINFO("Cryptonote protocol initialized OK");
+
     // Handle circular dependencies
-    protocol.set_p2p_endpoint(p2p.get());
-    core.set_protocol(protocol.get());
+    m_protocol.set_p2p_endpoint(&m_p2p);
+    m_core.set_cryptonote_protocol(&m_protocol);
 
-    const bool restricted = command_line::get_arg(vm, cryptonote::core_rpc_server::arg_restricted_rpc);
-    const auto main_rpc_port = command_line::get_arg(vm, cryptonote::core_rpc_server::arg_rpc_bind_port);
-    rpcs.emplace_back(new t_rpc{vm, core, p2p, restricted, main_rpc_port, "core"});
 
- 
+    if (!m_core.init(vm))
+    {
+      throw std::runtime_error("Failed to initialize core.");
+    }
 
-  
-  }
-};
-
-void t_daemon::init_options(boost::program_options::options_description & option_spec)
-{
-  t_core::init_options(option_spec);
-  t_p2p::init_options(option_spec);
-  t_rpc::init_options(option_spec);
-}
-
-t_daemon::t_daemon(
-    boost::program_options::variables_map const & vm,
-    uint16_t public_rpc_port
-  )
-  : mp_internals{new t_internals{vm}},
-  public_rpc_port(public_rpc_port)
-{
-}
-
-t_daemon::~t_daemon() = default;
-
-// MSVC is brain-dead and can't default this...
-t_daemon::t_daemon(t_daemon && other)
-{
-  if (this != &other)
   {
-    mp_internals = std::move(other.mp_internals);
-    other.mp_internals.reset(nullptr);
-    public_rpc_port = other.public_rpc_port;
-  }
-}
+   const bool restricted = command_line::get_arg(vm, cryptonote::core_rpc_server::arg_restricted_rpc);
+    m_rpc_port = command_line::get_arg(vm, cryptonote::core_rpc_server::arg_rpc_bind_port);
+    m_rpc.reset(new  cryptonote::core_rpc_server{m_core, m_p2p});
+     MGINFO("Initializing  RPC server...");
 
-// or this
-t_daemon & t_daemon::operator=(t_daemon && other)
-{
-  if (this != &other)
+    if (!m_rpc->init(vm, restricted, m_rpc_port))
+    {
+      throw std::runtime_error("Failed to initialize RPC server.");
+    }
+    MGINFO( " RPC server initialized OK on port: " << m_rpc->get_binded_port());
+  }
+  }
+
+ static void init_options(boost::program_options::options_description & option_spec)
   {
-    mp_internals = std::move(other.mp_internals);
-    other.mp_internals.reset(nullptr);
-    public_rpc_port = other.public_rpc_port;
+    cryptonote::core::init_options(option_spec);
+    t_node_server::init_options(option_spec);
+    cryptonote::core_rpc_server::init_options(option_spec);
   }
-  return *this;
-}
 
-bool t_daemon::run(bool interactive)
+  bool run(bool interactive)
 {
-  if (nullptr == mp_internals)
-  {
-    throw std::runtime_error{"Can't run stopped daemon"};
-  }
-
   std::atomic<bool> stop(false), shutdown(false);
   boost::thread stop_thread = boost::thread([&stop, &shutdown, this] {
     while (!stop)
@@ -150,33 +121,25 @@ bool t_daemon::run(bool interactive)
 
   try
   {
-    if (!mp_internals->core.run())
-      return false;
-
-    for(auto& rpc: mp_internals->rpcs)
-      rpc->run();
-
-    std::unique_ptr<daemonize::t_command_server> rpc_commands;
-    if (interactive && mp_internals->rpcs.size())
+    std::unique_ptr<daemonize::t_command_server> rpc_cmd_handler;
+    if (interactive)
     {
       // The first three variables are not used when the fourth is false
-      rpc_commands.reset(new daemonize::t_command_server(0, 0, boost::none, epee::net_utils::ssl_support_t::e_ssl_support_disabled, false, mp_internals->rpcs.front()->get_server(),mp_internals->core.get()));
-      rpc_commands->start_handling(std::bind(&daemonize::t_daemon::stop_p2p, this));
+      rpc_cmd_handler.reset(new daemonize::t_command_server(0, 0, boost::none, epee::net_utils::ssl_support_t::e_ssl_support_disabled, false, m_rpc.get(),m_core));
+      rpc_cmd_handler->start_handling(std::bind(&daemonize::t_internals::stop_p2p, this));
     }
 
-    if (public_rpc_port > 0)
+    if (m_rpc_port.size()>0)
     {
-      MGINFO("Public RPC port " << public_rpc_port << " will be advertised to other peers over P2P");
-      mp_internals->p2p.get().set_rpc_port(public_rpc_port);
+      MGINFO("Public RPC port " << m_rpc_port << " will be advertised to other peers over P2P");
+      m_p2p.set_rpc_port(boost::lexical_cast<uint16_t>(m_rpc_port));
     }
     
-    mp_internals->p2p.run(); // blocks until p2p goes down
+    m_p2p.run(); // blocks until p2p goes down
 
-    if (rpc_commands)
-      rpc_commands->stop_handling();
+    if (rpc_cmd_handler)
+      rpc_cmd_handler->stop_handling();
 
-    for(auto& rpc : mp_internals->rpcs)
-      rpc->stop();
     MGINFO("Node stopped.");
     return true;
   }
@@ -192,26 +155,66 @@ bool t_daemon::run(bool interactive)
   }
 }
 
-void t_daemon::stop()
+void stop()
 {
-  if (nullptr == mp_internals)
-  {
-    throw std::runtime_error{"Can't stop stopped daemon"};
-  }
-  mp_internals->p2p.stop();
-  for(auto& rpc : mp_internals->rpcs)
-    rpc->stop();
-
-  mp_internals.reset(nullptr); // Ensure resources are cleaned up before we return
+  m_p2p.send_stop_signal();
 }
 
-void t_daemon::stop_p2p()
+void stop_p2p()
 {
-  if (nullptr == mp_internals)
-  {
-    throw std::runtime_error{"Can't send stop signal to a stopped daemon"};
-  }
-  mp_internals->p2p.get().send_stop_signal();
+ m_p2p.send_stop_signal();
 }
+  ~t_internals(){
+
+        MGINFO("Deinitializing p2p...");
+    try {
+      m_p2p.deinit();
+    } catch (...) {
+      MERROR("Failed to deinitialize p2p...");
+    }
+
+      MGINFO("Stopping cryptonote protocol...");
+    try {
+      m_protocol.deinit();
+      m_protocol.set_p2p_endpoint(nullptr);
+      MGINFO("Cryptonote protocol stopped successfully");
+    } catch (...) {
+      LOG_ERROR("Failed to stop cryptonote protocol!");
+    }
+
+     MGINFO("Deinitializing core...");
+    try {
+      m_core.deinit();
+      m_core.set_cryptonote_protocol(nullptr);
+    } catch (...) {
+      MERROR("Failed to deinitialize core...");
+    }
+  }
+};
+
+void t_daemon::init_options(boost::program_options::options_description & option_spec)
+{
+  t_internals::init_options(option_spec);
+}
+
+t_daemon::t_daemon(boost::program_options::variables_map const & vm)
+  : m_impl{new t_internals{vm}}
+{
+}
+
+bool t_daemon::run(bool interactive)
+{
+  return m_impl->run(interactive);
+}
+void t_daemon::stop(){
+  m_impl->stop();
+  delete m_impl;
+  m_impl=nullptr;
+}
+t_daemon::~t_daemon(){
+  delete m_impl;
+  m_impl=nullptr;
+}
+
 
 } // namespace daemonize

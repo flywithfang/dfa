@@ -26,7 +26,7 @@ class peerlist_storage
     bool store(const std::string& path, const peerlist_types& other) const;
 
     //! \return Peers in `zone` and from remove from `this`.
-    peerlist_types take_zone(epee::net_utils::zone zone);
+    peerlist_types take_zone();
 
   private:
     peerlist_types m_types;

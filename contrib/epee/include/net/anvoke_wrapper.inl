@@ -33,6 +33,7 @@
     }
     virtual ~anvoke_handler()
     {}
+  public:
     callback_t m_cb;
     async_protocol_handler& m_con;
     boost::asio::deadline_timer m_timer;

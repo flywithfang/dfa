@@ -183,9 +183,9 @@ namespace daemonizer
     {
       //LOG_PRINT_L0("Monero '" << MONERO_RELEASE_NAME << "' (v" << MONERO_VERSION_FULL);
       if (command_line::has_arg(vm, arg_non_interactive))
-        return executor.run_non_interactive(vm);
+        return executor.run(false);
       else
-        return executor.run_interactive(vm);
+        return executor.run(true);
     }
 
     return false;

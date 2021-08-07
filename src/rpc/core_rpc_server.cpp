@@ -244,11 +244,8 @@ namespace cryptonote
   {
   }
   //------------------------------------------------------------------------------------------------------------------------------
-  bool core_rpc_server::init(
-      const boost::program_options::variables_map& vm
-      , const bool restricted
-      , const std::string& port
-    )
+  bool core_rpc_server::init(const boost::program_options::variables_map& vm, const bool restricted
+      , const std::string& port)
   {
     m_restricted = restricted;
     m_net_server.set_threads_prefix("RPC");
@@ -382,7 +379,7 @@ namespace cryptonote
     res.tx_pool_size = m_core.get_pool_transactions_count(!restricted);
     res.alt_blocks_count = restricted ? 0 : m_core.get_blockchain_storage().get_alternative_blocks_count();
     uint64_t total_conn = restricted ? 0 : m_p2p.get_public_connections_count();
-    res.outgoing_connections_count = restricted ? 0 : m_p2p.get_public_outgoing_connections_count();
+    res.outgoing_connections_count = restricted ? 0 : m_p2p.get_outgoing_connections_count();
     res.incoming_connections_count = restricted ? 0 : (total_conn - res.outgoing_connections_count);
     res.rpc_connections_count = restricted ? 0 : get_connections_count();
     res.white_peerlist_size = restricted ? 0 : m_p2p.get_public_white_peers_count();
@@ -1131,15 +1128,9 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
     std::vector<nodetool::peerlist_entry> white_list;
     std::vector<nodetool::peerlist_entry> gray_list;
 
-    if (req.public_only)
-    {
-      m_p2p.get_public_peerlist(gray_list, white_list);
-    }
-    else
-    {
+  
       m_p2p.get_peerlist(gray_list, white_list);
-    }
-
+    
     for (auto & entry : white_list)
     {
       if (!req.include_blocked && m_p2p.is_host_blocked(entry.adr, NULL))

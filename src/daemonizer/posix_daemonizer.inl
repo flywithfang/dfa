@@ -76,9 +76,7 @@ namespace daemonizer
   }
 
   template <typename T_executor>
-  inline bool daemonize(
-      int argc, char const * argv[]
-    , T_executor && executor // universal ref
+  inline bool daemonize(int argc, char const * argv[], T_executor && executor // universal ref
     , boost::program_options::variables_map const & vm
     )
   {
@@ -91,17 +89,16 @@ namespace daemonizer
         pidfile = command_line::get_arg(vm, arg_pidfile);
       }
       posix::fork(pidfile);
-      auto daemon = executor.create_daemon(vm);
-      return daemon.run();
+      return executor.run(false);
     }
     else if (command_line::has_arg(vm, arg_non_interactive))
     {
-      return executor.run_non_interactive(vm);
+      return executor.run(false);
     }
     else
     {
       //LOG_PRINT_L0("Monero '" << MONERO_RELEASE_NAME << "' (v" << MONERO_VERSION_FULL);
-      return executor.run_interactive(vm);
+      return executor.run(true);
     }
   }
 }

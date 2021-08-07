@@ -39,21 +39,22 @@ struct t_internals;
 class t_daemon final {
 public:
   static void init_options(boost::program_options::options_description & option_spec);
-private:
-  void stop_p2p();
-private:
-  std::unique_ptr<t_internals> mp_internals;
-  uint16_t public_rpc_port;
+;
 public:
-  t_daemon(
-      boost::program_options::variables_map const & vm,
-      uint16_t public_rpc_port = 0
-    );
-  t_daemon(t_daemon && other);
-  t_daemon & operator=(t_daemon && other);
-  ~t_daemon();
+  t_daemon(boost::program_options::variables_map const & vm);
+ // t_daemon(t_daemon && other)=delete;
+ // t_daemon & operator=(t_daemon && other)=delete;
 
+  ~t_daemon();
+  std::string  name() { return "dfad";}
   bool run(bool interactive = false);
   void stop();
+
+
+  private:
+  void stop_p2p();
+private:
+   t_internals * m_impl;
+
 };
 }

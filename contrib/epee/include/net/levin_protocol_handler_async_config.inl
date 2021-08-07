@@ -13,10 +13,12 @@ public:
   uint64_t m_invoke_timeout;
 
   int invoke(int command, message_writer in_msg, std::string& buff_out, boost::uuids::uuid connection_id);
+  
   template<class callback_t>
   int invoke_async(int command, message_writer in_msg, boost::uuids::uuid connection_id, const callback_t &cb, size_t timeout = LEVIN_DEFAULT_TIMEOUT_PRECONFIGURED);
 
   int send(epee::byte_slice message, const boost::uuids::uuid& connection_id);
+
   bool close(boost::uuids::uuid connection_id);
   bool update_connection_context(const t_connection_context& contxt);
   bool request_callback(boost::uuids::uuid connection_id);
@@ -53,7 +55,7 @@ private:
   void delete_connections (size_t count, bool incoming);
 
 private:
-  
+
   critical_section m_connects_lock;
   connections_map m_connects;
   levin_commands_handler<t_connection_context>* m_pcommands_handler;

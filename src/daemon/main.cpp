@@ -36,7 +36,6 @@
 #include "cryptonote_basic/miner.h"
 #include "daemon/command_server.h"
 #include "daemon/daemon.h"
-#include "daemon/executor.h"
 #include "daemonizer/daemonizer.h"
 #include "misc_log_ex.h"
 #include "net/parse.h"
@@ -108,7 +107,7 @@ int main(int argc, char const * argv[])
       command_line::add_arg(core_settings, daemon_args::arg_public_node);
 
       daemonizer::init_options(hidden_options, visible_options);
-      daemonize::t_executor::init_options(core_settings);
+      daemonize::t_daemon::init_options(core_settings);
 
 
       visible_options.add(core_settings);
@@ -243,7 +242,7 @@ int main(int argc, char const * argv[])
 
     MINFO("Moving from main() into the daemonize now.");
 
-    return daemonizer::daemonize(argc, argv, daemonize::t_executor{parse_public_rpc_port(vm)}, vm) ? 0 : 1;
+    return daemonizer::daemonize(argc, argv, daemonize::t_daemon{vm}, vm) ? 0 : 1;
   }
   catch (std::exception const & ex)
   {

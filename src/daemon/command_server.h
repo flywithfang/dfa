@@ -42,27 +42,20 @@ Passing RPC commands:
 #include <boost/optional/optional_fwd.hpp>
 #include "common/common_fwd.h"
 #include "console_handler.h"
-#include "daemon/command_parser_executor.h"
+#include "daemon/command_parser.h"
 #include "net/net_fwd.h"
 
 namespace daemonize {
 
 class t_command_server {
 private:
-  t_command_parser_executor m_parser;
+  t_command_parser m_parser;
   epee::console_handlers_binder m_command_lookup;
   bool m_is_rpc;
 
 public:
-  t_command_server(
-      uint32_t ip
-    , uint16_t port
-    , const boost::optional<tools::login>& login
-    , const epee::net_utils::ssl_options_t& ssl_options
-    , bool is_rpc 
-    , cryptonote::core_rpc_server* rpc_server ,
-     cryptonote::core& core
-    );
+  t_command_server(uint32_t ip, uint16_t port, const boost::optional<tools::login>& login
+    , const epee::net_utils::ssl_options_t& ssl_options, bool is_rpc , cryptonote::core_rpc_server* rpc_server ,cryptonote::core& core);
 
   bool process_command_str(const std::string& cmd);
 

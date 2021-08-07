@@ -338,12 +338,11 @@ namespace cryptonote
     if (hshd.current_height > 0)
     {
       const uint8_t version = m_core.get_ideal_hard_fork_version(hshd.current_height - 1);
-      if (version >= 6 && version != hshd.top_version)
+      if (version != hshd.top_version)
       {
         if (version < hshd.top_version && version == m_core.get_ideal_hard_fork_version())
           MDEBUG(context << " peer claims higher version than we think (" <<
-              (unsigned)hshd.top_version << " for " << (hshd.current_height - 1) << " instead of " << (unsigned)version <<
-              ") - we may be forked from the network and a software upgrade may be needed, or that peer is broken or malicious");
+              (unsigned)hshd.top_version << " for " << (hshd.current_height - 1) << " instead of " << (unsigned)version <<") - we may be forked from the network and a software upgrade may be needed, or that peer is broken or malicious");
         return false;
       }
     }
@@ -367,9 +366,7 @@ namespace cryptonote
     context.m_remote_blockchain_height = hshd.current_height;
     context.m_pruning_seed = hshd.pruning_seed;
 
-    uint64_t target = m_core.get_target_blockchain_height();
-    if (target == 0)
-      target = m_core.get_current_blockchain_height();
+    const uint64_t target = m_core.get_target_blockchain_height()|| m_core.get_current_blockchain_height();
 
     if(m_core.have_block(hshd.top_id))
     {
@@ -379,13 +376,7 @@ namespace cryptonote
       return true;
     }
 
-    // No chain synchronization over hidden networks (tor, i2p, etc.)
-    if(context.m_remote_address.get_zone() != epee::net_utils::zone::public_)
-    {
-      context.m_state = cryptonote_connection_context::state_normal;
-      return true;
-    }
-
+  
     if (hshd.current_height > target)
     {
     /* As I don't know if accessing hshd from core could be a good practice,
@@ -394,12 +385,9 @@ namespace cryptonote
     int64_t diff = static_cast<int64_t>(hshd.current_height) - static_cast<int64_t>(m_core.get_current_blockchain_height());
     uint64_t abs_diff = std::abs(diff);
     uint64_t max_block_height = std::max(hshd.current_height,m_core.get_current_blockchain_height());
-    uint64_t last_block_v1 = m_core.get_nettype() == TESTNET ? 624633 : m_core.get_nettype() == MAINNET ? 1009826 : (uint64_t)-1;
-    uint64_t diff_v2 = max_block_height > last_block_v1 ? std::min(abs_diff, max_block_height - last_block_v1) : 0;
     MCLOG(is_inital ? el::Level::Info : el::Level::Debug, "global", el::Color::Yellow, context <<  "Sync data returned a new top block candidate: " << m_core.get_current_blockchain_height() << " -> " << hshd.current_height
-      << " [Your node is " << abs_diff << " blocks (" << tools::get_human_readable_timespan((abs_diff - diff_v2) * DIFFICULTY_TARGET_V1 + diff_v2 * DIFFICULTY_TARGET_V2) << ") "
-      << (0 <= diff ? std::string("behind") : std::string("ahead"))
-      << "] " << ENDL << "SYNCHRONIZATION started");
+      << " [Your node is " << abs_diff << " blocks (" << tools::get_human_readable_timespan(abs_diff * DIFFICULTY_TARGET_V2) << ") "<< (0 <= diff ? std::string("behind") : std::string("ahead"))<< "] " << ENDL << "SYNCHRONIZATION started");
+    
       if (hshd.current_height >= m_core.get_current_blockchain_height() + 5) // don't switch to unsafe mode just for a few blocks
       {
         m_core.safesyncmode(false);
@@ -417,7 +405,7 @@ namespace cryptonote
         m_sync_download_chain_size = 0;
         m_sync_download_objects_size = 0;
       }
-    m_core.set_target_blockchain_height((hshd.current_height));
+      m_core.set_target_blockchain_height(hshd.current_height);
     }
     MINFO(context << "Remote blockchain height: " << hshd.current_height << ", id: " << hshd.top_id);
 
@@ -998,9 +986,7 @@ namespace cryptonote
        service) will immediately fluff in that scenario (i.e. this assumes that a
        sybil spy will be unable to link an IP to an i2p/tor connection). */
 
-    const epee::net_utils::zone zone = context.m_remote_address.get_zone();
-    relay_method tx_relay = zone == epee::net_utils::zone::public_ ?
-      relay_method::stem : relay_method::forward;
+    relay_method tx_relay = relay_method::stem ;
 
     std::vector<blobdata> stem_txs{};
     std::vector<blobdata> fluff_txs{};
@@ -2682,21 +2668,21 @@ skip:
     fluffy_arg.b.txs = fluffy_txs;
 
     // sort peers between fluffy ones and others
-    std::vector<std::pair<epee::net_utils::zone, boost::uuids::uuid>> fullConnections, fluffyConnections;
+    std::vector< boost::uuids::uuid> fullConnections, fluffyConnections;
     m_p2p->for_each_connection([this, &exclude_context, &fullConnections, &fluffyConnections](connection_context& context, nodetool::peerid_type peer_id, uint32_t support_flags)
     {
       // peer_id also filters out connections before handshake
-      if (peer_id && exclude_context.m_connection_id != context.m_connection_id && context.m_remote_address.get_zone() == epee::net_utils::zone::public_)
+      if (peer_id && exclude_context.m_connection_id != context.m_connection_id )
       {
         if(m_core.fluffy_blocks_enabled() && (support_flags & P2P_SUPPORT_FLAG_FLUFFY_BLOCKS))
         {
           LOG_DEBUG_CC(context, "PEER SUPPORTS FLUFFY BLOCKS - RELAYING THIN/COMPACT WHATEVER BLOCK");
-          fluffyConnections.push_back({context.m_remote_address.get_zone(), context.m_connection_id});
+          fluffyConnections.push_back( context.m_connection_id);
         }
         else
         {
           LOG_DEBUG_CC(context, "PEER DOESN'T SUPPORT FLUFFY BLOCKS - RELAYING FULL BLOCK");
-          fullConnections.push_back({context.m_remote_address.get_zone(), context.m_connection_id});
+          fullConnections.push_back( context.m_connection_id);
         }
       }
       return true;
@@ -2727,7 +2713,7 @@ skip:
        local mempool before doing the relay. The code was already updating the
        DB twice on received transactions - it is difficult to workaround this
        due to the internal design. */
-    return m_p2p->send_txs(std::move(arg.txs), zone, source, tx_relay) != epee::net_utils::zone::invalid;
+    return m_p2p->send_txs(std::move(arg.txs),  source, tx_relay) ;
   }
   //------------------------------------------------------------------------------------------------------------------------
   template<class t_core>

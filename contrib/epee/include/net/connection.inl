@@ -49,10 +49,7 @@ namespace net_utils
   /************************************************************************/
   /// Represents a single connection from a client.
   template<class t_protocol_handler>
-  class connection
-    : public boost::enable_shared_from_this<connection<t_protocol_handler> >,
-    private boost::noncopyable, 
-    public i_service_endpoint,
+  class connection: public boost::enable_shared_from_this<connection<t_protocol_handler> >,private boost::noncopyable, public i_service_endpoint,
     public connection_basic
   {
   public:
@@ -69,15 +66,11 @@ namespace net_utils
     };
 
     /// Construct a connection with the given io_service.
-    explicit connection( boost::asio::io_service& io_service,
-                        std::shared_ptr<shared_state> state,
-			t_connection_type connection_type,
-			epee::net_utils::ssl_support_t ssl_support);
+    explicit connection( boost::asio::io_service& io_service,std::shared_ptr<shared_state> state,
+			t_connection_type connection_type,epee::net_utils::ssl_support_t ssl_support);
 
-    explicit connection( boost::asio::ip::tcp::socket&& sock,
-			 std::shared_ptr<shared_state> state,
-			t_connection_type connection_type,
-			epee::net_utils::ssl_support_t ssl_support);
+    explicit connection( boost::asio::ip::tcp::socket&& sock,			 std::shared_ptr<shared_state> state,
+			t_connection_type connection_type,epee::net_utils::ssl_support_t ssl_support);
 
 
 

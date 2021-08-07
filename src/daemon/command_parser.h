@@ -45,13 +45,13 @@
 
 namespace daemonize {
 
-class t_command_parser_executor final
+class t_command_parser final
 {
 private:
   t_rpc_command_executor m_executor;
   cryptonote::core & m_core;
 public:
-  t_command_parser_executor(
+  t_command_parser(
       uint32_t ip
     , uint16_t port
     , const boost::optional<tools::login>& login

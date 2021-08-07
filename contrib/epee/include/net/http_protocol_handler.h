@@ -151,9 +151,7 @@ namespace net_utils
 		struct i_http_server_handler
 		{
 			virtual ~i_http_server_handler(){}
-			virtual bool handle_http_request(const http_request_info& query_info,
-																						 http_response_info& response,
-																						 t_connection_context& m_conn_context) = 0;
+			virtual bool handle_http_request(const http_request_info& query_info,http_response_info& response,t_connection_context& m_conn_context) = 0;
 			virtual bool init_server_thread(){return true;}
 			virtual bool deinit_server_thread(){return true;}
 		};

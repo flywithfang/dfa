@@ -29,7 +29,7 @@
 #include "common/dns_utils.h"
 #include "common/command_line.h"
 #include "net/parse.h"
-#include "daemon/command_parser_executor.h"
+#include "daemon/command_parser.h"
 #include <boost/filesystem.hpp>
 #include <boost/algorithm/string/predicate.hpp>
 
@@ -38,7 +38,7 @@
 
 namespace daemonize {
 
-t_command_parser_executor::t_command_parser_executor(
+t_command_parser::t_command_parser(
     uint32_t ip
   , uint16_t port
   , const boost::optional<tools::login>& login
@@ -51,7 +51,7 @@ t_command_parser_executor::t_command_parser_executor(
 {
 }
 
-bool t_command_parser_executor::print_peer_list(const std::vector<std::string>& args)
+bool t_command_parser::print_peer_list(const std::vector<std::string>& args)
 {
   if (args.size() > 3)
   {
@@ -93,7 +93,7 @@ bool t_command_parser_executor::print_peer_list(const std::vector<std::string>& 
   return m_executor.print_peer_list(white | print_both, gray | print_both, limit, pruned, publicrpc);
 }
 
-bool t_command_parser_executor::print_peer_list_stats(const std::vector<std::string>& args)
+bool t_command_parser::print_peer_list_stats(const std::vector<std::string>& args)
 {
   if (!args.empty()) {
     std::cout << "Invalid syntax: No parameters expected. For more details, use the help command." << std::endl;
@@ -103,7 +103,7 @@ bool t_command_parser_executor::print_peer_list_stats(const std::vector<std::str
   return m_executor.print_peer_list_stats();
 }
 
-bool t_command_parser_executor::save_blockchain(const std::vector<std::string>& args)
+bool t_command_parser::save_blockchain(const std::vector<std::string>& args)
 {
   if (!args.empty()) {
     std::cout << "Invalid syntax: No parameters expected. For more details, use the help command." << std::endl;
@@ -114,7 +114,7 @@ bool t_command_parser_executor::save_blockchain(const std::vector<std::string>& 
 
 
 
-bool t_command_parser_executor::show_difficulty(const std::vector<std::string>& args)
+bool t_command_parser::show_difficulty(const std::vector<std::string>& args)
 {
   if (!args.empty()) {
     std::cout << "Invalid syntax: No parameters expected. For more details, use the help command." << std::endl;
@@ -124,7 +124,7 @@ bool t_command_parser_executor::show_difficulty(const std::vector<std::string>& 
   return m_executor.show_difficulty();
 }
 
-bool t_command_parser_executor::show_status(const std::vector<std::string>& args)
+bool t_command_parser::show_status(const std::vector<std::string>& args)
 {
   if (!args.empty()) {
     std::cout << "Invalid syntax: No parameters expected. For more details, use the help command." << std::endl;
@@ -134,7 +134,7 @@ bool t_command_parser_executor::show_status(const std::vector<std::string>& args
   return m_executor.show_status();
 }
 
-bool t_command_parser_executor::print_connections(const std::vector<std::string>& args)
+bool t_command_parser::print_connections(const std::vector<std::string>& args)
 {
   if (!args.empty()) {
     std::cout << "Invalid syntax: No parameters expected. For more details, use the help command." << std::endl;
@@ -144,7 +144,7 @@ bool t_command_parser_executor::print_connections(const std::vector<std::string>
   return m_executor.print_connections();
 }
 
-bool t_command_parser_executor::print_net_stats(const std::vector<std::string>& args)
+bool t_command_parser::print_net_stats(const std::vector<std::string>& args)
 {
   if (!args.empty()) {
     std::cout << "Invalid syntax: No parameters expected. For more details, use the help command." << std::endl;
@@ -154,7 +154,7 @@ bool t_command_parser_executor::print_net_stats(const std::vector<std::string>& 
   return m_executor.print_net_stats();
 }
 
-bool t_command_parser_executor::print_blockchain_info(const std::vector<std::string>& args)
+bool t_command_parser::print_blockchain_info(const std::vector<std::string>& args)
 {
   if(!args.size())
   {
@@ -187,7 +187,7 @@ bool t_command_parser_executor::print_blockchain_info(const std::vector<std::str
   return m_executor.print_blockchain_info(start_index, end_index);
 }
 
-bool t_command_parser_executor::set_log_level(const std::vector<std::string>& args)
+bool t_command_parser::set_log_level(const std::vector<std::string>& args)
 {
   if(args.size() > 1)
   {
@@ -216,7 +216,7 @@ bool t_command_parser_executor::set_log_level(const std::vector<std::string>& ar
   }
 }
 
-bool t_command_parser_executor::print_height(const std::vector<std::string>& args) 
+bool t_command_parser::print_height(const std::vector<std::string>& args) 
 {
   if (!args.empty()) {
     std::cout << "Invalid syntax: No parameters expected. For more details, use the help command." << std::endl;
@@ -226,7 +226,7 @@ bool t_command_parser_executor::print_height(const std::vector<std::string>& arg
   return m_executor.print_height();
 }
 
-bool t_command_parser_executor::print_block(const std::vector<std::string>& args)
+bool t_command_parser::print_block(const std::vector<std::string>& args)
 {
   bool include_hex = false;
 
@@ -264,7 +264,7 @@ bool t_command_parser_executor::print_block(const std::vector<std::string>& args
   return true;
 }
 
-bool t_command_parser_executor::print_transaction(const std::vector<std::string>& args)
+bool t_command_parser::print_transaction(const std::vector<std::string>& args)
 {
   bool include_metadata = false;
   bool include_hex = false;
@@ -300,7 +300,7 @@ bool t_command_parser_executor::print_transaction(const std::vector<std::string>
   return true;
 }
 
-bool t_command_parser_executor::is_key_image_spent(const std::vector<std::string>& args)
+bool t_command_parser::is_key_image_spent(const std::vector<std::string>& args)
 {
   if (args.empty())
   {
@@ -320,7 +320,7 @@ bool t_command_parser_executor::is_key_image_spent(const std::vector<std::string
   return true;
 }
 
-bool t_command_parser_executor::print_transaction_pool_long(const std::vector<std::string>& args)
+bool t_command_parser::print_transaction_pool_long(const std::vector<std::string>& args)
 {
   if (!args.empty()) {
     std::cout << "Invalid syntax: No parameters expected. For more details, use the help command." << std::endl;
@@ -330,7 +330,7 @@ bool t_command_parser_executor::print_transaction_pool_long(const std::vector<st
   return m_executor.print_transaction_pool_long();
 }
 
-bool t_command_parser_executor::print_transaction_pool_short(const std::vector<std::string>& args)
+bool t_command_parser::print_transaction_pool_short(const std::vector<std::string>& args)
 {
   if (!args.empty()) {
     std::cout << "Invalid syntax: No parameters expected. For more details, use the help command." << std::endl;
@@ -340,7 +340,7 @@ bool t_command_parser_executor::print_transaction_pool_short(const std::vector<s
   return m_executor.print_transaction_pool_short();
 }
 
-bool t_command_parser_executor::print_transaction_pool_stats(const std::vector<std::string>& args)
+bool t_command_parser::print_transaction_pool_stats(const std::vector<std::string>& args)
 {
   if (!args.empty()) {
     std::cout << "Invalid syntax: No parameters expected. For more details, use the help command." << std::endl;
@@ -350,7 +350,7 @@ bool t_command_parser_executor::print_transaction_pool_stats(const std::vector<s
   return m_executor.print_transaction_pool_stats();
 }
 
-bool t_command_parser_executor::start_mining(const std::vector<std::string>& args)
+bool t_command_parser::start_mining(const std::vector<std::string>& args)
 {
   if(!args.size())
   {
@@ -455,7 +455,7 @@ bool t_command_parser_executor::start_mining(const std::vector<std::string>& arg
   return true;
 }
 
-bool t_command_parser_executor::stop_mining(const std::vector<std::string>& args)
+bool t_command_parser::stop_mining(const std::vector<std::string>& args)
 {
   if (!args.empty()) {
     std::cout << "Invalid syntax: No parameters expected. For more details, use the help command." << std::endl;
@@ -465,12 +465,12 @@ bool t_command_parser_executor::stop_mining(const std::vector<std::string>& args
     return true;
 }
 
-bool t_command_parser_executor::mining_status(const std::vector<std::string>& args)
+bool t_command_parser::mining_status(const std::vector<std::string>& args)
 {
   return m_executor.mining_status();
 }
 
-bool t_command_parser_executor::stop_daemon(const std::vector<std::string>& args)
+bool t_command_parser::stop_daemon(const std::vector<std::string>& args)
 {
   if (!args.empty()) {
     std::cout << "Invalid syntax: No parameters expected. For more details, use the help command." << std::endl;
@@ -480,7 +480,7 @@ bool t_command_parser_executor::stop_daemon(const std::vector<std::string>& args
   return m_executor.stop_daemon();
 }
 
-bool t_command_parser_executor::print_status(const std::vector<std::string>& args)
+bool t_command_parser::print_status(const std::vector<std::string>& args)
 {
   if (!args.empty()) {
     std::cout << "Invalid syntax: No parameters expected. For more details, use the help command." << std::endl;
@@ -490,7 +490,7 @@ bool t_command_parser_executor::print_status(const std::vector<std::string>& arg
   return m_executor.print_status();
 }
 
-bool t_command_parser_executor::set_limit(const std::vector<std::string>& args)
+bool t_command_parser::set_limit(const std::vector<std::string>& args)
 {
   if(args.size()>1) {
     std::cout << "Invalid syntax: Too many parameters. For more details, use the help command." << std::endl;
@@ -512,7 +512,7 @@ bool t_command_parser_executor::set_limit(const std::vector<std::string>& args)
   return m_executor.set_limit(limit, limit);
 }
 
-bool t_command_parser_executor::set_limit_up(const std::vector<std::string>& args)
+bool t_command_parser::set_limit_up(const std::vector<std::string>& args)
 {
   if(args.size()>1) {
     std::cout << "Invalid syntax: Too many parameters. For more details, use the help command." << std::endl;
@@ -534,7 +534,7 @@ bool t_command_parser_executor::set_limit_up(const std::vector<std::string>& arg
   return m_executor.set_limit(0, limit);
 }
 
-bool t_command_parser_executor::set_limit_down(const std::vector<std::string>& args)
+bool t_command_parser::set_limit_down(const std::vector<std::string>& args)
 {
   if(args.size()>1) {
     std::cout << "Invalid syntax: Too many parameters. For more details, use the help command." << std::endl;
@@ -556,7 +556,7 @@ bool t_command_parser_executor::set_limit_down(const std::vector<std::string>& a
   return m_executor.set_limit(limit, 0);
 }
 
-bool t_command_parser_executor::out_peers(const std::vector<std::string>& args)
+bool t_command_parser::out_peers(const std::vector<std::string>& args)
 {
 	bool set = false;
 	uint32_t limit = 0;
@@ -577,7 +577,7 @@ bool t_command_parser_executor::out_peers(const std::vector<std::string>& args)
 	return m_executor.out_peers(set, limit);
 }
 
-bool t_command_parser_executor::in_peers(const std::vector<std::string>& args)
+bool t_command_parser::in_peers(const std::vector<std::string>& args)
 {
 	bool set = false;
 	uint32_t limit = 0;
@@ -598,7 +598,7 @@ bool t_command_parser_executor::in_peers(const std::vector<std::string>& args)
 	return m_executor.in_peers(set, limit);
 }
 
-bool t_command_parser_executor::hard_fork_info(const std::vector<std::string>& args)
+bool t_command_parser::hard_fork_info(const std::vector<std::string>& args)
 {
   int version;
   if (args.size() == 0) {
@@ -624,7 +624,7 @@ bool t_command_parser_executor::hard_fork_info(const std::vector<std::string>& a
   return m_executor.hard_fork_info(version);
 }
 
-bool t_command_parser_executor::show_bans(const std::vector<std::string>& args)
+bool t_command_parser::show_bans(const std::vector<std::string>& args)
 {
   if (!args.empty()) {
     std::cout << "Invalid syntax: No parameters expected. For more details, use the help command." << std::endl;
@@ -634,7 +634,7 @@ bool t_command_parser_executor::show_bans(const std::vector<std::string>& args)
   return m_executor.print_bans();
 }
 
-bool t_command_parser_executor::ban(const std::vector<std::string>& args)
+bool t_command_parser::ban(const std::vector<std::string>& args)
 {
   if (args.size() != 1 && args.size() != 2) {
     std::cout << "Invalid syntax: Expects one or two parameters. For more details, use the help command." << std::endl;
@@ -705,7 +705,7 @@ bool t_command_parser_executor::ban(const std::vector<std::string>& args)
   }
 }
 
-bool t_command_parser_executor::unban(const std::vector<std::string>& args)
+bool t_command_parser::unban(const std::vector<std::string>& args)
 {
   if (args.size() != 1) {
     std::cout << "Invalid syntax: One parameter expected. For more details, use the help command." << std::endl;
@@ -716,7 +716,7 @@ bool t_command_parser_executor::unban(const std::vector<std::string>& args)
   return m_executor.unban(ip);
 }
 
-bool t_command_parser_executor::banned(const std::vector<std::string>& args)
+bool t_command_parser::banned(const std::vector<std::string>& args)
 {
   if (args.size() != 1) {
     std::cout << "Invalid syntax: One parameter expected. For more details, use the help command." << std::endl;
@@ -726,7 +726,7 @@ bool t_command_parser_executor::banned(const std::vector<std::string>& args)
   return m_executor.banned(address);
 }
 
-bool t_command_parser_executor::flush_txpool(const std::vector<std::string>& args)
+bool t_command_parser::flush_txpool(const std::vector<std::string>& args)
 {
   if (args.size() > 1) {
     std::cout << "Invalid syntax: Too many parameters. For more details, use the help command." << std::endl;
@@ -747,7 +747,7 @@ bool t_command_parser_executor::flush_txpool(const std::vector<std::string>& arg
   return m_executor.flush_txpool(txid);
 }
 
-bool t_command_parser_executor::output_histogram(const std::vector<std::string>& args)
+bool t_command_parser::output_histogram(const std::vector<std::string>& args)
 {
   std::vector<uint64_t> amounts;
   uint64_t min_count = 3;
@@ -779,7 +779,7 @@ bool t_command_parser_executor::output_histogram(const std::vector<std::string>&
   return m_executor.output_histogram(amounts, min_count, max_count);
 }
 
-bool t_command_parser_executor::print_coinbase_tx_sum(const std::vector<std::string>& args)
+bool t_command_parser::print_coinbase_tx_sum(const std::vector<std::string>& args)
 {
   if(!args.size())
   {
@@ -803,7 +803,7 @@ bool t_command_parser_executor::print_coinbase_tx_sum(const std::vector<std::str
   return m_executor.print_coinbase_tx_sum(height, count);
 }
 
-bool t_command_parser_executor::alt_chain_info(const std::vector<std::string>& args)
+bool t_command_parser::alt_chain_info(const std::vector<std::string>& args)
 {
   if(args.size() > 1)
   {
@@ -841,7 +841,7 @@ bool t_command_parser_executor::alt_chain_info(const std::vector<std::string>& a
   return m_executor.alt_chain_info(tip, above, last_blocks);
 }
 
-bool t_command_parser_executor::print_blockchain_dynamic_stats(const std::vector<std::string>& args)
+bool t_command_parser::print_blockchain_dynamic_stats(const std::vector<std::string>& args)
 {
   if(args.size() != 1)
   {
@@ -859,7 +859,7 @@ bool t_command_parser_executor::print_blockchain_dynamic_stats(const std::vector
   return m_executor.print_blockchain_dynamic_stats(nblocks);
 }
 
-bool t_command_parser_executor::update(const std::vector<std::string>& args)
+bool t_command_parser::update(const std::vector<std::string>& args)
 {
   if (args.size() != 1)
   {
@@ -870,7 +870,7 @@ bool t_command_parser_executor::update(const std::vector<std::string>& args)
   return m_executor.update(args.front());
 }
 
-bool t_command_parser_executor::relay_tx(const std::vector<std::string>& args)
+bool t_command_parser::relay_tx(const std::vector<std::string>& args)
 {
   if (args.size() != 1)
   {
@@ -889,7 +889,7 @@ bool t_command_parser_executor::relay_tx(const std::vector<std::string>& args)
   return m_executor.relay_tx(txid);
 }
 
-bool t_command_parser_executor::sync_info(const std::vector<std::string>& args)
+bool t_command_parser::sync_info(const std::vector<std::string>& args)
 {
   if (args.size() != 0) {
     std::cout << "Invalid syntax: No parameters expected. For more details, use the help command." << std::endl;
@@ -899,7 +899,7 @@ bool t_command_parser_executor::sync_info(const std::vector<std::string>& args)
   return m_executor.sync_info();
 }
 
-bool t_command_parser_executor::pop_blocks(const std::vector<std::string>& args)
+bool t_command_parser::pop_blocks(const std::vector<std::string>& args)
 {
   if (args.size() != 1)
   {
@@ -924,7 +924,7 @@ bool t_command_parser_executor::pop_blocks(const std::vector<std::string>& args)
   return true;
 }
 
-bool t_command_parser_executor::rpc_payments(const std::vector<std::string>& args)
+bool t_command_parser::rpc_payments(const std::vector<std::string>& args)
 {
   if (args.size() != 0) {
     std::cout << "Invalid syntax: No parameters expected. For more details, use the help command." << std::endl;
@@ -934,12 +934,12 @@ bool t_command_parser_executor::rpc_payments(const std::vector<std::string>& arg
   return m_executor.rpc_payments();
 }
 
-bool t_command_parser_executor::version(const std::vector<std::string>& args)
+bool t_command_parser::version(const std::vector<std::string>& args)
 {
   return m_executor.version();
 }
 
-bool t_command_parser_executor::prune_blockchain(const std::vector<std::string>& args)
+bool t_command_parser::prune_blockchain(const std::vector<std::string>& args)
 {
   if (args.size() > 1)
   {
@@ -961,12 +961,12 @@ bool t_command_parser_executor::prune_blockchain(const std::vector<std::string>&
   return m_executor.prune_blockchain();
 }
 
-bool t_command_parser_executor::check_blockchain_pruning(const std::vector<std::string>& args)
+bool t_command_parser::check_blockchain_pruning(const std::vector<std::string>& args)
 {
   return m_executor.check_blockchain_pruning();
 }
 
-bool t_command_parser_executor::set_bootstrap_daemon(const std::vector<std::string>& args)
+bool t_command_parser::set_bootstrap_daemon(const std::vector<std::string>& args)
 {
   struct parsed_t
   {
@@ -1031,7 +1031,7 @@ bool t_command_parser_executor::set_bootstrap_daemon(const std::vector<std::stri
   return m_executor.set_bootstrap_daemon(parsed->address, parsed->user, parsed->password, parsed->proxy);
 }
 
-bool t_command_parser_executor::flush_cache(const std::vector<std::string>& args)
+bool t_command_parser::flush_cache(const std::vector<std::string>& args)
 {
   bool bad_txs = false, bad_blocks = false;
   std::string arg;

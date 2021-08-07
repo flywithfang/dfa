@@ -97,7 +97,6 @@ namespace nodetool
     epee::net_utils::network_address default_remote;
   };
 
-  boost::optional<std::vector<proxy>> get_proxies(const boost::program_options::variables_map& vm);
 
   //! \return True if `commnd` is filtered (ignored/dropped) for `address`
   bool is_filtered_command(epee::net_utils::network_address const& address, int command);
@@ -129,9 +128,7 @@ namespace nodetool
 
 
   template<class t_payload_net_handler>
-  class node_server: public epee::levin::levin_commands_handler<p2p_connection_context_t<typename t_payload_net_handler::connection_context> >,
-                     public i_p2p_endpoint<typename t_payload_net_handler::connection_context>,
-                     public epee::net_utils::i_connection_filter
+  class node_server: public epee::levin::levin_commands_handler<p2p_connection_context_t<typename t_payload_net_handler::connection_context> >,public i_p2p_endpoint<typename t_payload_net_handler::connection_context>,public epee::net_utils::i_connection_filter
   {
     struct by_conn_id{};
     struct by_peer_id{};
@@ -139,8 +136,8 @@ namespace nodetool
 
     typedef p2p_connection_context_t<typename t_payload_net_handler::connection_context> p2p_connection_context;
 
-    typedef epee::levin::async_protocol_handler<p2p_connection_context> P2PProtocolHandler;
     typedef node_server<t_payload_net_handler> MyType;
+    typedef epee::levin::async_protocol_handler<p2p_connection_context> P2PProtocolHandler;
     typedef COMMAND_HANDSHAKE_T<typename t_payload_net_handler::payload_type> COMMAND_HANDSHAKE;
     typedef COMMAND_TIMED_SYNC_T<typename t_payload_net_handler::payload_type> COMMAND_TIMED_SYNC;
     static_assert(p2p_connection_context::handshake_command() == COMMAND_HANDSHAKE::ID, "invalid handshake command id");
@@ -148,7 +145,6 @@ namespace nodetool
     typedef epee::net_utils::boosted_tcp_server<P2PProtocolHandler> net_server;
 
     struct network_zone;
-    using connect_func = boost::optional<p2p_connection_context>(network_zone&, epee::net_utils::network_address const&, epee::net_utils::ssl_support_t);
 
     struct config_t
     {
@@ -167,8 +163,7 @@ namespace nodetool
     struct network_zone
     {
       network_zone()
-        : m_connect(nullptr),
-          m_net_server(epee::net_utils::e_connection_type_P2P),
+        : m_net_server(epee::net_utils::e_connection_type_P2P),
           m_seed_nodes(),
           m_bind_ip(),
           m_bind_ipv6_address(),
@@ -189,8 +184,7 @@ namespace nodetool
       }
 
       network_zone(boost::asio::io_service& public_service)
-        : m_connect(nullptr),
-          m_net_server(public_service, epee::net_utils::e_connection_type_P2P),
+        : m_net_server(public_service, epee::net_utils::e_connection_type_P2P),
           m_seed_nodes(),
           m_bind_ip(),
           m_bind_ipv6_address(),
@@ -209,8 +203,43 @@ namespace nodetool
       {
         set_config_defaults();
       }
+  boost::optional<p2p_connection_context> connect(epee::net_utils::network_address const& na, epee::net_utils::ssl_support_t ssl_support)
+      {
+        MINFO("public_connect "<<na.str()<<",ssl "<<std::to_string((uint8_t)ssl_support));
+        bool is_ipv4 = na.get_type_id() == epee::net_utils::ipv4_network_address::get_type_id();
+        bool is_ipv6 = na.get_type_id() == epee::net_utils::ipv6_network_address::get_type_id();
+        CHECK_AND_ASSERT_MES(is_ipv4 || is_ipv6, boost::none,
+          "Only IPv4 or IPv6 addresses are supported here");
 
-      connect_func* m_connect;
+        std::string address;
+        std::string port;
+
+        if (is_ipv4)
+        {
+          const epee::net_utils::ipv4_network_address &ipv4 = na.as<const epee::net_utils::ipv4_network_address>();
+          address = epee::string_tools::get_ip_string_from_int32(ipv4.ip());
+          port = epee::string_tools::num_to_string_fast(ipv4.port());
+        }
+        else if (is_ipv6)
+        {
+          const epee::net_utils::ipv6_network_address &ipv6 = na.as<const epee::net_utils::ipv6_network_address>();
+          address = ipv6.ip().to_string();
+          port = epee::string_tools::num_to_string_fast(ipv6.port());
+        }
+        else
+        {
+          LOG_ERROR("Only IPv4 or IPv6 addresses are supported here");
+          return boost::none;
+        }
+
+        typename net_server::t_connection_context con{};
+        const bool res = m_net_server.connect(address, port,m_config.m_net_config.connection_timeout,con, "0.0.0.0", ssl_support);
+
+        if (res)
+          return {std::move(con)};
+        return boost::none;
+      }
+
       net_server m_net_server;
       std::vector<epee::net_utils::network_address> m_seed_nodes;
       std::string m_bind_ip;
@@ -219,7 +248,9 @@ namespace nodetool
       std::string m_port_ipv6;
       cryptonote::levin::notify m_notifier;
       epee::net_utils::network_address m_our_address; // in anonymity networks
+
       peerlist_manager m_peerlist;
+      
       config m_config;
       boost::asio::ip::tcp::endpoint m_proxy_address;
       std::atomic<unsigned int> m_current_number_of_out_peers;
@@ -265,17 +296,17 @@ namespace nodetool
         m_network_id(),
         max_connections(1)
     {}
-    virtual ~node_server();
+    virtual ~node_server(){}  
 
     static void init_options(boost::program_options::options_description& desc);
+    payload_net_handler& get_payload_object();
 
     bool run();
-    network_zone& add_zone(epee::net_utils::zone zone);
     bool init(const boost::program_options::variables_map& vm);
     bool deinit();
     bool send_stop_signal();
     uint32_t get_this_peer_port(){return m_listening_port;}
-    t_payload_net_handler& get_payload_object();
+    t_payload_net_handler& get_paylonetwork_zonead_object();
 
     // debug functions
     bool log_peerlist();
@@ -283,10 +314,8 @@ namespace nodetool
 
     // These functions only return information for the "public" zone
     virtual uint64_t get_public_connections_count();
-    size_t get_public_outgoing_connections_count();
     size_t get_public_white_peers_count();
     size_t get_public_gray_peers_count();
-    void get_public_peerlist(std::vector<peerlist_entry>& gray, std::vector<peerlist_entry>& white);
     void get_peerlist(std::vector<peerlist_entry>& gray, std::vector<peerlist_entry>& white);
 
     void change_max_out_public_peers(size_t count);
@@ -375,14 +404,16 @@ namespace nodetool
     bool make_default_config();
     bool store_config();
 
-
+  public:
     //----------------- levin_commands_handler -------------------------------------------------------------
     virtual void on_connection_new(p2p_connection_context& context);
     virtual void on_connection_close(p2p_connection_context& context);
     virtual void callback(p2p_connection_context& context);
     //----------------- i_p2p_endpoint -------------------------------------------------------------
-    virtual bool relay_notify_to_list(int command, epee::levin::message_writer message, std::vector<std::pair<epee::net_utils::zone, boost::uuids::uuid>> connections) final;
-    virtual epee::net_utils::zone send_txs(std::vector<cryptonote::blobdata> txs, const epee::net_utils::zone origin, const boost::uuids::uuid& source, cryptonote::relay_method tx_relay);
+    virtual bool relay_notify_to_list(int command, epee::levin::message_writer message, std::vector< boost::uuids::uuid> connections) final;
+
+    virtual bool send_txs(std::vector<cryptonote::blobdata> txs,  const boost::uuids::uuid& source, cryptonote::relay_method tx_relay);
+
     virtual bool invoke_notify_to_peer(int command, epee::levin::message_writer message, const epee::net_utils::connection_context_base& context) final;
     virtual bool drop_connection(const epee::net_utils::connection_context_base& context);
     virtual void request_callback(const epee::net_utils::connection_context_base& context);
@@ -398,7 +429,7 @@ namespace nodetool
       );
     bool idle_worker();
     bool handle_remote_peerlist(const std::vector<peerlist_entry>& peerlist, const epee::net_utils::connection_context_base& context);
-    bool get_local_node_data(basic_node_data& node_data, const network_zone& zone);
+    bool get_local_node_data(basic_node_data& node_data);
     //bool get_local_handshake_data(handshake_data& hshd);
 
     bool sanitize_peerlist(std::vector<peerlist_entry>& local_peerlist);
@@ -409,7 +440,7 @@ namespace nodetool
     bool do_peer_timed_sync(const epee::net_utils::connection_context_base& context, peerid_type peer_id);
 
     bool make_new_connection_from_anchor_peerlist(const std::vector<anchor_peerlist_entry>& anchor_peerlist);
-    bool make_new_connection_from_peerlist(network_zone& zone, bool use_white_list);
+    bool make_new_connection_from_peerlist( bool use_white_list);
     bool try_to_connect_and_handshake_with_new_peer(const epee::net_utils::network_address& na, bool just_take_peerlist = false, uint64_t last_seen_stamp = 0, PeerType peer_type = white, uint64_t first_seen_stamp = 0);
     size_t get_random_index_with_fixed_probability(size_t max_index);
     bool is_peer_used(const peerlist_entry& peer);
@@ -425,14 +456,14 @@ namespace nodetool
     void delete_upnp_port_mapping(uint32_t port);
     template<class t_callback>
     bool try_ping(basic_node_data& node_data, p2p_connection_context& context, const t_callback &cb);
-    bool make_expected_connection(network_zone& zone, PeerType peer_type, size_t expected_connections);
+    bool make_expected_connection( PeerType peer_type, size_t expected_connections);
     void record_addr_failed(const epee::net_utils::network_address& addr);
     bool is_addr_recently_failed(const epee::net_utils::network_address& addr);
     bool is_priority_node(const epee::net_utils::network_address& na);
     std::set<std::string> get_ip_seed_nodes() const;
     std::set<std::string> get_dns_seed_nodes();
-    std::set<std::string> get_seed_nodes(epee::net_utils::zone);
-    bool connect_to_seed(epee::net_utils::zone);
+    std::set<std::string> get_seed_nodes();
+    bool connect_to_seed();
 
     template <class Container>
     bool connect_to_peerlist(const Container& peers);
@@ -450,9 +481,7 @@ namespace nodetool
 
     bool has_too_many_connections(const epee::net_utils::network_address &address);
     size_t get_incoming_connections_count();
-    size_t get_incoming_connections_count(network_zone&);
     size_t get_outgoing_connections_count();
-    size_t get_outgoing_connections_count(network_zone&);
 
     bool check_connection_and_handshake_with_peer(const epee::net_utils::network_address& na, uint64_t last_seen_stamp);
     bool gray_peerlist_housekeeping();
@@ -521,17 +550,7 @@ namespace nodetool
     //keep connections to initiate some interactions
 
 
-    static boost::optional<p2p_connection_context> public_connect(network_zone&, epee::net_utils::network_address const&, epee::net_utils::ssl_support_t);
-    static boost::optional<p2p_connection_context> socks_connect(network_zone&, epee::net_utils::network_address const&, epee::net_utils::ssl_support_t);
-
-
-    /* A `std::map` provides constant iterators and key/value pointers even with
-    inserts/erases to _other_ elements. This makes the configuration step easier
-    since references can safely be stored on the stack. Do not insert/erase
-    after configuration and before destruction, lock safety would need to be
-    added. `std::map::operator[]` WILL insert! */
-    std::map<epee::net_utils::zone, network_zone> m_network_zones;
-
+    network_zone m_network;
 
     std::map<std::string, time_t> m_conn_fails_cache;
     epee::critical_section m_conn_fails_cache_lock;
@@ -555,6 +574,8 @@ namespace nodetool
 
     uint32_t max_connections;
   };
+
+
 
     const int64_t default_limit_up = P2P_DEFAULT_LIMIT_RATE_UP;      // kB/s
     const int64_t default_limit_down = P2P_DEFAULT_LIMIT_RATE_DOWN;  // kB/s
