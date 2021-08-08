@@ -167,14 +167,14 @@
 
     // test only the remote end's zone, otherwise an attacker could connect to you on clearnet
     // and pass in a tor connection's peer id, and deduce the two are the same if you reject it
-    if(arg.node_data.peer_id == m_network.m_config.m_peer_id)
+    if(arg.node_data.peer_id == m_network.m_shared_state.m_peer_id)
     {
       LOG_DEBUG_CC(context,"Connection to self detected, dropping connection");
       drop_connection(context);
       return 1;
     }
 
-    if (m_network.m_current_number_of_in_peers >= m_network.m_config.m_net_config.max_in_connection_count) // in peers limit
+    if (m_network.m_current_number_of_in_peers >= m_network.m_shared_state.m_net_config.max_in_connection_count) // in peers limit
     {
       LOG_WARNING_CC(context, "COMMAND_HANDSHAKE came, but already have max incoming connections, so dropping this one.");
       drop_connection(context);
@@ -280,7 +280,7 @@
     real peer with that identity banned/blacklisted. */
 
     if(!context.m_is_income)
-      rsp.local_peerlist_new.push_back(peerlist_entry{m_network.m_our_address, m_network.m_config.m_peer_id, std::time(nullptr)});
+      rsp.local_peerlist_new.push_back(peerlist_entry{m_network.m_our_address, m_network.m_shared_state.m_peer_id, std::time(nullptr)});
 
     LOG_DEBUG_CC(context, "COMMAND_TIMED_SYNC");
     return 1;
@@ -329,7 +329,7 @@
       address = epee::net_utils::network_address{epee::net_utils::ipv6_network_address(ipv6_addr, node_data.my_port)};
     }
     peerid_type pr = node_data.peer_id;
-    bool r = m_network.m_net_server.connect_async(ip, port, m_network.m_config.m_net_config.ping_connection_timeout, [cb, /*context,*/ address, pr, this](
+    bool r = m_network.m_net_server.connect_async(ip, port, m_network.m_shared_state.m_net_config.ping_connection_timeout, [cb, /*context,*/ address, pr, this](
       const typename net_server::t_connection_context& ping_context,
       const boost::system::error_code& ec)->bool
     {
@@ -349,7 +349,7 @@
       // GCC 5.1.0 gives error with second use of uint64_t (peerid_type) variable.
       peerid_type pr_ = pr;
 
-      bool inv_call_res = epee::net_utils::async_invoke_remote_command2<COMMAND_PING::response>(ping_context, COMMAND_PING::ID, req, m_network.m_net_server.get_config_object(),
+      bool inv_call_res = epee::net_utils::async_invoke_remote_command2<COMMAND_PING::response>(ping_context, COMMAND_PING::ID, req, m_network.m_net_server.get_shared_state(),
         [=](int code, const COMMAND_PING::response& rsp, p2p_connection_context& context)
       {
         if(code <= 0)
@@ -361,17 +361,17 @@
         if(rsp.status != PING_OK_RESPONSE_STATUS_TEXT || pr != rsp.peer_id)
         {
           LOG_WARNING_CC(ping_context, "back ping invoke wrong response \"" << rsp.status << "\" from" << address.str() << ", hsh_peer_id=" << pr_ << ", rsp.peer_id=" << peerid_to_string(rsp.peer_id));
-          m_network.m_net_server.get_config_object().close(ping_context.m_connection_id);
+          m_network.m_net_server.get_shared_state().close(ping_context.m_connection_id);
           return;
         }
-        m_network.m_net_server.get_config_object().close(ping_context.m_connection_id);
+        m_network.m_net_server.get_shared_state().close(ping_context.m_connection_id);
         cb();
       });
 
       if(!inv_call_res)
       {
         LOG_WARNING_CC(ping_context, "back ping invoke failed to " << address.str());
-        m_network.m_net_server.get_config_object().close(ping_context.m_connection_id);
+        m_network.m_net_server.get_shared_state().close(ping_context.m_connection_id);
         return false;
       }
       return true;
@@ -389,7 +389,7 @@
   {
     LOG_DEBUG_CC(context, "COMMAND_PING");
     rsp.status = PING_OK_RESPONSE_STATUS_TEXT;
-    rsp.peer_id = m_network.m_config.m_peer_id;
+    rsp.peer_id = m_network.m_shared_state.m_peer_id;
     return 1;
   }
 
@@ -402,13 +402,13 @@
     if (m_network.m_our_address == na)
       return false;
 
-    if (m_network.m_current_number_of_out_peers == m_network.m_config.m_net_config.max_out_connection_count) // out peers limit
+    if (m_network.m_current_number_of_out_peers == m_network.m_shared_state.m_net_config.max_out_connection_count) // out peers limit
     {
       return false;
     }
-    else if (m_network.m_current_number_of_out_peers > m_network.m_config.m_net_config.max_out_connection_count)
+    else if (m_network.m_current_number_of_out_peers > m_network.m_shared_state.m_net_config.max_out_connection_count)
     {
-      m_network.m_net_server.get_config_object().del_out_connections(1);
+      m_network.m_net_server.get_shared_state().del_out_connections(1);
       --(m_network.m_current_number_of_out_peers); // atomic variable, update time = 1s
       return false;
     }
@@ -441,7 +441,7 @@
 
     if(just_take_peerlist)
     {
-      m_network.m_net_server.get_config_object().close(con->m_connection_id);
+      m_network.m_net_server.get_shared_state().close(con->m_connection_id);
       LOG_DEBUG_CC(*con, "CONNECTION HANDSHAKED OK AND CLOSED.");
       return true;
     }
@@ -484,7 +484,7 @@
     std::atomic<bool> hsh_result(false);
     bool timeout = false;
 
-    bool r = epee::net_utils::async_invoke_remote_command2<typename COMMAND_HANDSHAKE::response>(context_, COMMAND_HANDSHAKE::ID, arg, m_network.m_net_server.get_config_object(),
+    bool r = epee::net_utils::async_invoke_remote_command2<typename COMMAND_HANDSHAKE::response>(context_, COMMAND_HANDSHAKE::ID, arg, m_network.m_net_server.get_shared_state(),
       [this, &pi, &ev, &hsh_result, &just_take_peerlist, &context_, &timeout](int code, const typename COMMAND_HANDSHAKE::response& rsp, p2p_connection_context& context)
     {
       epee::misc_utils::auto_scope_leave_caller scope_exit_handler = epee::misc_utils::create_scope_leave_handler([&](){ev.raise();});
@@ -526,7 +526,7 @@
         m_network.m_peerlist.set_peer_just_seen(rsp.node_data.peer_id, context.m_remote_address, context.m_pruning_seed, context.m_rpc_port, context.m_rpc_credits_per_hash);
 
         // move
-        if( rsp.node_data.peer_id == m_network.m_config.m_peer_id)
+        if( rsp.node_data.peer_id == m_network.m_shared_state.m_peer_id)
         {
           LOG_DEBUG_CC(context, "Connection to self detected, dropping connection");
           hsh_result = false;
@@ -550,7 +550,7 @@
     {
       LOG_WARNING_CC(context_, "COMMAND_HANDSHAKE Failed");
       if (!timeout)
-        m_network.m_net_server.get_config_object().close(context_.m_connection_id);
+        m_network.m_net_server.get_shared_state().close(context_.m_connection_id);
     }
 
     return hsh_result;

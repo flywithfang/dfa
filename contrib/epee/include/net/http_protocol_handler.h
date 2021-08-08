@@ -139,7 +139,7 @@ namespace net_utils
 			bool m_is_stop_handling;
 			http::http_request_info m_query_info;
 			size_t m_len_summary, m_len_remain;
-			config_type& m_config;
+			config_type& m_shared_state;
 			bool m_want_close;
 			size_t m_newlines;
 		protected:
@@ -175,12 +175,12 @@ namespace net_utils
 			
 			http_custom_handler(i_service_endpoint* psnd_hndlr, config_type& config, t_connection_context& conn_context)
 				: simple_http_connection_handler<t_connection_context>(psnd_hndlr, config, conn_context),
-					m_config(config),
-					m_auth(m_config.m_user ? http_server_auth{*m_config.m_user, config.rng} : http_server_auth{})
+					m_shared_state(config),
+					m_auth(m_shared_state.m_user ? http_server_auth{*m_shared_state.m_user, config.rng} : http_server_auth{})
 			{}
 			inline bool handle_request(const http_request_info& query_info, http_response_info& response)
 			{
-				CHECK_AND_ASSERT_MES(m_config.m_phandler, false, "m_config.m_phandler is NULL!!!!");
+				CHECK_AND_ASSERT_MES(m_shared_state.m_phandler, false, "m_shared_state.m_phandler is NULL!!!!");
 
 				const auto auth_response = m_auth.get_response(query_info);
 				if (auth_response)
@@ -195,17 +195,17 @@ namespace net_utils
 				response.m_response_comment = "OK";
 				response.m_body.clear();
 
-				return m_config.m_phandler->handle_http_request(query_info, response, this->m_conn_context);
+				return m_shared_state.m_phandler->handle_http_request(query_info, response, this->m_conn_context);
 			}
 
 			virtual bool thread_init()
 			{
-				return m_config.m_phandler->init_server_thread();
+				return m_shared_state.m_phandler->init_server_thread();
 			}
 	
 			virtual bool thread_deinit()
 			{
-				return m_config.m_phandler->deinit_server_thread();
+				return m_shared_state.m_phandler->deinit_server_thread();
 			}
 			void handle_qued_callback()
 			{}
@@ -216,7 +216,7 @@ namespace net_utils
 
 		private:
 			//simple_http_connection_handler::config_type m_stub_config;
-			config_type& m_config;
+			config_type& m_shared_state;
 			http_server_auth m_auth;
 		};
 	}

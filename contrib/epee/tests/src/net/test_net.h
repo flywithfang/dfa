@@ -143,25 +143,25 @@ namespace tests
     }
     void close(net_utils::connection_context_base& cn)
     {
-      m_net_server.get_config_object().close(cn.m_connection_id);
+      m_net_server.get_shared_state().close(cn.m_connection_id);
     }
 
     template<class t_request, class t_response>
     bool invoke(uuid con_id, int command, t_request& req, t_response& resp)
     {
-      return invoke_remote_command(con_id, command, req, resp, m_net_server.get_config_object());
+      return invoke_remote_command(con_id, command, req, resp, m_net_server.get_shared_state());
     }
 
     template< class t_response, class t_request, class callback_t>
     bool invoke_async(uuid con_id, int command, t_request& req, callback_t cb)
     {
-      return async_invoke_remote_command<t_response>(con_id, command, req, m_net_server.get_config_object(), cb);
+      return async_invoke_remote_command<t_response>(con_id, command, req, m_net_server.get_shared_state(), cb);
     }
 
     bool init(const std::string& bind_port = "", const std::string& bind_ip = "0.0.0.0")
     {
-      m_net_server.get_config_object().set_handler(this);
-      m_net_server.get_config_object().m_invoke_timeout = 1000;
+      m_net_server.get_shared_state().set_handler(this);
+      m_net_server.get_shared_state().m_invoke_timeout = 1000;
       LOG_PRINT_L0("Binding on " << bind_ip << ":" << bind_port);
       return m_net_server.init_server(bind_port, bind_ip);
     }

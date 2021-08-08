@@ -49,8 +49,7 @@ namespace net_utils
   /************************************************************************/
   /// Represents a single connection from a client.
   template<class t_protocol_handler>
-  class connection: public boost::enable_shared_from_this<connection<t_protocol_handler> >,private boost::noncopyable, public i_service_endpoint,
-    public connection_basic
+  class connection: public boost::enable_shared_from_this<connection<t_protocol_handler> >,private boost::noncopyable, public i_service_endpoint,public connection_basic
   {
   public:
     typedef typename t_protocol_handler::connection_context t_connection_context;
@@ -69,7 +68,7 @@ namespace net_utils
     explicit connection( boost::asio::io_service& io_service,std::shared_ptr<shared_state> state,
 			t_connection_type connection_type,epee::net_utils::ssl_support_t ssl_support);
 
-    explicit connection( boost::asio::ip::tcp::socket&& sock,			 std::shared_ptr<shared_state> state,
+    explicit connection( boost::asio::ip::tcp::socket&& sock,	std::shared_ptr<shared_state> state,
 			t_connection_type connection_type,epee::net_utils::ssl_support_t ssl_support);
 
 
@@ -125,6 +124,7 @@ namespace net_utils
     /// host connection count tracking
     unsigned int host_count(const std::string &host, int delta = 0);
 
+private:
     /// Buffer for incoming data.
     boost::array<char, 8192> buffer_;
     size_t buffer_ssl_init_fill;

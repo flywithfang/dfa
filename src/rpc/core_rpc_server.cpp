@@ -473,7 +473,7 @@ namespace cryptonote
     size_t max_blocks = COMMAND_RPC_GET_BLOCKS_FAST_MAX_BLOCK_COUNT;
 
 
-    std::vector<std::pair<std::pair<cryptonote::blobdata, crypto::hash>, std::vector<std::pair<crypto::hash, cryptonote::blobdata> > > > bs;
+    std::vector<BlockchainDB::BlockData > bs;
     if(!m_core.find_blockchain_supplement(req.start_height, req.block_ids, bs, res.current_height, res.start_height, req.prune, true, max_blocks, COMMAND_RPC_GET_BLOCKS_FAST_MAX_TX_COUNT))
     {
       res.status = "Failed";
@@ -488,27 +488,27 @@ namespace cryptonote
     for(auto& bd: bs)
     {
       res.blocks.resize(res.blocks.size()+1);
-      res.blocks.back().pruned = req.prune;
-      res.blocks.back().block = bd.first.first;
-      size += bd.first.first.size();
+      auto & bb = res.blocks.back();
+      bb.pruned = req.prune;
+      bb.block = bd.b_blob;
+      size += bd.b_blob.size();
       res.output_indices.push_back(COMMAND_RPC_GET_BLOCKS_FAST::block_output_indices());
-      ntxes += bd.second.size();
-      res.output_indices.back().indices.reserve(1 + bd.second.size());
+      ntxes += bd.txes.size();
+      auto & b_oi = res.output_indices.back().indices;
+      b_oi.reserve(1 + bd.txes.size());
       
-      res.blocks.back().txs.reserve(bd.second.size());
-      for (auto i = bd.second.begin(); i != bd.second.end(); ++i)
+      bb.txs.reserve(bd.txes.size());
+      for (auto &[t_hash,t_blob]:bd.txes)
       {
-        res.blocks.back().txs.push_back({std::move(i->second), crypto::null_hash});
-        i->second.clear();
-        i->second.shrink_to_fit();
-        size += res.blocks.back().txs.back().blob.size();
+        bb.txs.push_back({std::move(t_blob), crypto::null_hash});
+        size += bb.txs.back().blob.size();
       }
 
-      const size_t n_txes_to_lookup = bd.second.size() + 1;
-      if (n_txes_to_lookup > 0)
+      const size_t n_txes_to_lookup = bd.txes.size() + 1;
+     // if (n_txes_to_lookup > 0)
       {
         std::vector<std::vector<uint64_t>> indices;
-        bool r = m_core.get_tx_outputs_gindexs(bd.first.second, n_txes_to_lookup, indices);
+        bool r = m_core.get_tx_outputs_gindexs(bd.miner_tx_hash, n_txes_to_lookup, indices);
         if (!r)
         {
           res.status = "Failed";
@@ -519,8 +519,8 @@ namespace cryptonote
           res.status = "Failed";
           return true;
         }
-        for (size_t i = 0; i < indices.size(); ++i)
-          res.output_indices.back().indices.push_back({std::move(indices[i])});
+        for (auto & e : indices)
+          b_oi.push_back({std::move(e)});
       }
     }
 

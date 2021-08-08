@@ -1313,7 +1313,12 @@ public:
    *
    * @return true iff the blocks and transactions were found
    */
-  virtual bool get_blocks_from(uint64_t start_height, size_t min_block_count, size_t max_block_count, size_t max_tx_count, size_t max_size, std::vector<std::pair<std::pair<cryptonote::blobdata, crypto::hash>, std::vector<std::pair<crypto::hash, cryptonote::blobdata>>>>& blocks, bool pruned, bool skip_coinbase, bool get_miner_tx_hash) const = 0;
+  struct BlockData{
+    cryptonote::blobdata b_blob;
+    crypto::hash        miner_tx_hash;
+    std::vector<std::pair<crypto::hash,cryptonote::blobdata>> txes;
+  };
+  virtual bool get_blocks_from(uint64_t start_height, size_t min_block_count, size_t max_block_count, size_t max_tx_count, size_t max_size, std::vector<BlockData>& blocks, bool pruned, bool skip_coinbase, bool get_miner_tx_hash) const = 0;
 
   /**
    * @brief fetches the prunable transaction blob with the given hash

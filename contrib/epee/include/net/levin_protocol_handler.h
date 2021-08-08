@@ -69,7 +69,7 @@ namespace levin
 		};
 
 
-		config_type& m_config;
+		config_type& m_shared_state;
 		t_connection_context& m_conn_context;
 		net_utils::i_service_endpoint* m_psnd_hndlr; 
 		std::string m_cach_in_buffer;
@@ -79,7 +79,7 @@ namespace levin
 
   template<class t_connection_context>
 	protocol_handler<t_connection_context>::protocol_handler(net_utils::i_service_endpoint* psnd_hndlr, config_type& config, t_connection_context& conn_context):
-                  m_config(config), 
+                  m_shared_state(config), 
                   m_conn_context(conn_context),
                   m_psnd_hndlr(psnd_hndlr), 
                   m_state(conn_state_reading_head), 
@@ -89,7 +89,7 @@ namespace levin
   template<class t_connection_context>
 	bool protocol_handler<t_connection_context>::handle_recv(const void* ptr, size_t len)
 	{
-		if(!m_config.m_pcommands_handler)
+		if(!m_shared_state.m_pcommands_handler)
 		{
 			LOG_ERROR_CC(m_conn_context, "Command handler not set!");
 			return false;
@@ -154,7 +154,7 @@ namespace levin
 					if(m_current_head.m_have_to_return_data)
 					{
 						std::string return_buff;
-						m_current_head.m_return_code = m_config.m_pcommands_handler->invoke(m_current_head.m_command, buff_to_invoke, return_buff, m_conn_context);
+						m_current_head.m_return_code = m_shared_state.m_pcommands_handler->invoke(m_current_head.m_command, buff_to_invoke, return_buff, m_conn_context);
 						m_current_head.m_cb = return_buff.size();
 						m_current_head.m_have_to_return_data = false;
 
@@ -164,7 +164,7 @@ namespace levin
 
 					}
 					else
-						m_config.m_pcommands_handler->notify(m_current_head.m_command, buff_to_invoke, m_conn_context);
+						m_shared_state.m_pcommands_handler->notify(m_current_head.m_command, buff_to_invoke, m_conn_context);
 				}
 				m_state = conn_state_reading_head;
 				break;

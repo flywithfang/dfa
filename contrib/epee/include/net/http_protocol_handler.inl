@@ -203,7 +203,7 @@ namespace net_utils
 		m_is_stop_handling(false),
 		m_len_summary(0),
 		m_len_remain(0),
-		m_config(config),
+		m_shared_state(config),
 		m_want_close(false),
 		m_newlines(0),
 		m_psnd_hndlr(psnd_hndlr),
@@ -610,9 +610,9 @@ namespace net_utils
 			uri_to_path = "/index.html";
 
 		//slash_to_back_slash(uri_to_path);
-		m_config.m_lock.lock();
-		std::string destination_file_path = m_config.m_folder + uri_to_path;
-		m_config.m_lock.unlock();
+		m_shared_state.m_lock.lock();
+		std::string destination_file_path = m_shared_state.m_folder + uri_to_path;
+		m_shared_state.m_lock.unlock();
 		if(!file_io_utils::load_file_to_string(destination_file_path.c_str(), response.m_body))
 		{
 			MWARNING("URI \""<< query_info.m_full_request_str.substr(0, query_info.m_full_request_str.size()-2) << "\" [" << destination_file_path << "] Not Found (404 )");
@@ -668,7 +668,7 @@ namespace net_utils
 		// Cross-origin resource sharing
 		if(m_query_info.m_header_info.m_origin.size())
 		{
-			if (std::binary_search(m_config.m_access_control_origins.begin(), m_config.m_access_control_origins.end(), m_query_info.m_header_info.m_origin))
+			if (std::binary_search(m_shared_state.m_access_control_origins.begin(), m_shared_state.m_access_control_origins.end(), m_query_info.m_header_info.m_origin))
 			{
 				buf += "Access-Control-Allow-Origin: ";
 				buf += m_query_info.m_header_info.m_origin;

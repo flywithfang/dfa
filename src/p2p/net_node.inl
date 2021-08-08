@@ -131,8 +131,8 @@ namespace nodetool
     }
 
     network_zone& public_zone = m_network;
-    public_zone.m_config.m_support_flags = P2P_SUPPORT_FLAGS;
-    public_zone.m_config.m_peer_id = crypto::rand<uint64_t>();
+    public_zone.m_shared_state.m_support_flags = P2P_SUPPORT_FLAGS;
+    public_zone.m_shared_state.m_peer_id = crypto::rand<uint64_t>();
     m_first_connection_maker_call = true;
 
     CATCH_ENTRY_L0("node_server::init_config", false);
@@ -142,7 +142,7 @@ namespace nodetool
   template<class t_payload_net_handler>
   void node_server<t_payload_net_handler>::for_each_connection(std::function<bool(typename t_payload_net_handler::connection_context&, peerid_type, uint32_t)> f)
   {
-     m_network.m_net_server.get_config_object().foreach_connection([&](p2p_connection_context& cntx){
+     m_network.m_net_server.get_shared_state().foreach_connection([&](p2p_connection_context& cntx){
         return f(cntx, cntx.peer_id, cntx.support_flags);
       });
   }
@@ -150,7 +150,7 @@ namespace nodetool
   template<class t_payload_net_handler>
   bool node_server<t_payload_net_handler>::for_connection(const boost::uuids::uuid &connection_id, std::function<bool(typename t_payload_net_handler::connection_context&, peerid_type, uint32_t)> f)
   {
-      const bool result = m_network.m_net_server.get_config_object().for_connection(connection_id, [&](p2p_connection_context& cntx){
+      const bool result = m_network.m_net_server.get_shared_state().for_connection(connection_id, [&](p2p_connection_context& cntx){
         return f(cntx, cntx.peer_id, cntx.support_flags);
       });
       return result;
@@ -404,7 +404,7 @@ namespace nodetool
     if ( !set_max_out_peers(public_zone, command_line::get_arg(vm, arg_out_peers) ) )
       return false;
     else
-      m_payload_handler.set_max_out_peers(public_zone.m_config.m_net_config.max_out_connection_count);
+      m_payload_handler.set_max_out_peers(public_zone.m_shared_state.m_net_config.max_out_connection_count);
 
 
     if ( !set_max_in_peers(public_zone, command_line::get_arg(vm, arg_in_peers) ) )
@@ -540,9 +540,9 @@ namespace nodetool
     m_ssl_support = epee::net_utils::ssl_support_t::e_ssl_support_disabled;
    
     {
-      m_network.m_net_server.get_config_object().set_handler(this);
+      m_network.m_net_server.get_shared_state().set_handler(this);
 
-      m_network.m_net_server.get_config_object().m_invoke_timeout = P2P_DEFAULT_INVOKE_TIMEOUT;
+      m_network.m_net_server.get_shared_state().m_invoke_timeout = P2P_DEFAULT_INVOKE_TIMEOUT;
 
       if (!m_network.m_bind_ip.empty())
       {
@@ -585,7 +585,7 @@ namespace nodetool
   }
   //-----------------------------------------------------------------------------------
   template<class t_payload_net_handler>
-  typename node_server<t_payload_net_handler>::payload_net_handler& node_server<t_payload_net_handler>::get_payload_object()
+  t_payload_net_handler& node_server<t_payload_net_handler>::get_payload_object()
   {
     return m_payload_handler;
   }
@@ -600,11 +600,11 @@ namespace nodetool
       const network_zone& public_zone = m_network;
       while (!m_is_closing && !public_zone.m_net_server.is_stop_signal_sent())
       { // main loop of thread
-        //number_of_peers = m_net_server.get_config_object().get_connections_count();
+        //number_of_peers = m_net_server.get_shared_state().get_connections_count();
         {
           unsigned int number_of_in_peers = 0;
           unsigned int number_of_out_peers = 0;
-          m_network.m_net_server.get_config_object().foreach_connection([&](const p2p_connection_context& cntxt)
+          m_network.m_net_server.get_shared_state().foreach_connection([&](const p2p_connection_context& cntxt)
           {
             if (cntxt.m_is_income)
             {
@@ -646,7 +646,7 @@ namespace nodetool
   template<class t_payload_net_handler>
   uint64_t node_server<t_payload_net_handler>::get_public_connections_count()
   {
-    return m_network.m_net_server.get_config_object().get_connections_count();
+    return m_network.m_net_server.get_shared_state().get_connections_count();
   }
   //-----------------------------------------------------------------------------------
   template<class t_payload_net_handler>
@@ -701,12 +701,12 @@ namespace nodetool
 
     {
       std::list<boost::uuids::uuid> connection_ids;
-      m_network.m_net_server.get_config_object().foreach_connection([&](const p2p_connection_context& cntxt) {
+      m_network.m_net_server.get_shared_state().foreach_connection([&](const p2p_connection_context& cntxt) {
         connection_ids.push_back(cntxt.m_connection_id);
         return true;
       });
       for (const auto &connection_id: connection_ids)
-        m_network.m_net_server.get_config_object().close(connection_id);
+        m_network.m_net_server.get_shared_state().close(connection_id);
     }
     m_payload_handler.stop();
     return true;
@@ -731,11 +731,11 @@ namespace nodetool
   bool node_server<t_payload_net_handler>::is_peer_used(const peerlist_entry& peer)
   {
  
-    if( m_network.m_config.m_peer_id == peer.id)
+    if( m_network.m_shared_state.m_peer_id == peer.id)
       return true;//dont make connections to ourself
 
     bool used = false;
-    m_network.m_net_server.get_config_object().foreach_connection([&](const p2p_connection_context& cntxt)
+    m_network.m_net_server.get_shared_state().foreach_connection([&](const p2p_connection_context& cntxt)
     {
       if((cntxt.peer_id == peer.id) || (!cntxt.m_is_income && peer.adr == cntxt.m_remote_address))
       {
@@ -751,11 +751,11 @@ namespace nodetool
   bool node_server<t_payload_net_handler>::is_peer_used(const anchor_peerlist_entry& peer)
   {
 
-    if(m_network.m_config.m_peer_id == peer.id)
+    if(m_network.m_shared_state.m_peer_id == peer.id)
       return true;//dont make connections to ourself
 
     bool used = false;
-    m_network.m_net_server.get_config_object().foreach_connection([&](const p2p_connection_context& cntxt)
+    m_network.m_net_server.get_shared_state().foreach_connection([&](const p2p_connection_context& cntxt)
     {
       if((cntxt.peer_id == peer.id) || (!cntxt.m_is_income && peer.adr == cntxt.m_remote_address))
       {
@@ -773,7 +773,7 @@ namespace nodetool
 
 
     bool connected = false;
-    m_network.m_net_server.get_config_object().foreach_connection([&](const p2p_connection_context& cntxt)
+    m_network.m_net_server.get_shared_state().foreach_connection([&](const p2p_connection_context& cntxt)
     {
       if(!cntxt.m_is_income && peer == cntxt.m_remote_address)
       {
@@ -812,7 +812,7 @@ namespace nodetool
       return false;
     }
 
-    m_network.m_net_server.get_config_object().close(con->m_connection_id);
+    m_network.m_net_server.get_shared_state().close(con->m_connection_id);
 
     LOG_DEBUG_CC(*con, "CONNECTION HANDSHAKED OK AND CLOSED.");
 
@@ -850,7 +850,7 @@ namespace nodetool
   {
    size_t count = 0;
     {
-      m_network.m_net_server.get_config_object().foreach_connection([&](const p2p_connection_context& cntxt)
+      m_network.m_net_server.get_shared_state().foreach_connection([&](const p2p_connection_context& cntxt)
       {
         if(!cntxt.m_is_income)
           ++count;
@@ -865,7 +865,7 @@ namespace nodetool
   {
     size_t count = 0;
     {
-      m_network.m_net_server.get_config_object().foreach_connection([&](const p2p_connection_context& cntxt)
+      m_network.m_net_server.get_shared_state().foreach_connection([&](const p2p_connection_context& cntxt)
       {
         if(cntxt.m_is_income)
           ++count;
@@ -904,7 +904,7 @@ namespace nodetool
 
     if (get_incoming_connections_count() == 0)
     {
-      if (m_hide_my_port || m_network.m_config.m_net_config.max_in_connection_count == 0)
+      if (m_hide_my_port || m_network.m_shared_state.m_net_config.max_in_connection_count == 0)
       {
         MGINFO("Incoming connections disabled, enable them for full connectivity");
       }
@@ -930,7 +930,7 @@ namespace nodetool
   template<class t_payload_net_handler>
   bool node_server<t_payload_net_handler>::get_local_node_data(basic_node_data& node_data)
   {
-    node_data.peer_id = m_network.m_config.m_peer_id;
+    node_data.peer_id = m_network.m_shared_state.m_peer_id;
     if(!m_hide_my_port && m_network.m_can_pingback)
       node_data.my_port = m_external_port ? m_external_port : m_listening_port;
     else
@@ -938,7 +938,7 @@ namespace nodetool
     node_data.rpc_port = m_network.m_can_pingback ? m_rpc_port : 0;
     node_data.rpc_credits_per_hash = m_network.m_can_pingback ? m_rpc_credits_per_hash : 0;
     node_data.network_id = m_network_id;
-    node_data.support_flags = m_network.m_config.m_support_flags;
+    node_data.support_flags = m_network.m_shared_state.m_support_flags;
     return true;
   }
 
@@ -946,7 +946,7 @@ namespace nodetool
   template<class t_payload_net_handler>
   void node_server<t_payload_net_handler>::request_callback(const epee::net_utils::connection_context_base& context)
   {
-    m_network.m_net_server.get_config_object().request_callback(context.m_connection_id);
+    m_network.m_net_server.get_shared_state().request_callback(context.m_connection_id);
   }
   //-----------------------------------------------------------------------------------
   template<class t_payload_net_handler>
@@ -955,7 +955,7 @@ namespace nodetool
     epee::byte_slice message = data_buff.finalize_notify(command);
     for(const auto& c_id: connections)
     {
-        m_network.m_net_server.get_config_object().send(message.clone(), c_id);
+        m_network.m_net_server.get_shared_state().send(message.clone(), c_id);
     }
     return true;
   }
@@ -978,14 +978,14 @@ namespace nodetool
     if(is_filtered_command(context.m_remote_address, command))
       return false;
 
-    int res = m_network.m_net_server.get_config_object().send(message.finalize_notify(command), context.m_connection_id);
+    int res = m_network.m_net_server.get_shared_state().send(message.finalize_notify(command), context.m_connection_id);
     return res > 0;
   }
   //-----------------------------------------------------------------------------------
   template<class t_payload_net_handler>
   bool node_server<t_payload_net_handler>::drop_connection(const epee::net_utils::connection_context_base& context)
   {
-    m_network.m_net_server.get_config_object().close(context.m_connection_id);
+    m_network.m_net_server.get_shared_state().close(context.m_connection_id);
     return true;
   }
 
@@ -1013,7 +1013,7 @@ namespace nodetool
 
     std::stringstream ss;
     {
-      m_network.m_net_server.get_config_object().foreach_connection([&](const p2p_connection_context& cntxt)
+      m_network.m_net_server.get_shared_state().foreach_connection([&](const p2p_connection_context& cntxt)
       {
         ss << cntxt.m_remote_address.str()
           << " \t\tpeer_id " << peerid_to_string(cntxt.peer_id)
@@ -1100,17 +1100,17 @@ namespace nodetool
   bool node_server<t_payload_net_handler>::set_max_out_peers(network_zone& zone, int64_t max)
   {
     if(max == -1) {
-      zone.m_config.m_net_config.max_out_connection_count = P2P_DEFAULT_CONNECTIONS_COUNT;
+      zone.m_shared_state.m_net_config.max_out_connection_count = P2P_DEFAULT_CONNECTIONS_COUNT;
       return true;
     }
-    zone.m_config.m_net_config.max_out_connection_count = max;
+    zone.m_shared_state.m_net_config.max_out_connection_count = max;
     return true;
   }
 
   template<class t_payload_net_handler>
   bool node_server<t_payload_net_handler>::set_max_in_peers(network_zone& zone, int64_t max)
   {
-    zone.m_config.m_net_config.max_in_connection_count = max;
+    zone.m_shared_state.m_net_config.max_in_connection_count = max;
     return true;
   }
 
@@ -1118,10 +1118,10 @@ namespace nodetool
   void node_server<t_payload_net_handler>::change_max_out_public_peers(size_t count)
   {
     {
-      const auto current = m_network.m_net_server.get_config_object().get_out_connections_count();
-      m_network.m_config.m_net_config.max_out_connection_count = count;
+      const auto current = m_network.m_net_server.get_shared_state().get_out_connections_count();
+      m_network.m_shared_state.m_net_config.max_out_connection_count = count;
       if(current > count)
-        m_network.m_net_server.get_config_object().del_out_connections(current - count);
+        m_network.m_net_server.get_shared_state().del_out_connections(current - count);
       m_payload_handler.set_max_out_peers(count);
     }
   }
@@ -1129,24 +1129,24 @@ namespace nodetool
   template<class t_payload_net_handler>
   uint32_t node_server<t_payload_net_handler>::get_max_out_public_peers() const
   {
-    return m_network.m_config.m_net_config.max_out_connection_count;
+    return m_network.m_shared_state.m_net_config.max_out_connection_count;
   }
 
   template<class t_payload_net_handler>
   void node_server<t_payload_net_handler>::change_max_in_public_peers(size_t count)
   {
     {
-      const auto current = m_network.m_net_server.get_config_object().get_in_connections_count();
-      m_network.m_config.m_net_config.max_in_connection_count = count;
+      const auto current = m_network.m_net_server.get_shared_state().get_in_connections_count();
+      m_network.m_shared_state.m_net_config.max_in_connection_count = count;
       if(current > count)
-        m_network.m_net_server.get_config_object().del_in_connections(current - count);
+        m_network.m_net_server.get_shared_state().del_in_connections(current - count);
     }
   }
 
   template<class t_payload_net_handler>
   uint32_t node_server<t_payload_net_handler>::get_max_in_public_peers() const
   {
-    return m_network.m_config.m_net_config.max_in_connection_count;
+    return m_network.m_shared_state.m_net_config.max_in_connection_count;
   }
 
   template<class t_payload_net_handler>
@@ -1220,7 +1220,7 @@ namespace nodetool
   {
     uint32_t count = 0;
 
-    m_network.m_net_server.get_config_object().foreach_connection([&](const p2p_connection_context& cntxt)
+    m_network.m_net_server.get_shared_state().foreach_connection([&](const p2p_connection_context& cntxt)
     {
       if (cntxt.m_is_income && cntxt.m_remote_address.is_same_host(address)) {
         count++;

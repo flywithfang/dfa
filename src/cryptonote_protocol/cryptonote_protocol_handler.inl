@@ -384,10 +384,9 @@ namespace cryptonote
     Nz. */
     int64_t diff = static_cast<int64_t>(hshd.current_height) - static_cast<int64_t>(m_core.get_current_blockchain_height());
     uint64_t abs_diff = std::abs(diff);
-    uint64_t max_block_height = std::max(hshd.current_height,m_core.get_current_blockchain_height());
     MCLOG(is_inital ? el::Level::Info : el::Level::Debug, "global", el::Color::Yellow, context <<  "Sync data returned a new top block candidate: " << m_core.get_current_blockchain_height() << " -> " << hshd.current_height
       << " [Your node is " << abs_diff << " blocks (" << tools::get_human_readable_timespan(abs_diff * DIFFICULTY_TARGET_V2) << ") "<< (0 <= diff ? std::string("behind") : std::string("ahead"))<< "] " << ENDL << "SYNCHRONIZATION started");
-    
+
       if (hshd.current_height >= m_core.get_current_blockchain_height() + 5) // don't switch to unsafe mode just for a few blocks
       {
         m_core.safesyncmode(false);
@@ -2577,14 +2576,15 @@ skip:
     bool expect_unknown = false;
     for (size_t i = 0; i < arg.m_block_ids.size(); ++i)
     {
-      if (!blocks_found.insert(arg.m_block_ids[i]).second)
+      const auto  & bh= arg.m_block_ids[i];
+      if (!blocks_found.insert(bh).second)
       {
         LOG_ERROR_CCONTEXT("Duplicate blocks in chain entry response, dropping connection");
         drop_connection_with_score(context, 5, false);
         return 1;
       }
       int where;
-      const bool have_block = m_core.have_block_unlocked(arg.m_block_ids[i], &where);
+      const bool have_block = m_core.have_block_unlocked(bh, &where);
       if (first)
       {
         if (!have_block && !m_block_queue.requested(arg.m_block_ids[i]) && !m_block_queue.have(arg.m_block_ids[i]))
@@ -2616,7 +2616,7 @@ skip:
                 drop_connection_with_score(context, 5, false);
                 return 1;
               }
-              if (m_core.get_block_id_by_height(arg.start_height + i) != arg.m_block_ids[i])
+              if (m_core.get_block_id_by_height(arg.start_height + i) != bh)
               {
                 LOG_ERROR_CCONTEXT("Block is on the main chain, but not at the expected height, dropping connection");
                 drop_connection_with_score(context, 5, false);
@@ -2626,7 +2626,7 @@ skip:
             case HAVE_BLOCK_ALT_CHAIN:
               if (expect_unknown)
               {
-                LOG_ERROR_CCONTEXT("Block is on the main chain, but we did not expect a known block, dropping connection");
+                LOG_ERROR_CCONTEXT("Block is on the alt chain, but we did not expect a known block, dropping connection");
                 drop_connection_with_score(context, 5, false);
                 return 1;
               }

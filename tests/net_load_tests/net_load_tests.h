@@ -189,7 +189,7 @@ namespace net_load_tests
         LOG_PRINT_L0("Connection isn't opened");
         return false;
       }
-      if (!m_tcp_server.get_config_object().close(m_connections[idx]))
+      if (!m_tcp_server.get_shared_state().close(m_connections[idx]))
       {
         LOG_PRINT_L0("Close connection error: " << m_connections[idx]);
         if (!ignore_close_fails)

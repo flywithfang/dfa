@@ -110,7 +110,7 @@ namespace
     {
       if (!m_connections[id].is_nil())
       {
-        m_tcp_server.get_config_object().close(m_connections[id]);
+        m_tcp_server.get_shared_state().close(m_connections[id]);
         return true;
       }
       else
@@ -194,8 +194,8 @@ namespace
     {
       m_thread_count = (std::max)(min_thread_count, boost::thread::hardware_concurrency() / 2);
 
-      m_tcp_server.get_config_object().set_handler(&m_commands_handler);
-      m_tcp_server.get_config_object().m_invoke_timeout = CONNECTION_TIMEOUT;
+      m_tcp_server.get_shared_state().set_handler(&m_commands_handler);
+      m_tcp_server.get_shared_state().m_invoke_timeout = CONNECTION_TIMEOUT;
 
       ASSERT_TRUE(m_tcp_server.init_server(clt_port, "127.0.0.1"));
       ASSERT_TRUE(m_tcp_server.run_server(m_thread_count, false));
@@ -222,7 +222,7 @@ namespace
       conn_status.store(0, std::memory_order_seq_cst);
       CMD_RESET_STATISTICS::request req;
       ASSERT_TRUE(epee::net_utils::async_invoke_remote_command2<CMD_RESET_STATISTICS::response>(m_context, CMD_RESET_STATISTICS::ID, req,
-        m_tcp_server.get_config_object(), [&](int code, const CMD_RESET_STATISTICS::response& rsp, const test_connection_context&) {
+        m_tcp_server.get_shared_state(), [&](int code, const CMD_RESET_STATISTICS::response& rsp, const test_connection_context&) {
           conn_status.store(code, std::memory_order_seq_cst);
       }));
 
@@ -242,8 +242,8 @@ namespace
       test_levin_commands_handler *commands_handler_ptr = new test_levin_commands_handler();
       test_levin_commands_handler &commands_handler = *commands_handler_ptr;
       test_tcp_server tcp_server(epee::net_utils::e_connection_type_RPC);
-      tcp_server.get_config_object().set_handler(commands_handler_ptr, [](epee::levin::levin_commands_handler<test_connection_context> *handler)->void { delete handler; });
-      tcp_server.get_config_object().m_invoke_timeout = CONNECTION_TIMEOUT;
+      tcp_server.get_shared_state().set_handler(commands_handler_ptr, [](epee::levin::levin_commands_handler<test_connection_context> *handler)->void { delete handler; });
+      tcp_server.get_shared_state().m_invoke_timeout = CONNECTION_TIMEOUT;
 
       if (!tcp_server.init_server(clt_port, "127.0.0.1")) return;
       if (!tcp_server.run_server(2, false)) return;
@@ -259,7 +259,7 @@ namespace
       if (!busy_wait_for(DEFAULT_OPERATION_TIMEOUT, [&]{ return 0 != conn_status.load(std::memory_order_seq_cst); })) return;
       if (1 != conn_status.load(std::memory_order_seq_cst)) return;
 
-      epee::net_utils::notify_remote_command2(cmd_context, CMD_SHUTDOWN::ID, CMD_SHUTDOWN::request(), tcp_server.get_config_object());
+      epee::net_utils::notify_remote_command2(cmd_context, CMD_SHUTDOWN::ID, CMD_SHUTDOWN::request(), tcp_server.get_shared_state());
 
       busy_wait_for(DEFAULT_OPERATION_TIMEOUT, [&]{ return 0 != commands_handler.close_connection_counter(); });
     }
@@ -300,7 +300,7 @@ namespace
       std::atomic<int> req_status(0);
       CMD_GET_STATISTICS::request req;
       ASSERT_TRUE(epee::net_utils::async_invoke_remote_command2<CMD_GET_STATISTICS::response>(m_context, CMD_GET_STATISTICS::ID, req,
-        m_tcp_server.get_config_object(), [&](int code, const CMD_GET_STATISTICS::response& rsp, const test_connection_context&) {
+        m_tcp_server.get_shared_state(), [&](int code, const CMD_GET_STATISTICS::response& rsp, const test_connection_context&) {
           if (0 < code)
           {
             statistics = rsp;
@@ -338,7 +338,7 @@ namespace
     {
       CMD_SEND_DATA_REQUESTS::request req;
       req.request_size = request_size;
-      epee::net_utils::notify_remote_command2(m_context, CMD_SEND_DATA_REQUESTS::ID, req, m_tcp_server.get_config_object());
+      epee::net_utils::notify_remote_command2(m_context, CMD_SEND_DATA_REQUESTS::ID, req, m_tcp_server.get_shared_state());
     }
 
   protected:
@@ -365,7 +365,7 @@ TEST_F(net_load_test_clt, a_lot_of_client_connections_and_connections_closed_by_
   // Check
   ASSERT_GT(m_commands_handler.new_connection_counter(), RESERVED_CONN_CNT);
   ASSERT_EQ(m_commands_handler.new_connection_counter() + connection_opener.error_count(), CONNECTION_COUNT + RESERVED_CONN_CNT);
-  ASSERT_EQ(m_commands_handler.new_connection_counter() - m_commands_handler.close_connection_counter(), m_tcp_server.get_config_object().get_connections_count());
+  ASSERT_EQ(m_commands_handler.new_connection_counter() - m_commands_handler.close_connection_counter(), m_tcp_server.get_shared_state().get_connections_count());
 
   // Close connections
   parallel_exec([&](size_t thread_idx) {
@@ -377,12 +377,12 @@ TEST_F(net_load_test_clt, a_lot_of_client_connections_and_connections_closed_by_
 
   // Wait for all opened connections to close
   EXPECT_TRUE(busy_wait_for(DEFAULT_OPERATION_TIMEOUT, [&]{ return m_commands_handler.new_connection_counter() - RESERVED_CONN_CNT <= m_commands_handler.close_connection_counter(); }));
-  LOG_PRINT_L0("number of opened / closed connections: " << m_tcp_server.get_config_object().get_connections_count() <<
+  LOG_PRINT_L0("number of opened / closed connections: " << m_tcp_server.get_shared_state().get_connections_count() <<
     " / " << m_commands_handler.close_connection_counter());
 
   // Check all connections are closed
   ASSERT_EQ(m_commands_handler.new_connection_counter() - RESERVED_CONN_CNT, m_commands_handler.close_connection_counter());
-  ASSERT_EQ(RESERVED_CONN_CNT, m_tcp_server.get_config_object().get_connections_count());
+  ASSERT_EQ(RESERVED_CONN_CNT, m_tcp_server.get_shared_state().get_connections_count());
 
   // Wait for server to handle all open and close requests
   CMD_GET_STATISTICS::response srv_stat;
@@ -422,7 +422,7 @@ TEST_F(net_load_test_clt, a_lot_of_client_connections_and_connections_closed_by_
   // Check
   ASSERT_GT(m_commands_handler.new_connection_counter(), RESERVED_CONN_CNT);
   ASSERT_EQ(m_commands_handler.new_connection_counter() + connection_opener.error_count(), CONNECTION_COUNT + RESERVED_CONN_CNT);
-  ASSERT_EQ(m_commands_handler.new_connection_counter() - m_commands_handler.close_connection_counter(), m_tcp_server.get_config_object().get_connections_count());
+  ASSERT_EQ(m_commands_handler.new_connection_counter() - m_commands_handler.close_connection_counter(), m_tcp_server.get_shared_state().get_connections_count());
 
   // Wait for server accepts all connections
   CMD_GET_STATISTICS::response srv_stat;
@@ -434,16 +434,16 @@ TEST_F(net_load_test_clt, a_lot_of_client_connections_and_connections_closed_by_
 
   // Close connections
   CMD_CLOSE_ALL_CONNECTIONS::request req;
-  ASSERT_TRUE(epee::net_utils::notify_remote_command2(m_context, CMD_CLOSE_ALL_CONNECTIONS::ID, req, m_tcp_server.get_config_object()));
+  ASSERT_TRUE(epee::net_utils::notify_remote_command2(m_context, CMD_CLOSE_ALL_CONNECTIONS::ID, req, m_tcp_server.get_shared_state()));
 
   // Wait for all opened connections to close
   busy_wait_for(DEFAULT_OPERATION_TIMEOUT, [&](){ return m_commands_handler.new_connection_counter() - RESERVED_CONN_CNT <= m_commands_handler.close_connection_counter(); });
-  LOG_PRINT_L0("number of opened / closed connections: " << m_tcp_server.get_config_object().get_connections_count() <<
+  LOG_PRINT_L0("number of opened / closed connections: " << m_tcp_server.get_shared_state().get_connections_count() <<
     " / " << m_commands_handler.close_connection_counter());
 
   // It's OK, if server didn't close all connections, because it could accept not all our connections
   ASSERT_LE(m_commands_handler.close_connection_counter(), m_commands_handler.new_connection_counter() - RESERVED_CONN_CNT);
-  ASSERT_LE(RESERVED_CONN_CNT, m_tcp_server.get_config_object().get_connections_count());
+  ASSERT_LE(RESERVED_CONN_CNT, m_tcp_server.get_shared_state().get_connections_count());
 
   // Wait for server to handle all open and close requests
   busy_wait_for_server_statistics(srv_stat, [](const CMD_GET_STATISTICS::response& stat) { return stat.new_connection_counter - RESERVED_CONN_CNT <= stat.close_connection_counter; });
@@ -454,12 +454,12 @@ TEST_F(net_load_test_clt, a_lot_of_client_connections_and_connections_closed_by_
   ASSERT_EQ(RESERVED_CONN_CNT, srv_stat.opened_connections_count);
 
   // Close rest connections
-  m_tcp_server.get_config_object().foreach_connection([&](test_connection_context& ctx) {
+  m_tcp_server.get_shared_state().foreach_connection([&](test_connection_context& ctx) {
     if (ctx.m_connection_id != m_context.m_connection_id)
     {
       CMD_DATA_REQUEST::request req;
       bool r = epee::net_utils::async_invoke_remote_command2<CMD_DATA_REQUEST::response>(ctx, CMD_DATA_REQUEST::ID, req,
-        m_tcp_server.get_config_object(), [=](int code, const CMD_DATA_REQUEST::response& rsp, const test_connection_context&) {
+        m_tcp_server.get_shared_state(), [=](int code, const CMD_DATA_REQUEST::response& rsp, const test_connection_context&) {
           if (code <= 0)
           {
             LOG_PRINT_L0("Failed to invoke CMD_DATA_REQUEST. code = " << code);
@@ -473,12 +473,12 @@ TEST_F(net_load_test_clt, a_lot_of_client_connections_and_connections_closed_by_
 
   // Wait for all opened connections to close
   EXPECT_TRUE(busy_wait_for(DEFAULT_OPERATION_TIMEOUT, [&](){ return m_commands_handler.new_connection_counter() - RESERVED_CONN_CNT <= m_commands_handler.close_connection_counter(); }));
-  LOG_PRINT_L0("number of opened / closed connections: " << m_tcp_server.get_config_object().get_connections_count() <<
+  LOG_PRINT_L0("number of opened / closed connections: " << m_tcp_server.get_shared_state().get_connections_count() <<
     " / " << m_commands_handler.close_connection_counter());
 
   // Check
   ASSERT_EQ(m_commands_handler.close_connection_counter(), m_commands_handler.new_connection_counter() - RESERVED_CONN_CNT);
-  ASSERT_EQ(RESERVED_CONN_CNT, m_tcp_server.get_config_object().get_connections_count());
+  ASSERT_EQ(RESERVED_CONN_CNT, m_tcp_server.get_shared_state().get_connections_count());
 }
 
 TEST_F(net_load_test_clt, permament_open_and_close_and_connections_closed_by_client)
@@ -515,7 +515,7 @@ TEST_F(net_load_test_clt, permament_open_and_close_and_connections_closed_by_cli
 
   ASSERT_EQ(m_commands_handler.new_connection_counter(), m_commands_handler.close_connection_counter() + RESERVED_CONN_CNT);
   ASSERT_EQ(0, connection_opener.opened_connection_count());
-  ASSERT_EQ(RESERVED_CONN_CNT, m_tcp_server.get_config_object().get_connections_count());
+  ASSERT_EQ(RESERVED_CONN_CNT, m_tcp_server.get_shared_state().get_connections_count());
 
   // Wait for server to handle all open and close requests
   CMD_GET_STATISTICS::response srv_stat;
@@ -549,7 +549,7 @@ TEST_F(net_load_test_clt, permament_open_and_close_and_connections_closed_by_ser
   req_start.open_request_target = CONNECTION_COUNT;
   req_start.max_opened_conn_count = MAX_OPENED_CONN_COUNT;
   ASSERT_TRUE(epee::net_utils::async_invoke_remote_command2<CMD_START_OPEN_CLOSE_TEST::response>(m_context, CMD_START_OPEN_CLOSE_TEST::ID, req_start,
-    m_tcp_server.get_config_object(), [&](int code, const CMD_START_OPEN_CLOSE_TEST::response&, const test_connection_context&) {
+    m_tcp_server.get_shared_state(), [&](int code, const CMD_START_OPEN_CLOSE_TEST::response&, const test_connection_context&) {
       test_state.store(0 < code ? 1 : -1, std::memory_order_seq_cst);
   }));
 
@@ -567,7 +567,7 @@ TEST_F(net_load_test_clt, permament_open_and_close_and_connections_closed_by_ser
   EXPECT_TRUE(busy_wait_for(DEFAULT_OPERATION_TIMEOUT, [&](){ return CONNECTION_COUNT + RESERVED_CONN_CNT <= m_commands_handler.new_connection_counter() + connection_opener.error_count(); }));
   LOG_PRINT_L0("number of opened connections / fails (total): " << m_commands_handler.new_connection_counter() <<
     " / " << connection_opener.error_count() << " (" << (m_commands_handler.new_connection_counter() + connection_opener.error_count()) << ")");
-  LOG_PRINT_L0("actual number of opened connections: " << m_tcp_server.get_config_object().get_connections_count());
+  LOG_PRINT_L0("actual number of opened connections: " << m_tcp_server.get_shared_state().get_connections_count());
 
   ASSERT_GT(m_commands_handler.new_connection_counter(), RESERVED_CONN_CNT);
   ASSERT_EQ(m_commands_handler.new_connection_counter() + connection_opener.error_count(), CONNECTION_COUNT + RESERVED_CONN_CNT);
@@ -582,14 +582,14 @@ TEST_F(net_load_test_clt, permament_open_and_close_and_connections_closed_by_ser
 
   // Ask server to close rest connections
   CMD_CLOSE_ALL_CONNECTIONS::request req;
-  ASSERT_TRUE(epee::net_utils::notify_remote_command2(m_context, CMD_CLOSE_ALL_CONNECTIONS::ID, req, m_tcp_server.get_config_object()));
+  ASSERT_TRUE(epee::net_utils::notify_remote_command2(m_context, CMD_CLOSE_ALL_CONNECTIONS::ID, req, m_tcp_server.get_shared_state()));
 
   // Wait for almost all connections to be closed by server
   busy_wait_for(DEFAULT_OPERATION_TIMEOUT, [&](){ return m_commands_handler.new_connection_counter() <= m_commands_handler.close_connection_counter() + RESERVED_CONN_CNT; });
 
   // It's OK, if there are opened connections, because server could accept not all our connections
   ASSERT_LE(m_commands_handler.close_connection_counter() + RESERVED_CONN_CNT, m_commands_handler.new_connection_counter());
-  ASSERT_LE(RESERVED_CONN_CNT, m_tcp_server.get_config_object().get_connections_count());
+  ASSERT_LE(RESERVED_CONN_CNT, m_tcp_server.get_shared_state().get_connections_count());
 
   // Wait for server to handle all open and close requests
   busy_wait_for_server_statistics(srv_stat, [](const CMD_GET_STATISTICS::response& stat) { return stat.new_connection_counter - RESERVED_CONN_CNT <= stat.close_connection_counter; });
@@ -600,12 +600,12 @@ TEST_F(net_load_test_clt, permament_open_and_close_and_connections_closed_by_ser
   ASSERT_EQ(RESERVED_CONN_CNT, srv_stat.opened_connections_count);
 
   // Close rest connections
-  m_tcp_server.get_config_object().foreach_connection([&](test_connection_context& ctx) {
+  m_tcp_server.get_shared_state().foreach_connection([&](test_connection_context& ctx) {
     if (ctx.m_connection_id != m_context.m_connection_id)
     {
       CMD_DATA_REQUEST::request req;
       bool r = epee::net_utils::async_invoke_remote_command2<CMD_DATA_REQUEST::response>(ctx, CMD_DATA_REQUEST::ID, req,
-        m_tcp_server.get_config_object(), [=](int code, const CMD_DATA_REQUEST::response& rsp, const test_connection_context&) {
+        m_tcp_server.get_shared_state(), [=](int code, const CMD_DATA_REQUEST::response& rsp, const test_connection_context&) {
           if (code <= 0)
           {
             LOG_PRINT_L0("Failed to invoke CMD_DATA_REQUEST. code = " << code);
@@ -619,12 +619,12 @@ TEST_F(net_load_test_clt, permament_open_and_close_and_connections_closed_by_ser
 
   // Wait for all opened connections to close
   EXPECT_TRUE(busy_wait_for(DEFAULT_OPERATION_TIMEOUT, [&](){ return m_commands_handler.new_connection_counter() - RESERVED_CONN_CNT <= m_commands_handler.close_connection_counter(); }));
-  LOG_PRINT_L0("number of opened / closed connections: " << m_tcp_server.get_config_object().get_connections_count() <<
+  LOG_PRINT_L0("number of opened / closed connections: " << m_tcp_server.get_shared_state().get_connections_count() <<
     " / " << m_commands_handler.close_connection_counter());
 
   // Check
   ASSERT_EQ(m_commands_handler.close_connection_counter(), m_commands_handler.new_connection_counter() - RESERVED_CONN_CNT);
-  ASSERT_EQ(RESERVED_CONN_CNT, m_tcp_server.get_config_object().get_connections_count());
+  ASSERT_EQ(RESERVED_CONN_CNT, m_tcp_server.get_shared_state().get_connections_count());
 }
 
 int main(int argc, char** argv)

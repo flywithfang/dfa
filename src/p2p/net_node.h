@@ -172,7 +172,7 @@ namespace nodetool
           m_notifier(),
           m_our_address(),
           m_peerlist(),
-          m_config{},
+          m_shared_state{},
           m_proxy_address(),
           m_current_number_of_out_peers(0),
           m_current_number_of_in_peers(0),
@@ -193,7 +193,7 @@ namespace nodetool
           m_notifier(),
           m_our_address(),
           m_peerlist(),
-          m_config{},
+          m_shared_state{},
           m_proxy_address(),
           m_current_number_of_out_peers(0),
           m_current_number_of_in_peers(0),
@@ -233,7 +233,7 @@ namespace nodetool
         }
 
         typename net_server::t_connection_context con{};
-        const bool res = m_net_server.connect(address, port,m_config.m_net_config.connection_timeout,con, "0.0.0.0", ssl_support);
+        const bool res = m_net_server.connect(address, port,m_shared_state.m_net_config.connection_timeout,con, "0.0.0.0", ssl_support);
 
         if (res)
           return {std::move(con)};
@@ -251,7 +251,7 @@ namespace nodetool
 
       peerlist_manager m_peerlist;
       
-      config m_config;
+      config m_shared_state;
       boost::asio::ip::tcp::endpoint m_proxy_address;
       std::atomic<unsigned int> m_current_number_of_out_peers;
       std::atomic<unsigned int> m_current_number_of_in_peers;
@@ -263,13 +263,13 @@ namespace nodetool
       void set_config_defaults() noexcept
       {
         // at this moment we have a hardcoded config
-        m_config.m_net_config.handshake_interval = P2P_DEFAULT_HANDSHAKE_INTERVAL;
-        m_config.m_net_config.packet_max_size = P2P_DEFAULT_PACKET_MAX_SIZE;
-        m_config.m_net_config.config_id = 0;
-        m_config.m_net_config.connection_timeout = P2P_DEFAULT_CONNECTION_TIMEOUT;
-        m_config.m_net_config.ping_connection_timeout = P2P_DEFAULT_PING_CONNECTION_TIMEOUT;
-        m_config.m_net_config.send_peerlist_sz = P2P_DEFAULT_PEERS_IN_HANDSHAKE;
-        m_config.m_support_flags = 0; // only set in public zone
+        m_shared_state.m_net_config.handshake_interval = P2P_DEFAULT_HANDSHAKE_INTERVAL;
+        m_shared_state.m_net_config.packet_max_size = P2P_DEFAULT_PACKET_MAX_SIZE;
+        m_shared_state.m_net_config.config_id = 0;
+        m_shared_state.m_net_config.connection_timeout = P2P_DEFAULT_CONNECTION_TIMEOUT;
+        m_shared_state.m_net_config.ping_connection_timeout = P2P_DEFAULT_PING_CONNECTION_TIMEOUT;
+        m_shared_state.m_net_config.send_peerlist_sz = P2P_DEFAULT_PEERS_IN_HANDSHAKE;
+        m_shared_state.m_support_flags = 0; // only set in public zone
       }
     };
 
@@ -280,9 +280,7 @@ namespace nodetool
       delayed_igd,
     };
 
-  public:
-    typedef t_payload_net_handler payload_net_handler;
-
+public:
     node_server(t_payload_net_handler& payload_handler)
       : m_payload_handler(payload_handler),
         m_external_port(0),
@@ -299,7 +297,7 @@ namespace nodetool
     virtual ~node_server(){}  
 
     static void init_options(boost::program_options::options_description& desc);
-    payload_net_handler& get_payload_object();
+    t_payload_net_handler& get_payload_object();
 
     bool run();
     bool init(const boost::program_options::variables_map& vm);

@@ -727,7 +727,7 @@ POP_WARNINGS
     if (r)
     {
       new_connection_l->get_context(conn_context);
-      //new_connection_l.reset(new connection<t_protocol_handler>(io_service_, m_config, m_sock_count, m_pfilter));
+      //new_connection_l.reset(new connection<t_protocol_handler>(io_service_, m_shared_state, m_sock_count, m_pfilter));
     }
     else
     {

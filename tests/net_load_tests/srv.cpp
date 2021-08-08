@@ -120,7 +120,7 @@ namespace
 
     int handle_get_statistics(int command, const CMD_GET_STATISTICS::request&, CMD_GET_STATISTICS::response& rsp, test_connection_context& /*context*/)
     {
-      rsp.opened_connections_count = m_tcp_server.get_config_object().get_connections_count();
+      rsp.opened_connections_count = m_tcp_server.get_shared_state().get_connections_count();
       rsp.new_connection_counter = new_connection_counter();
       rsp.close_connection_counter = close_connection_counter();
       LOG_PRINT_L0("Statistics: " << rsp.to_string());
@@ -162,14 +162,14 @@ namespace
     int handle_send_data_requests(int /*command*/, const CMD_SEND_DATA_REQUESTS::request& req, test_connection_context& context)
     {
       boost::uuids::uuid cmd_conn_id = context.m_connection_id;
-      m_tcp_server.get_config_object().foreach_connection([&](test_connection_context& ctx) {
+      m_tcp_server.get_shared_state().foreach_connection([&](test_connection_context& ctx) {
         if (ctx.m_connection_id != cmd_conn_id)
         {
           CMD_DATA_REQUEST::request req2;
           req2.data.resize(req.request_size);
 
           bool r = epee::net_utils::async_invoke_remote_command2<CMD_DATA_REQUEST::response>(ctx, CMD_DATA_REQUEST::ID, req2,
-            m_tcp_server.get_config_object(), [=](int code, const CMD_DATA_REQUEST::response& rsp, const test_connection_context&) {
+            m_tcp_server.get_shared_state(), [=](int code, const CMD_DATA_REQUEST::response& rsp, const test_connection_context&) {
               if (code <= 0)
               {
                 LOG_PRINT_L0("Failed to invoke CMD_DATA_REQUEST. code = " << code);
@@ -187,17 +187,17 @@ namespace
   private:
     void close_connections(boost::uuids::uuid cmd_conn_id)
     {
-      LOG_PRINT_L0("Closing connections. Number of opened connections: " << m_tcp_server.get_config_object().get_connections_count());
+      LOG_PRINT_L0("Closing connections. Number of opened connections: " << m_tcp_server.get_shared_state().get_connections_count());
 
       size_t count = 0;
-      m_tcp_server.get_config_object().foreach_connection([&](test_connection_context& ctx) {
+      m_tcp_server.get_shared_state().foreach_connection([&](test_connection_context& ctx) {
         if (ctx.m_connection_id != cmd_conn_id)
         {
           ++count;
           if (!ctx.m_closed)
           {
             ctx.m_closed = true;
-            m_tcp_server.get_config_object().close(ctx.m_connection_id);
+            m_tcp_server.get_shared_state().close(ctx.m_connection_id);
           }
           else
           {
@@ -249,9 +249,9 @@ int main(int argc, char** argv)
     return 1;
 
   srv_levin_commands_handler *commands_handler = new srv_levin_commands_handler(tcp_server);
-  tcp_server.get_config_object().set_handler(commands_handler, [](epee::levin::levin_commands_handler<test_connection_context> *handler) { delete handler; });
-  tcp_server.get_config_object().m_invoke_timeout = 10000;
-  //tcp_server.get_config_object().m_max_packet_size = max_packet_size;
+  tcp_server.get_shared_state().set_handler(commands_handler, [](epee::levin::levin_commands_handler<test_connection_context> *handler) { delete handler; });
+  tcp_server.get_shared_state().m_invoke_timeout = 10000;
+  //tcp_server.get_shared_state().m_max_packet_size = max_packet_size;
 
   if (!tcp_server.run_server(thread_count, true))
     return 2;

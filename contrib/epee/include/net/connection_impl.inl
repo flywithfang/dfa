@@ -17,23 +17,15 @@ namespace net_utils
 PRAGMA_WARNING_DISABLE_VS(4355)
 
   template<class t_protocol_handler>
-  connection<t_protocol_handler>::connection( boost::asio::io_service& io_service,
-                std::shared_ptr<shared_state> state,
-		t_connection_type connection_type,
-		ssl_support_t ssl_support
-	)
+  connection<t_protocol_handler>::connection( boost::asio::io_service& io_service,std::shared_ptr<shared_state> state,t_connection_type connection_type, ssl_support_t ssl_support	)
 	: connection(boost::asio::ip::tcp::socket{io_service}, std::move(state), connection_type, ssl_support)
   {
   }
 
   template<class t_protocol_handler>
-  connection<t_protocol_handler>::connection( boost::asio::ip::tcp::socket&& sock,
-                std::shared_ptr<shared_state> state,
-		t_connection_type connection_type,
-		ssl_support_t ssl_support
-	)
-	: 
-		connection_basic(std::move(sock), state, ssl_support),
+  connection<t_protocol_handler>::connection( boost::asio::ip::tcp::socket&& sock,std::shared_ptr<shared_state> state,
+		t_connection_type connection_type,ssl_support_t ssl_support	)
+	: connection_basic(std::move(sock), state, ssl_support),
 		m_protocol_handler(this, check_and_get(state), context),
 		buffer_ssl_init_fill(0),
 		m_connection_type( connection_type ),

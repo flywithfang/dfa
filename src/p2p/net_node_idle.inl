@@ -19,7 +19,7 @@
     typedef std::list<std::pair<epee::net_utils::connection_context_base, peerid_type> > local_connects_type;
     local_connects_type cncts;
     {
-      m_network.m_net_server.get_config_object().foreach_connection([&](p2p_connection_context& cntxt)
+      m_network.m_net_server.get_shared_state().foreach_connection([&](p2p_connection_context& cntxt)
       {
         if(cntxt.peer_id && !cntxt.m_in_timedsync)
         {
@@ -42,7 +42,7 @@
     typename COMMAND_TIMED_SYNC::request arg{};
     m_payload_handler.get_payload_sync_data(arg.payload_data);
 
-    bool r = epee::net_utils::async_invoke_remote_command2<typename COMMAND_TIMED_SYNC::response>(context_, COMMAND_TIMED_SYNC::ID, arg, m_network.m_net_server.get_config_object(),
+    bool r = epee::net_utils::async_invoke_remote_command2<typename COMMAND_TIMED_SYNC::response>(context_, COMMAND_TIMED_SYNC::ID, arg, m_network.m_net_server.get_shared_state(),
       [this](int code, const typename COMMAND_TIMED_SYNC::response& rsp, p2p_connection_context& context)
     {
       context.m_in_timedsync = false;
@@ -55,7 +55,7 @@
       if(!handle_remote_peerlist(rsp.local_peerlist_new, context))
       {
         LOG_WARNING_CC(context, "COMMAND_TIMED_SYNC: failed to handle_remote_peerlist(...), closing connection.");
-        m_network.m_net_server.get_config_object().close(context.m_connection_id );
+        m_network.m_net_server.get_shared_state().close(context.m_connection_id );
         add_host_fail(context.m_remote_address);
       }
       if(!context.m_is_income)
@@ -63,7 +63,7 @@
 
       if (!m_payload_handler.process_payload_sync_data(rsp.payload_data, context, false))
       {
-        m_network.m_net_server.get_config_object().close(context.m_connection_id );
+        m_network.m_net_server.get_shared_state().close(context.m_connection_id );
       }
     });
 
@@ -158,14 +158,14 @@
       if ( !connect_to_peerlist(m_priority_peers))
         break;
 
-      size_t base_expected_white_connections = (m_network.m_config.m_net_config.max_out_connection_count*P2P_DEFAULT_WHITELIST_CONNECTIONS_PERCENT)/100;
+      size_t base_expected_white_connections = (m_network.m_shared_state.m_net_config.max_out_connection_count*P2P_DEFAULT_WHITELIST_CONNECTIONS_PERCENT)/100;
 
       // carefully avoid `continue` in nested loop
       
       size_t conn_count = get_outgoing_connections_count();
-      while(conn_count < m_network.m_config.m_net_config.max_out_connection_count)
+      while(conn_count < m_network.m_shared_state.m_net_config.max_out_connection_count)
       {
-        const size_t expected_white_connections = m_payload_handler.get_next_needed_pruning_stripe().second ? m_network.m_config.m_net_config.max_out_connection_count : base_expected_white_connections;
+        const size_t expected_white_connections = m_payload_handler.get_next_needed_pruning_stripe().second ? m_network.m_shared_state.m_net_config.max_out_connection_count : base_expected_white_connections;
         if(conn_count < expected_white_connections)
         {
           //start from anchor list
@@ -177,16 +177,16 @@
             && make_expected_connection(white, expected_white_connections))
             ;
           //then do grey list
-          while (get_outgoing_connections_count() < m_network.m_config.m_net_config.max_out_connection_count
-            && make_expected_connection( gray, m_network.m_config.m_net_config.max_out_connection_count))
+          while (get_outgoing_connections_count() < m_network.m_shared_state.m_net_config.max_out_connection_count
+            && make_expected_connection( gray, m_network.m_shared_state.m_net_config.max_out_connection_count))
             ;
         }else
         {
           //start from grey list
-          while (get_outgoing_connections_count() < m_network.m_config.m_net_config.max_out_connection_count && make_expected_connection( gray, m_network.m_config.m_net_config.max_out_connection_count))
+          while (get_outgoing_connections_count() < m_network.m_shared_state.m_net_config.max_out_connection_count && make_expected_connection( gray, m_network.m_shared_state.m_net_config.max_out_connection_count))
             ;
           //and then do white list
-          while (get_outgoing_connections_count() < m_network.m_config.m_net_config.max_out_connection_count && make_expected_connection( white, m_network.m_config.m_net_config.max_out_connection_count));
+          while (get_outgoing_connections_count() < m_network.m_shared_state.m_net_config.max_out_connection_count && make_expected_connection( white, m_network.m_shared_state.m_net_config.max_out_connection_count));
         }
         if(m_network.m_net_server.is_stop_signal_sent())
           return false;
@@ -202,7 +202,7 @@
       }//while
 
 
-      if (start_conn_count == get_outgoing_connections_count() && start_conn_count < m_network.m_config.m_net_config.max_out_connection_count)
+      if (start_conn_count == get_outgoing_connections_count() && start_conn_count < m_network.m_shared_state.m_net_config.max_out_connection_count)
       {
         MINFO("Failed to connect to any, trying seeds");
         if (!connect_to_seed())
@@ -309,7 +309,7 @@
       // build a set of all the /16 we're connected to, and prefer a peer that's not in that set
       std::set<uint32_t> classB;
       {
-        m_network.m_net_server.get_config_object().foreach_connection([&](const p2p_connection_context& cntxt)
+        m_network.m_net_server.get_shared_state().foreach_connection([&](const p2p_connection_context& cntxt)
         {
           if (cntxt.m_remote_address.get_type_id() == epee::net_utils::ipv4_network_address::get_type_id())
           {
@@ -511,7 +511,7 @@
     // swept ...
     std::vector<boost::uuids::uuid> conns;
     {
-      m_network.m_net_server.get_config_object().foreach_connection([&](const p2p_connection_context& cntxt)
+      m_network.m_net_server.get_shared_state().foreach_connection([&](const p2p_connection_context& cntxt)
       {
         if (cntxt.m_remote_address.is_same_host(addr))
         {
@@ -527,7 +527,7 @@
       m_network.m_peerlist.remove_from_peer_anchor(addr);
 
       for (const auto &c: conns)
-        m_network.m_net_server.get_config_object().close(c);
+        m_network.m_net_server.get_shared_state().close(c);
 
       conns.clear();
     }
@@ -558,7 +558,7 @@
     // swept ...
     std::vector<boost::uuids::uuid> conns;
     {
-      m_network.m_net_server.get_config_object().foreach_connection([&](const p2p_connection_context& cntxt)
+      m_network.m_net_server.get_shared_state().foreach_connection([&](const p2p_connection_context& cntxt)
       {
         if (cntxt.m_remote_address.get_type_id() != epee::net_utils::ipv4_network_address::get_type_id())
           return true;
@@ -570,7 +570,7 @@
         return true;
       });
       for (const auto &c: conns)
-        m_network.m_net_server.get_config_object().close(c);
+        m_network.m_net_server.get_shared_state().close(c);
 
       conns.clear();
     }

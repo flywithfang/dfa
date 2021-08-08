@@ -141,7 +141,7 @@ namespace net_utils
       return m_state->ssl_context;
     }
 
-    typename t_protocol_handler::config_type& get_config_object()
+    typename t_protocol_handler::config_type& get_shared_state()
     {
       assert(m_state != nullptr); // always set in constructor
       return *m_state;

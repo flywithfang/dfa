@@ -714,7 +714,7 @@ namespace levin
       throw std::logic_error{"cryptonote::levin::notify cannot have nullptr p2p argument"};
 
     const bool noise_enabled = !zone_->noise.empty();
-    if (noise_enabled || zone == epee::net_utils::zone::public_)
+ //   if (noise_enabled || zone == epee::net_utils::zone::public_)
     {
       const auto now = std::chrono::steady_clock::now();
       const auto min_epoch = noise_enabled ? noise_min_epoch : dandelionpp_min_epoch;
@@ -791,41 +791,6 @@ namespace levin
        but the mempool/stempool needs to know the zone a tx originated from to
        work properly. */
 
-    if (!zone_->noise.empty() && !zone_->channels.empty())
-    {
-      // covert send in "noise" channel
-      static_assert(
-        CRYPTONOTE_MAX_FRAGMENTS * CRYPTONOTE_NOISE_BYTES <= LEVIN_DEFAULT_MAX_PACKET_SIZE, "most nodes will reject this fragment setting"
-      );
-
-      if (tx_relay == relay_method::stem)
-      {
-        MWARNING("Dandelion++ stem not supported over noise networks");
-        tx_relay = relay_method::local; // do not put into stempool embargo (hopefully not there already!).
-      }
-
-      core_->on_transactions_relayed(epee::to_span(txs), tx_relay);
-
-      // Padding is not useful when using noise mode. Send as stem so receiver
-      // forwards in Dandelion++ mode.
-      epee::byte_slice message = epee::levin::make_fragmented_notify(
-        zone_->noise.size(), NOTIFY_NEW_TRANSACTIONS::ID, make_tx_message(std::move(txs), false, false)
-      );
-      if (CRYPTONOTE_MAX_FRAGMENTS * zone_->noise.size() < message.size())
-      {
-        MERROR("notify::send_txs provided message exceeding covert fragment size");
-        return false;
-      }
-
-      for (std::size_t channel = 0; channel < zone_->channels.size(); ++channel)
-      {
-        MINFO("relay txs");
-        zone_->channels[channel].strand.dispatch(
-          queue_covert_notify{zone_, message.clone(), channel}
-        );
-      }
-    }
-    else
     {
       switch (tx_relay)
       {
@@ -836,7 +801,7 @@ namespace levin
         case relay_method::stem:
         case relay_method::forward:
         case relay_method::local:
-          if (zone_->nzone == epee::net_utils::zone::public_)
+          //if (zone_->nzone == epee::net_utils::zone::public_)
           {
             // this will change a local/forward tx to stem or fluff ...
             zone_->strand.dispatch(

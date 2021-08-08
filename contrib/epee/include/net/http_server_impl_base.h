@@ -64,17 +64,17 @@ namespace epee
     {
 
       //set self as callback handler
-      m_net_server.get_config_object().m_phandler = static_cast<t_child_class*>(this);
-      m_net_server.get_config_object().rng = std::move(rng);
+      m_net_server.get_shared_state().m_phandler = static_cast<t_child_class*>(this);
+      m_net_server.get_shared_state().rng = std::move(rng);
 
       //here set folder for hosting reqests
-      m_net_server.get_config_object().m_folder = "";
+      m_net_server.get_shared_state().m_folder = "";
 
       //set access control allow origins if configured
       std::sort(access_control_origins.begin(), access_control_origins.end());
-      m_net_server.get_config_object().m_access_control_origins = std::move(access_control_origins);
+      m_net_server.get_shared_state().m_access_control_origins = std::move(access_control_origins);
 
-      m_net_server.get_config_object().m_user = std::move(user);
+      m_net_server.get_shared_state().m_user = std::move(user);
 
       MGINFO("Binding on " << bind_ip << " (IPv4):" << bind_port);
       if (use_ipv6)

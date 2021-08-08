@@ -211,15 +211,15 @@ std::string block_queue::get_overview(uint64_t blockchain_height) const
   return s;
 }
 
-inline bool block_queue::requested_internal(const crypto::hash &hash) const
+inline bool block_queue::requested_internal(const crypto::hash &bh) const
 {
-  return requested_hashes.find(hash) != requested_hashes.end();
+  return requested_hashes.find(bh) != requested_hashes.end();
 }
 
-bool block_queue::requested(const crypto::hash &hash) const
+bool block_queue::requested(const crypto::hash &bh) const
 {
   boost::unique_lock<boost::recursive_mutex> lock(mutex);
-  return requested_internal(hash);
+  return requested_internal(bh);
 }
 
 bool block_queue::have(const crypto::hash &hash) const
@@ -315,7 +315,7 @@ std::pair<uint64_t, uint64_t> block_queue::get_next_span_if_scheduled(std::vecto
   boost::unique_lock<boost::recursive_mutex> lock(mutex);
   if (m_spans.empty())
     return std::make_pair(0, 0);
-  block_map::const_iterator i = m_spans.begin();
+  auto i = m_spans.begin();
   if (i == m_spans.end())
     return std::make_pair(0, 0);
   if (!i->blocks.empty())

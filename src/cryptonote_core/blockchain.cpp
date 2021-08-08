@@ -1722,63 +1722,7 @@ bool Blockchain::get_output_distribution( uint64_t from_height, uint64_t to_heig
   }
 
 }
-//------------------------------------------------------------------
-// This function takes a list of block hashes from another node
-// on the network to find where the split point is between us and them.
-// This is used to see what to send another node that needs to sync.
-bool Blockchain::find_blockchain_supplement(const std::list<crypto::hash>& qblock_ids, uint64_t& starter_offset) const
-{
-  MTRACE("Blockchain::" << __func__);
-  CRITICAL_REGION_LOCAL(m_blockchain_lock);
 
-  // make sure the request includes at least the genesis block, otherwise
-  // how can we expect to sync from the client that the block list came from?
-  if(qblock_ids.empty())
-  {
-    MCERROR("net.p2p", "Client sent wrong NOTIFY_REQUEST_CHAIN: m_block_ids.size()=" << qblock_ids.size() << ", dropping connection");
-    return false;
-  }
-
-  db_rtxn_guard rtxn_guard(m_db);
-  // make sure that the last block in the request's block list matches
-  // the genesis block
-  auto gen_hash = m_db->get_block_hash_from_height(0);
-  if(qblock_ids.back() != gen_hash)
-  {
-    MCERROR("net.p2p", "Client sent wrong NOTIFY_REQUEST_CHAIN: genesis block mismatch: " << std::endl << "id: " << qblock_ids.back() << ", " << std::endl << "expected: " << gen_hash << "," << std::endl << " dropping connection");
-    return false;
-  }
-
-  // Find the first block the foreign chain has that we also have.
-  // Assume qblock_ids is in reverse-chronological order.
-  auto bl_it = qblock_ids.begin();
-  uint64_t split_height = 0;
-  for(; bl_it != qblock_ids.end(); bl_it++)
-  {
-    try
-    {
-      if (m_db->block_exists(*bl_it, &split_height))
-        break;
-    }
-    catch (const std::exception& e)
-    {
-      MWARNING("Non-critical error trying to find block by hash in BlockchainDB, hash: " << *bl_it);
-      return false;
-    }
-  }
-
-  // this should be impossible, as we checked that we share the genesis block,
-  // but just in case...
-  if(bl_it == qblock_ids.end())
-  {
-    MERROR("Internal error handling connection, can't find split point");
-    return false;
-  }
-
-  //we start to put block ids INCLUDING last known id, just to make other side be sure
-  starter_offset = split_height;
-  return true;
-}
 //------------------------------------------------------------------
 difficulty_type Blockchain::block_difficulty(uint64_t i) const
 {
@@ -2010,16 +1954,75 @@ bool Blockchain::get_transactions(const t_ids_container& txs_ids, t_tx_container
   return true;
 }
 //------------------------------------------------------------------
+// This function takes a list of block hashes from another node
+// on the network to find where the split point is between us and them.
+// This is used to see what to send another node that needs to sync.
+//a,b,c,d
+//a,b,x,y,z
+bool Blockchain::find_blockchain_supplement(const std::list<crypto::hash>& qblock_ids, uint64_t& starter_offset) const
+{
+  MTRACE("Blockchain::" << __func__);
+  CRITICAL_REGION_LOCAL(m_blockchain_lock);
+
+  // make sure the request includes at least the genesis block, otherwise
+  // how can we expect to sync from the client that the block list came from?
+  if(qblock_ids.empty())
+  {
+    MCERROR("net.p2p", "Client sent wrong NOTIFY_REQUEST_CHAIN: m_block_ids.size()=" << qblock_ids.size() << ", dropping connection");
+    return false;
+  }
+
+  db_rtxn_guard rtxn_guard(m_db);
+  // make sure that the last block in the request's block list matches
+  // the genesis block
+  auto gen_hash = m_db->get_block_hash_from_height(0);
+  if(qblock_ids.back() != gen_hash)
+  {
+    MCERROR("net.p2p", "Client sent wrong NOTIFY_REQUEST_CHAIN: genesis block mismatch: " << std::endl << "id: " << qblock_ids.back() << ", " << std::endl << "expected: " << gen_hash << "," << std::endl << " dropping connection");
+    return false;
+  }
+
+  // Find the first block the foreign chain has that we also have.
+  // Assume qblock_ids is in reverse-chronological order.
+  auto bl_it = qblock_ids.begin();
+  uint64_t split_height = 0;
+  for(; bl_it != qblock_ids.end(); bl_it++)
+  {
+    try
+    {
+      if (m_db->block_exists(*bl_it, &split_height))
+        break;
+    }
+    catch (const std::exception& e)
+    {
+      MWARNING("Non-critical error trying to find block by hash in BlockchainDB, hash: " << *bl_it);
+      return false;
+    }
+  }
+
+  // this should be impossible, as we checked that we share the genesis block,
+  // but just in case...
+  if(bl_it == qblock_ids.end())
+  {
+    MERROR("Internal error handling connection, can't find split point");
+    return false;
+  }
+
+  //we start to put block ids INCLUDING last known id, just to make other side be sure
+  starter_offset = split_height;
+  return true;
+}
+//------------------------------------------------------------------
 // Find the split point between us and foreign blockchain and return
 // (by reference) the most recent common block hash along with up to
 // BLOCKS_IDS_SYNCHRONIZING_DEFAULT_COUNT additional (more recent) hashes.
-bool Blockchain::find_blockchain_supplement(const std::list<crypto::hash>& qblock_ids, std::vector<crypto::hash>& hashes, std::vector<uint64_t>* weights, uint64_t& start_height, uint64_t& current_height, bool clip_pruned) const
+bool Blockchain::find_blockchain_supplement(const std::list<crypto::hash>& qblock_ids, std::vector<crypto::hash>& hashes, std::vector<uint64_t>* weights, uint64_t& split_height, uint64_t& current_height, bool clip_pruned) const
 {
   MTRACE("Blockchain::" << __func__);
   CRITICAL_REGION_LOCAL(m_blockchain_lock);
 
   // if we can't find the split point, return false
-  if(!find_blockchain_supplement(qblock_ids, start_height))
+  if(!find_blockchain_supplement(qblock_ids, split_height))
   {
     return false;
   }
@@ -2030,19 +2033,19 @@ bool Blockchain::find_blockchain_supplement(const std::list<crypto::hash>& qbloc
   if (clip_pruned)
   {
     const uint32_t pruning_seed = get_blockchain_pruning_seed();
-    if (start_height < tools::get_next_unpruned_block_height(start_height, current_height, pruning_seed))
+    if (split_height < tools::get_next_unpruned_block_height(split_height, current_height, pruning_seed))
     {
       MDEBUG("We only have a pruned version of the common ancestor");
       return false;
     }
-    stop_height = tools::get_next_pruned_block_height(start_height, current_height, pruning_seed);
+    stop_height = tools::get_next_pruned_block_height(split_height, current_height, pruning_seed);
   }
   size_t count = 0;
-  const size_t reserve = std::min((size_t)(stop_height - start_height), (size_t)BLOCKS_IDS_SYNCHRONIZING_DEFAULT_COUNT);
+  const size_t reserve = std::min((size_t)(stop_height - split_height), (size_t)BLOCKS_IDS_SYNCHRONIZING_DEFAULT_COUNT);
   hashes.reserve(reserve);
   if (weights)
     weights->reserve(reserve);
-  for(size_t i = start_height; i < stop_height && count < BLOCKS_IDS_SYNCHRONIZING_DEFAULT_COUNT; i++, count++)
+  for(size_t i = split_height; i < stop_height && count < BLOCKS_IDS_SYNCHRONIZING_DEFAULT_COUNT; i++, count++)
   {
     hashes.push_back(m_db->get_block_hash_from_height(i));
     if (weights)
@@ -2060,9 +2063,9 @@ bool Blockchain::find_blockchain_supplement(const std::list<crypto::hash>& qbloc
   bool result = find_blockchain_supplement(qblock_ids, resp.m_block_ids, &resp.m_block_weights, resp.start_height, resp.total_height, clip_pruned);
   if (result)
   {
-    cryptonote::difficulty_type wide_cumulative_difficulty = m_db->get_block_cumulative_difficulty(resp.total_height - 1);
-    resp.cum_diff = (wide_cumulative_difficulty & 0xffffffffffffffff).convert_to<uint64_t>();
-    resp.cumulative_difficulty_top64 = ((wide_cumulative_difficulty >> 64) & 0xffffffffffffffff).convert_to<uint64_t>();
+    cryptonote::difficulty_type cum_diff_128 = m_db->get_block_cumulative_difficulty(resp.total_height - 1);
+    resp.cum_diff = (cum_diff_128 & 0xffffffffffffffff).convert_to<uint64_t>();
+    resp.cumulative_difficulty_top64 = ((cum_diff_128 >> 64) & 0xffffffffffffffff).convert_to<uint64_t>();
   }
 
   return result;
@@ -2072,7 +2075,7 @@ bool Blockchain::find_blockchain_supplement(const std::list<crypto::hash>& qbloc
 // find split point between ours and foreign blockchain (or start at
 // blockchain height <req_start_block>), and return up to max_count FULL
 // blocks by reference.
-bool Blockchain::find_blockchain_supplement(const uint64_t req_start_block, const std::list<crypto::hash>& qblock_ids, std::vector<std::pair<std::pair<cryptonote::blobdata, crypto::hash>, std::vector<std::pair<crypto::hash, cryptonote::blobdata> > > >& blocks, uint64_t& top_height, uint64_t& start_height, bool pruned, bool get_miner_tx_hash, size_t max_block_count, size_t max_tx_count) const
+bool Blockchain::find_blockchain_supplement(const uint64_t req_start_block, const std::list<crypto::hash>& qblock_ids,  std::vector<BlockchainDB::BlockData>& blocks, uint64_t& top_height, uint64_t& split_height, bool pruned, bool get_miner_tx_hash, size_t max_block_count, size_t max_tx_count) const
 {
   MTRACE("Blockchain::" << __func__);
   CRITICAL_REGION_LOCAL(m_blockchain_lock);
@@ -2085,11 +2088,11 @@ bool Blockchain::find_blockchain_supplement(const uint64_t req_start_block, cons
     {
       return false;
     }
-    start_height = req_start_block;
+    split_height = req_start_block;
   }
   else
   {
-    if(!find_blockchain_supplement(qblock_ids, start_height))
+    if(!find_blockchain_supplement(qblock_ids, split_height))
     {
       return false;
     }
@@ -2098,10 +2101,9 @@ bool Blockchain::find_blockchain_supplement(const uint64_t req_start_block, cons
   db_rtxn_guard rtxn_guard(m_db);
   top_height = get_current_blockchain_height();
   const auto C = std::min(max_block_count, (size_t)10000);
-  blocks.reserve(std::min(C, (size_t)(top_height - start_height)));
+  blocks.reserve(std::min(C, (size_t)(top_height - split_height)));
 
-  CHECK_AND_ASSERT_MES(m_db->get_blocks_from(start_height, 3, C, max_tx_count, FIND_BLOCKCHAIN_SUPPLEMENT_MAX_SIZE, blocks, pruned, true, get_miner_tx_hash),
-      false, "Error getting blocks");
+  CHECK_AND_ASSERT_MES(m_db->get_blocks_from(split_height, 3, C, max_tx_count, FIND_BLOCKCHAIN_SUPPLEMENT_MAX_SIZE, blocks, pruned, true, get_miner_tx_hash),false, "Error getting blocks");
 
   return true;
 }
@@ -2142,14 +2144,16 @@ bool Blockchain::have_block_unlocked(const crypto::hash& id, int *where) const
   if(m_db->block_exists(id))
   {
     LOG_PRINT_L2("block " << id << " found in main chain");
-    if (where) *where = HAVE_BLOCK_MAIN_CHAIN;
+    if (where) 
+      *where = HAVE_BLOCK_MAIN_CHAIN;
     return true;
   }
 
   if(m_db->get_alt_block(id, NULL, NULL))
   {
     LOG_PRINT_L2("block " << id << " found in alternative chains");
-    if (where) *where = HAVE_BLOCK_ALT_CHAIN;
+    if (where)
+     *where = HAVE_BLOCK_ALT_CHAIN;
     return true;
   }
 

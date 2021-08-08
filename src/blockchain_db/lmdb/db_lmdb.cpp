@@ -2297,6 +2297,7 @@ bool BlockchainLMDB::for_all_alt_blocks(std::function<bool(const crypto::hash&, 
   return ret;
 }
 
+
 bool BlockchainLMDB::block_exists(const crypto::hash& h, uint64_t *height) const
 {
   MVERBOSE("BlockchainLMDB::" << __func__);
@@ -3072,7 +3073,7 @@ bool BlockchainLMDB::get_pruned_tx_blobs_from(const crypto::hash& h, size_t coun
   return true;
 }
 
-bool BlockchainLMDB::get_blocks_from(uint64_t start_height, size_t min_block_count, size_t max_block_count, size_t max_tx_count, size_t max_size, std::vector<std::pair<std::pair<cryptonote::blobdata, crypto::hash>, std::vector<std::pair<crypto::hash, cryptonote::blobdata>>>>& blocks, bool pruned, bool skip_coinbase, bool get_miner_tx_hash) const
+bool BlockchainLMDB::get_blocks_from(uint64_t start_height, size_t min_block_count, size_t max_block_count, size_t max_tx_count, size_t max_size, std::vector<BlockData>& blocks, bool pruned, bool skip_coinbase, bool get_miner_tx_hash) const
 {
   MVERBOSE("BlockchainLMDB::" << __func__);
   check_open();
@@ -3095,23 +3096,22 @@ bool BlockchainLMDB::get_blocks_from(uint64_t start_height, size_t min_block_cou
   uint64_t tx_id = ~0;
   for (uint64_t h = start_height; h < blockchain_height && blocks.size() < max_block_count && (size < max_size || blocks.size() < min_block_count); ++h)
   {
-    MDB_cursor_op op = h == start_height ? MDB_SET : MDB_NEXT;
+    const MDB_cursor_op op = h == start_height ? MDB_SET : MDB_NEXT;
     int result = mdb_cursor_get(m_cur_blocks, &key, &v, op);
     if (result == MDB_NOTFOUND)
       throw0(BLOCK_DNE(std::string("Attempt to get block from height ").append(boost::lexical_cast<std::string>(h)).append(" failed -- block not in db").c_str()));
     else if (result)
       throw0(DB_ERROR(lmdb_error("Error attempting to retrieve a block from the db", result).c_str()));
 
-    blocks.resize(blocks.size() + 1);
+    blocks.emplace_back(BlockData{});
     auto &current_block = blocks.back();
-    auto & blob_data =current_block.first.first;
+    auto & blob_data =current_block.b_blob;
     blob_data.assign(reinterpret_cast<char*>(v.mv_data), v.mv_size);
     size += v.mv_size;
 
-    const cryptonote::block b=parse_and_validate_block_from_blob(current_block.first.first);
+    const cryptonote::block b=parse_and_validate_block_from_blob(blob_data);
 
-    const auto miner_tx_hash = get_miner_tx_hash ? cryptonote::get_transaction_hash(b.miner_tx) : crypto::null_hash;;
-    current_block.first.second = miner_tx_hash;
+     current_block.miner_tx_hash= get_miner_tx_hash ? cryptonote::get_transaction_hash(b.miner_tx) : crypto::null_hash;;
 
     // get the tx_id for the first tx (the first block's coinbase tx)
     if (h == start_height)
@@ -3141,22 +3141,22 @@ bool BlockchainLMDB::get_blocks_from(uint64_t start_height, size_t min_block_cou
       }
     }
 
-    op = MDB_NEXT;
-    auto & txes = current_block.second;
+  //  op = MDB_NEXT;
+    auto & txes = current_block.txes;
     txes.reserve(b.tx_hashes.size());
     num_txes += b.tx_hashes.size() + (skip_coinbase ? 0 : 1);
     for (const auto &tx_hash: b.tx_hashes)
     {
       // get pruned data
       cryptonote::blobdata tx_blob;
-      result = mdb_cursor_get(m_cur_txs_pruned, &val_tx_id, &v, op);
+      result = mdb_cursor_get(m_cur_txs_pruned, &val_tx_id, &v, MDB_NEXT);
       if (result)
         throw0(DB_ERROR(lmdb_error("Error attempting to retrieve transaction data from the db: ", result).c_str()));
       tx_blob.assign((const char*)v.mv_data, v.mv_size);
 
       if (!pruned)
       {
-        result = mdb_cursor_get(m_cur_txs_prunable, &val_tx_id, &v, op);
+        result = mdb_cursor_get(m_cur_txs_prunable, &val_tx_id, &v, MDB_NEXT);
         if (result)
           throw0(DB_ERROR(lmdb_error("Error attempting to retrieve transaction data from the db: ", result).c_str()));
         tx_blob.append(reinterpret_cast<const char*>(v.mv_data), v.mv_size);

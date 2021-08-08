@@ -112,6 +112,7 @@ public:
 
 #include "anvoke_wrapper.inl"
   
+public:
   enum stream_state
   {
     stream_state_head,
@@ -132,7 +133,7 @@ public:
   volatile uint32_t m_close_called;
   bucket_head2 m_current_head;
   net_utils::i_service_endpoint* m_pservice_endpoint; 
-  config_type& m_config;
+  config_type& m_shared_state;
   t_connection_context& m_connection_context;
   std::atomic<uint64_t> m_max_packet_size;
 
@@ -160,12 +161,9 @@ public:
   }
   template<class callback_t> friend struct anvoke_handler;
 public:
-  async_protocol_handler(net_utils::i_service_endpoint* psnd_hndlr, 
-    config_type& config, 
-    t_connection_context& conn_context):
-            m_current_head(bucket_head2()),
+  async_protocol_handler(net_utils::i_service_endpoint* psnd_hndlr, config_type& config, t_connection_context& conn_context):m_current_head(bucket_head2()),
             m_pservice_endpoint(psnd_hndlr), 
-            m_config(config), 
+            m_shared_state(config), 
             m_connection_context(conn_context),
             m_max_packet_size(config.m_initial_max_packet_size),
             m_cache_in_buffer(4 * 1024),
@@ -186,7 +184,7 @@ public:
 
     if(m_connection_initialized)
     {
-      m_config.del_connection(this);
+      m_shared_state.del_connection(this);
     }
 
     for (size_t i = 0; i < 60 * 1000 / 100 && 0 != boost::interprocess::ipcdetail::atomic_read32(&m_wait_count); ++i)
@@ -260,7 +258,7 @@ public:
 
   void handle_qued_callback()   
   {
-    m_config.m_pcommands_handler->callback(m_connection_context);
+    m_shared_state.m_pcommands_handler->callback(m_connection_context);
   }
 
   virtual bool handle_recv(const void* ptr, size_t cb)
@@ -268,7 +266,7 @@ public:
     if(boost::interprocess::ipcdetail::atomic_read32(&m_close_called))
       return false; //closing connections
 
-    if(!m_config.m_pcommands_handler)
+    if(!m_shared_state.m_pcommands_handler)
     {
       MERROR(m_connection_context << "Commands handler not set!");
       return false;
@@ -400,19 +398,19 @@ public:
             if(m_current_head.m_have_to_return_data)
             {
               levin::message_writer return_message{32 * 1024};
-              const uint32_t return_code = m_config.m_pcommands_handler->invoke(
+              const uint32_t return_code = m_shared_state.m_pcommands_handler->invoke(
                 m_current_head.m_command, buff_to_invoke, return_message.buffer, m_connection_context
               );
 
               // peer_id remains unset if dropped
               if (m_current_head.m_command == m_connection_context.handshake_command() && m_connection_context.handshake_complete())
-                m_max_packet_size = m_config.m_max_packet_size;
+                m_max_packet_size = m_shared_state.m_max_packet_size;
 
               if(!send_message(return_message.finalize_response(m_current_head.m_command, return_code)))
                 return false;
             }
             else
-              m_config.m_pcommands_handler->notify(m_current_head.m_command, buff_to_invoke, m_connection_context);
+              m_shared_state.m_pcommands_handler->notify(m_current_head.m_command, buff_to_invoke, m_connection_context);
           }
           // reuse small buffer
           if (!temp.empty() && temp.capacity() <= 64 * 1024)
@@ -480,7 +478,7 @@ public:
     if (!m_connection_initialized)
     {
       m_connection_initialized = true;
-      m_config.add_connection(this);
+      m_shared_state.add_connection(this);
     }
     return true;
   }
@@ -492,7 +490,7 @@ public:
       boost::bind(&async_protocol_handler::finish_outer_call, this));
 
     if(timeout == LEVIN_DEFAULT_TIMEOUT_PRECONFIGURED)
-      timeout = m_config.m_invoke_timeout;
+      timeout = m_shared_state.m_invoke_timeout;
 
     int err_code = LEVIN_OK;
     do
@@ -503,7 +501,7 @@ public:
       CRITICAL_REGION_BEGIN(m_invoke_response_handlers_lock);
 
       if (command == m_connection_context.handshake_command())
-        m_max_packet_size = m_config.m_max_packet_size;
+        m_max_packet_size = m_shared_state.m_max_packet_size;
 
       if(!send_message(in_msg.finalize_invoke(command)))
       {
@@ -541,7 +539,7 @@ public:
     boost::interprocess::ipcdetail::atomic_write32(&m_invoke_buf_ready, 0);
 
     if (command == m_connection_context.handshake_command())
-      m_max_packet_size = m_config.m_max_packet_size;
+      m_max_packet_size = m_shared_state.m_max_packet_size;
 
     if (!send_message(in_msg.finalize_invoke(command)))
     {
@@ -559,9 +557,9 @@ public:
         prev_size = m_cache_in_buffer.size();
         ticks_start = misc_utils::get_tick_count();
       }
-      if(misc_utils::get_tick_count() - ticks_start > m_config.m_invoke_timeout)
+      if(misc_utils::get_tick_count() - ticks_start > m_shared_state.m_invoke_timeout)
       {
-        MWARNING(m_connection_context << "invoke timeout (" << m_config.m_invoke_timeout << "), closing connection ");
+        MWARNING(m_connection_context << "invoke timeout (" << m_shared_state.m_invoke_timeout << "), closing connection ");
         close();
         return LEVIN_ERROR_CONNECTION_TIMEDOUT;
       }

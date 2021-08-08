@@ -331,7 +331,7 @@ namespace cryptonote
     typedef epee::misc_utils::struct_init<request_t> request;
   };
 
-  struct NOTIFY_RESPONSE_CHAIN_ENTRY
+  struct  NOTIFY_RESPONSE_CHAIN_ENTRY
   {
     const static int ID = BC_COMMANDS_POOL_BASE + 7;
 
