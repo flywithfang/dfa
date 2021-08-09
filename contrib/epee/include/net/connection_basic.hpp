@@ -179,9 +179,6 @@ class connection_basic { // not-templated base class for rapid developmet of som
 		static uint64_t get_rate_up_limit();
 		static uint64_t get_rate_down_limit();
 
-		// config misc
-		static void set_tos_flag(int tos); // ToS / QoS flag
-		static int get_tos_flag();
 
 		// handlers and sleep
 		void sleep_before_packet(size_t packet_size, int phase, int q_len); // execute a sleep ; phase is not really used now(?)

@@ -45,7 +45,7 @@
 #include "cryptonote_protocol_handler_common.h"
 #include "block_queue.h"
 #include "common/perf_timer.h"
-#include "cryptonote_basic/connection_context.h"
+#include "cryptonote_basic/cryptonote_peer_context.h"
 #include "net/levin_base.h"
 #include "p2p/net_node_common.h"
 #include <boost/circular_buffer.hpp>
@@ -64,11 +64,11 @@ namespace cryptonote
   class t_cryptonote_protocol_handler:  public i_cryptonote_protocol
   { 
   public:
-    typedef cryptonote_connection_context connection_context;
+    typedef cryptonote_peer_context peer_context;
     typedef t_cryptonote_protocol_handler<t_core> cryptonote_protocol_handler;
     typedef CORE_SYNC_DATA payload_type;
 
-    t_cryptonote_protocol_handler(t_core& rcore, nodetool::i_p2p_endpoint<connection_context>* p_net_layout, bool offline = false);
+    t_cryptonote_protocol_handler(t_core& rcore, nodetool::i_p2p_endpoint<cryptonote_peer_context>* p2p, bool offline = false);
 
 
       template <class t_context>
@@ -114,20 +114,20 @@ namespace cryptonote
     bool init(const boost::program_options::variables_map& vm);
     bool deinit();
 
-    void set_p2p_endpoint(nodetool::i_p2p_endpoint<connection_context>* p2p);
+    void set_p2p_endpoint(nodetool::i_p2p_endpoint<cryptonote_peer_context>* p2p);
     
-    //bool process_handshake_data(const blobdata& data, cryptonote_connection_context& context);
-    bool process_payload_sync_data(const CORE_SYNC_DATA& hshd, cryptonote_connection_context& context, bool is_inital);
+    //bool process_handshake_data(const blobdata& data, cryptonote_peer_context& context);
+    bool process_payload_sync_data(const CORE_SYNC_DATA& hshd, cryptonote_peer_context& context, bool is_inital);
     bool get_payload_sync_data(epee::byte_slice& data);
     bool get_payload_sync_data(CORE_SYNC_DATA& hshd);
-    bool on_callback(cryptonote_connection_context& context);
+    bool on_callback(cryptonote_peer_context& context);
     t_core& get_core(){return m_core;}
     virtual bool is_synchronized() const final { return !no_sync() && m_synchronized; }
     void log_connections();
     std::list<connection_info> get_connections();
     const block_queue &get_block_queue() const { return m_block_queue; }
     void stop();
-    void on_connection_close(cryptonote_connection_context &context);
+    void on_connection_close(cryptonote_peer_context &context);
     void set_max_out_peers(unsigned int max) { m_max_out_peers = max; }
     bool no_sync() const { return m_no_sync; }
     void set_no_sync(bool value) { m_no_sync = value; }
@@ -138,45 +138,45 @@ namespace cryptonote
 
   private:
     //----------------- commands handlers ----------------------------------------------
-    int handle_notify_new_block(int command, NOTIFY_NEW_BLOCK::request& arg, cryptonote_connection_context& context);
-    int handle_notify_new_transactions(int command, NOTIFY_NEW_TRANSACTIONS::request& arg, cryptonote_connection_context& context);
-    int handle_request_get_objects(int command, NOTIFY_REQUEST_GET_OBJECTS::request& arg, cryptonote_connection_context& context);
-    int handle_response_get_objects(int command, NOTIFY_RESPONSE_GET_OBJECTS::request& arg, cryptonote_connection_context& context);
-    int handle_request_chain(int command, NOTIFY_REQUEST_CHAIN::request& arg, cryptonote_connection_context& context);
-    int handle_response_chain_entry(int command, NOTIFY_RESPONSE_CHAIN_ENTRY::request& arg, cryptonote_connection_context& context);
-    int handle_notify_new_fluffy_block(int command, NOTIFY_NEW_FLUFFY_BLOCK::request& arg, cryptonote_connection_context& context);
-    int handle_request_fluffy_missing_tx(int command, NOTIFY_REQUEST_FLUFFY_MISSING_TX::request& arg, cryptonote_connection_context& context);
-    int handle_notify_get_txpool_complement(int command, NOTIFY_GET_TXPOOL_COMPLEMENT::request& arg, cryptonote_connection_context& context);
+    int handle_notify_new_block(int command, NOTIFY_NEW_BLOCK::request& arg, cryptonote_peer_context& context);
+    int handle_notify_new_transactions(int command, NOTIFY_NEW_TRANSACTIONS::request& arg, cryptonote_peer_context& context);
+    int handle_request_get_objects(int command, NOTIFY_REQUEST_GET_OBJECTS::request& arg, cryptonote_peer_context& context);
+    int handle_response_get_objects(int command, NOTIFY_RESPONSE_GET_OBJECTS::request& arg, cryptonote_peer_context& context);
+    int handle_request_chain(int command, NOTIFY_REQUEST_CHAIN::request& arg, cryptonote_peer_context& context);
+    int handle_response_chain_entry(int command, NOTIFY_RESPONSE_CHAIN_ENTRY::request& arg, cryptonote_peer_context& context);
+    int handle_notify_new_fluffy_block(int command, NOTIFY_NEW_FLUFFY_BLOCK::request& arg, cryptonote_peer_context& context);
+    int handle_request_fluffy_missing_tx(int command, NOTIFY_REQUEST_FLUFFY_MISSING_TX::request& arg, cryptonote_peer_context& context);
+    int handle_notify_get_txpool_complement(int command, NOTIFY_GET_TXPOOL_COMPLEMENT::request& arg, cryptonote_peer_context& context);
 		
     //----------------- i_bc_protocol_layout ---------------------------------------
-    virtual bool relay_block(NOTIFY_NEW_BLOCK::request& arg, cryptonote_connection_context& exclude_context);
+    virtual bool relay_block(NOTIFY_NEW_BLOCK::request& arg, cryptonote_peer_context& exclude_context);
     virtual bool relay_transactions(NOTIFY_NEW_TRANSACTIONS::request& arg, const boost::uuids::uuid& source, epee::net_utils::zone zone, relay_method tx_relay);
     //----------------------------------------------------------------------------------
-    //bool get_payload_sync_data(HANDSHAKE_DATA::request& hshd, cryptonote_connection_context& context);
-    bool should_drop_connection(cryptonote_connection_context& context, uint32_t next_stripe);
-    bool request_missing_objects(cryptonote_connection_context& context, bool check_having_blocks, bool force_next_span = false);
+    //bool get_payload_sync_data(HANDSHAKE_DATA::request& hshd, cryptonote_peer_context& context);
+    bool should_drop_connection(cryptonote_peer_context& context, uint32_t next_stripe);
+    bool request_missing_objects(cryptonote_peer_context& context, bool check_having_blocks, bool force_next_span = false);
     size_t get_synchronizing_connections_count();
     bool on_connection_synchronized();
-    bool should_download_next_span(cryptonote_connection_context& context, bool standby);
-    bool should_ask_for_pruned_data(cryptonote_connection_context& context, uint64_t first_block_height, uint64_t nblocks, bool check_block_weights) const;
-    void drop_connection(cryptonote_connection_context &context, bool add_fail, bool flush_all_spans);
-    void drop_connection_with_score(cryptonote_connection_context &context, unsigned int score, bool flush_all_spans);
+    bool should_download_next_span(cryptonote_peer_context& context, bool standby);
+    bool should_ask_for_pruned_data(cryptonote_peer_context& context, uint64_t first_block_height, uint64_t nblocks, bool check_block_weights) const;
+    void drop_connection(cryptonote_peer_context &context, bool add_fail, bool flush_all_spans);
+    void drop_connection_with_score(cryptonote_peer_context &context, unsigned int score, bool flush_all_spans);
     void drop_connections(const epee::net_utils::network_address address);
     bool kick_idle_peers();
     bool check_standby_peers();
     bool update_sync_search();
-    int try_add_next_blocks(cryptonote_connection_context &context);
-    void notify_new_stripe(cryptonote_connection_context &context, uint32_t stripe);
-    size_t skip_unneeded_hashes(cryptonote_connection_context& context, bool check_block_queue) const;
-    bool request_txpool_complement(cryptonote_connection_context &context);
-    void hit_score(cryptonote_connection_context &context, int32_t score);
+    int try_add_next_blocks(cryptonote_peer_context &context);
+    void notify_new_stripe(cryptonote_peer_context &context, uint32_t stripe);
+    size_t skip_unneeded_hashes(cryptonote_peer_context& context, bool check_block_queue) const;
+    bool request_txpool_complement(cryptonote_peer_context &context);
+    void hit_score(cryptonote_peer_context &context, int32_t score);
 
 
     t_core& m_core;
 
-    nodetool::p2p_endpoint_stub<connection_context> m_p2p_stub;
+    nodetool::p2p_endpoint_stub<cryptonote_peer_context> m_p2p_stub;
 
-    nodetool::i_p2p_endpoint<connection_context>* m_p2p;
+    nodetool::i_p2p_endpoint<cryptonote_peer_context>* m_p2p;
     
     std::atomic<uint32_t> m_syncronized_connections_count;
     std::atomic<bool> m_synchronized;
@@ -212,7 +212,7 @@ namespace cryptonote
     boost::mutex m_bad_peer_check_lock;
 
     template<class MSG>
-      bool post_notify(typename MSG::request& arg, cryptonote_connection_context& context)
+      bool post_notify(typename MSG::request& arg, cryptonote_peer_context& context)
       {
         MDEBUG("[" << epee::net_utils::print_connection_context_short(context) << "] post " << typeid(MSG).name() << " -->");
 

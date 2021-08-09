@@ -87,7 +87,7 @@ namespace levin
 
  
   template<class t_connection_context = net_utils::connection_context_base>
-  struct levin_commands_handler
+  struct i_levin_commands_handler
   {
     virtual int invoke(int command, const epee::span<const uint8_t> in_buff, byte_stream& buff_out, t_connection_context& context)=0;
     virtual int notify(int command, const epee::span<const uint8_t> in_buff, t_connection_context& context)=0;
@@ -96,7 +96,7 @@ namespace levin
     virtual void on_connection_new(t_connection_context& context){};
     virtual void on_connection_close(t_connection_context& context){};
 
-    virtual ~levin_commands_handler(){}
+    virtual ~i_levin_commands_handler(){}
   };
 
 #define LEVIN_OK                                        0

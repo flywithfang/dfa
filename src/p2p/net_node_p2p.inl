@@ -1,14 +1,14 @@
 //-----------------------------------------------------------------------------------
-  template<class t_payload_net_handler>
-  std::set<std::string> node_server<t_payload_net_handler>::get_seed_nodes()
+  template<class t_payload_handler>
+  std::set<std::string> node_server<t_payload_handler>::get_seed_nodes()
   {
       return get_dns_seed_nodes();
    
   }
 
    //-----------------------------------------------------------------------------------
-  template<class t_payload_net_handler>
-  std::set<std::string> node_server<t_payload_net_handler>::get_ip_seed_nodes() const
+  template<class t_payload_handler>
+  std::set<std::string> node_server<t_payload_handler>::get_ip_seed_nodes() const
   {
     std::set<std::string> full_addrs;
     if (m_nettype == cryptonote::TESTNET)
@@ -27,8 +27,8 @@
     return full_addrs;
   }
   //-----------------------------------------------------------------------------------
-  template<class t_payload_net_handler>
-  std::set<std::string> node_server<t_payload_net_handler>::get_dns_seed_nodes()
+  template<class t_payload_handler>
+  std::set<std::string> node_server<t_payload_handler>::get_dns_seed_nodes()
   {
     if (!m_exclusive_peers.empty() || m_offline)
     {
@@ -138,8 +138,8 @@
   }
 
 //-----------------------------------------------------------------------------------
-  template<class t_payload_net_handler>
-  int node_server<t_payload_net_handler>::handle_handshake(int command, typename COMMAND_HANDSHAKE::request& arg, typename COMMAND_HANDSHAKE::response& rsp, p2p_connection_context& context)
+  template<class t_payload_handler>
+  int node_server<t_payload_handler>::handle_handshake(int command, typename COMMAND_HANDSHAKE::request& arg, typename COMMAND_HANDSHAKE::response& rsp, p2p_connection_context& context)
   {
     if(arg.node_data.network_id != m_network_id)
     {
@@ -247,8 +247,8 @@
   }
 
     //-----------------------------------------------------------------------------------
-  template<class t_payload_net_handler>
-  int node_server<t_payload_net_handler>::handle_timed_sync(int command, typename COMMAND_TIMED_SYNC::request& arg, typename COMMAND_TIMED_SYNC::response& rsp, p2p_connection_context& context)
+  template<class t_payload_handler>
+  int node_server<t_payload_handler>::handle_timed_sync(int command, typename COMMAND_TIMED_SYNC::request& arg, typename COMMAND_TIMED_SYNC::response& rsp, p2p_connection_context& context)
   {
     if(!m_payload_handler.process_payload_sync_data(arg.payload_data, context, false))
     {
@@ -287,8 +287,8 @@
   }
 
     //-----------------------------------------------------------------------------------
-  template<class t_payload_net_handler> template<class t_callback>
-  bool node_server<t_payload_net_handler>::try_ping(basic_node_data& node_data, p2p_connection_context& context, const t_callback &cb)
+  template<class t_payload_handler> template<class t_callback>
+  bool node_server<t_payload_handler>::try_ping(basic_node_data& node_data, p2p_connection_context& context, const t_callback &cb)
   {
     if(!node_data.my_port)
       return false;
@@ -384,8 +384,8 @@
   }
 
     //-----------------------------------------------------------------------------------
-  template<class t_payload_net_handler>
-  int node_server<t_payload_net_handler>::handle_ping(int command, COMMAND_PING::request& arg, COMMAND_PING::response& rsp, p2p_connection_context& context)
+  template<class t_payload_handler>
+  int node_server<t_payload_handler>::handle_ping(int command, COMMAND_PING::request& arg, COMMAND_PING::response& rsp, p2p_connection_context& context)
   {
     LOG_DEBUG_CC(context, "COMMAND_PING");
     rsp.status = PING_OK_RESPONSE_STATUS_TEXT;
@@ -395,8 +395,8 @@
 
 
 
-   template<class t_payload_net_handler>
-  bool node_server<t_payload_net_handler>::try_to_connect_and_handshake_with_new_peer(const epee::net_utils::network_address& na, bool just_take_peerlist, uint64_t last_seen_stamp, PeerType peer_type, uint64_t first_seen_stamp)
+   template<class t_payload_handler>
+  bool node_server<t_payload_handler>::try_to_connect_and_handshake_with_new_peer(const epee::net_utils::network_address& na, bool just_take_peerlist, uint64_t last_seen_stamp, PeerType peer_type, uint64_t first_seen_stamp)
   {
 
     if (m_network.m_our_address == na)
@@ -471,8 +471,8 @@
   }
 
     //-----------------------------------------------------------------------------------
-  template<class t_payload_net_handler>
-  bool node_server<t_payload_net_handler>::do_handshake_with_peer(peerid_type& pi, p2p_connection_context& context_, bool just_take_peerlist)
+  template<class t_payload_handler>
+  bool node_server<t_payload_handler>::do_handshake_with_peer(peerid_type& pi, p2p_connection_context& context_, bool just_take_peerlist)
   {
 
     typename COMMAND_HANDSHAKE::request arg;
@@ -558,8 +558,8 @@
 
 
   //-----------------------------------------------------------------------------------
-  template<class t_payload_net_handler>
-  bool node_server<t_payload_net_handler>::connect_to_seed()
+  template<class t_payload_handler>
+  bool node_server<t_payload_handler>::connect_to_seed()
   {
       boost::upgrade_lock<boost::shared_mutex> seed_nodes_upgrade_lock(m_network.m_seed_nodes_lock);
 

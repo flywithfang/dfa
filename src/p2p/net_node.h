@@ -48,8 +48,8 @@
 #include "cryptonote_protocol/levin_notify.h"
 #include "warnings.h"
 #include "net/abstract_tcp_server2.h"
-#include "net/levin_protocol_handler.h"
-#include "net/levin_protocol_handler_async.h"
+#include "net/levin_wire_handler.h"
+#include "net/levin_wire_handler_async.h"
 #include "p2p_protocol_defs.h"
 #include "storages/levin_abstract_invoke2.h"
 #include "net_peerlist.h"
@@ -101,13 +101,10 @@ namespace nodetool
   //! \return True if `commnd` is filtered (ignored/dropped) for `address`
   bool is_filtered_command(epee::net_utils::network_address const& address, int command);
 
-  // hides boost::future and chrono stuff from mondo template file
-  boost::optional<boost::asio::ip::tcp::socket>
-  socks_connect_internal(const std::atomic<bool>& stop_signal, boost::asio::io_service& service, const boost::asio::ip::tcp::endpoint& proxy, const epee::net_utils::network_address& remote);
-
+  
 
   template<class base_type>
-  struct p2p_connection_context_t: base_type //t_payload_net_handler::connection_context //public net_utils::connection_context_base
+  struct p2p_connection_context_t: base_type //t_payload_handler::peer_context //public net_utils::connection_context_base
   {
     p2p_connection_context_t()
       : fluff_txs(),
@@ -127,19 +124,19 @@ namespace nodetool
 
 
 
-  template<class t_payload_net_handler>
-  class node_server: public epee::levin::levin_commands_handler<p2p_connection_context_t<typename t_payload_net_handler::connection_context> >,public i_p2p_endpoint<typename t_payload_net_handler::connection_context>,public epee::net_utils::i_connection_filter
+  template<class t_payload_handler>
+  class node_server: public epee::levin::i_levin_commands_handler<p2p_connection_context_t<typename t_payload_handler::peer_context> >,public i_p2p_endpoint<typename t_payload_handler::peer_context>,public epee::net_utils::i_connection_filter
   {
     struct by_conn_id{};
     struct by_peer_id{};
     struct by_addr{};
 
-    typedef p2p_connection_context_t<typename t_payload_net_handler::connection_context> p2p_connection_context;
+    typedef p2p_connection_context_t<typename t_payload_handler::peer_context> p2p_connection_context;
 
-    typedef node_server<t_payload_net_handler> MyType;
-    typedef epee::levin::async_protocol_handler<p2p_connection_context> P2PProtocolHandler;
-    typedef COMMAND_HANDSHAKE_T<typename t_payload_net_handler::payload_type> COMMAND_HANDSHAKE;
-    typedef COMMAND_TIMED_SYNC_T<typename t_payload_net_handler::payload_type> COMMAND_TIMED_SYNC;
+    typedef node_server<t_payload_handler> MyType;
+    typedef epee::levin::async_wire_handler<p2p_connection_context> P2PProtocolHandler;
+    typedef COMMAND_HANDSHAKE_T<typename t_payload_handler::payload_type> COMMAND_HANDSHAKE;
+    typedef COMMAND_TIMED_SYNC_T<typename t_payload_handler::payload_type> COMMAND_TIMED_SYNC;
     static_assert(p2p_connection_context::handshake_command() == COMMAND_HANDSHAKE::ID, "invalid handshake command id");
 
     typedef epee::net_utils::boosted_tcp_server<P2PProtocolHandler> net_server;
@@ -281,7 +278,7 @@ namespace nodetool
     };
 
 public:
-    node_server(t_payload_net_handler& payload_handler)
+    node_server(t_payload_handler& payload_handler)
       : m_payload_handler(payload_handler),
         m_external_port(0),
         m_rpc_port(0),
@@ -297,14 +294,14 @@ public:
     virtual ~node_server(){}  
 
     static void init_options(boost::program_options::options_description& desc);
-    t_payload_net_handler& get_payload_object();
+    t_payload_handler& get_payload_object();
 
     bool run();
     bool init(const boost::program_options::variables_map& vm);
     bool deinit();
     bool send_stop_signal();
     uint32_t get_this_peer_port(){return m_listening_port;}
-    t_payload_net_handler& get_paylonetwork_zonead_object();
+    t_payload_handler& get_paylonetwork_zonead_object();
 
     // debug functions
     bool log_peerlist();
@@ -328,8 +325,8 @@ public:
     virtual std::map<std::string, time_t> get_blocked_hosts() { CRITICAL_REGION_LOCAL(m_blocked_hosts_lock); return m_blocked_hosts; }
     virtual std::map<epee::net_utils::ipv4_network_subnet, time_t> get_blocked_subnets() { CRITICAL_REGION_LOCAL(m_blocked_hosts_lock); return m_blocked_subnets; }
 
-    virtual void add_used_stripe_peer(const typename t_payload_net_handler::connection_context &context);
-    virtual void remove_used_stripe_peer(const typename t_payload_net_handler::connection_context &context);
+    virtual void add_used_stripe_peer(const typename t_payload_handler::peer_context &context);
+    virtual void remove_used_stripe_peer(const typename t_payload_handler::peer_context &context);
     virtual void clear_used_stripe_peers();
 
   private:
@@ -376,7 +373,7 @@ public:
       HANDLE_INVOKE_T2(COMMAND_PING, &node_server::handle_ping)
 
         { 
-      int res = m_payload_handler.handle_invoke_map(is_notify, command, in_buff, buff_out, static_cast<typename t_payload_net_handler::connection_context&>(context), handled); 
+      int res = m_payload_handler.handle_invoke_map(is_notify, command, in_buff, buff_out, static_cast<typename t_payload_handler::peer_context&>(context), handled); 
       if(handled) return res; 
       }
 
@@ -403,7 +400,7 @@ public:
     bool store_config();
 
   public:
-    //----------------- levin_commands_handler -------------------------------------------------------------
+    //----------------- i_levin_commands_handler -------------------------------------------------------------
     virtual void on_connection_new(p2p_connection_context& context);
     virtual void on_connection_close(p2p_connection_context& context);
     virtual void callback(p2p_connection_context& context);
@@ -415,8 +412,8 @@ public:
     virtual bool invoke_notify_to_peer(int command, epee::levin::message_writer message, const epee::net_utils::connection_context_base& context) final;
     virtual bool drop_connection(const epee::net_utils::connection_context_base& context);
     virtual void request_callback(const epee::net_utils::connection_context_base& context);
-    virtual void for_each_connection(std::function<bool(typename t_payload_net_handler::connection_context&, peerid_type, uint32_t)> f);
-    virtual bool for_connection(const boost::uuids::uuid&, std::function<bool(typename t_payload_net_handler::connection_context&, peerid_type, uint32_t)> f);
+    virtual void for_each_connection(std::function<bool(typename t_payload_handler::peer_context&, peerid_type, uint32_t)> f);
+    virtual bool for_connection(const boost::uuids::uuid&, std::function<bool(typename t_payload_handler::peer_context&, peerid_type, uint32_t)> f);
     virtual bool add_host_fail(const epee::net_utils::network_address &address, unsigned int score = 1);
     //----------------- i_connection_filter  --------------------------------------------------------
     virtual bool is_remote_host_allowed(const epee::net_utils::network_address &address, time_t *t = NULL);
@@ -471,7 +468,6 @@ public:
 
     bool set_max_out_peers(network_zone& zone, int64_t max);
     bool set_max_in_peers(network_zone& zone, int64_t max);
-    bool set_tos_flag(const boost::program_options::variables_map& vm, int limit);
 
     bool set_rate_up_limit(const boost::program_options::variables_map& vm, int64_t limit);
     bool set_rate_down_limit(const boost::program_options::variables_map& vm, int64_t limit);
@@ -530,7 +526,7 @@ public:
     //critical_section m_connections_lock;
     //connections_indexed_container m_connections;
 
-    t_payload_net_handler& m_payload_handler;
+    t_payload_handler& m_payload_handler;
     peerlist_storage m_peerlist_storage;
 
     epee::math_helper::once_a_time_seconds<1> m_connections_maker_interval;
@@ -589,7 +585,6 @@ public:
     extern const command_line::arg_descriptor<std::vector<std::string> > arg_p2p_add_priority_node;
     extern const command_line::arg_descriptor<std::vector<std::string> > arg_p2p_add_exclusive_node;
     extern const command_line::arg_descriptor<std::vector<std::string> > arg_p2p_seed_node;
-    extern const command_line::arg_descriptor<std::vector<std::string> > arg_tx_proxy;
     extern const command_line::arg_descriptor<std::string> arg_ban_list;
     extern const command_line::arg_descriptor<bool> arg_p2p_hide_my_port;
     extern const command_line::arg_descriptor<bool> arg_no_sync;
@@ -600,7 +595,6 @@ public:
     extern const command_line::arg_descriptor<bool>        arg_offline;
     extern const command_line::arg_descriptor<int64_t>     arg_out_peers;
     extern const command_line::arg_descriptor<int64_t>     arg_in_peers;
-    extern const command_line::arg_descriptor<int> arg_tos_flag;
 
     extern const command_line::arg_descriptor<int64_t> arg_limit_rate_up;
     extern const command_line::arg_descriptor<int64_t> arg_limit_rate_down;

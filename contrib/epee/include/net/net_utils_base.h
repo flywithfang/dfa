@@ -53,11 +53,6 @@
 #define GET_IO_SERVICE(s) ((s).get_io_service())
 #endif
 
-namespace net
-{
-	class tor_address;
-	class i2p_address;
-}
 
 namespace epee
 {
@@ -328,10 +323,7 @@ namespace net_utils
 					return this_ref.template serialize_addr<ipv4_network_address>(is_store_, stg, hparent_section);
 				case address_type::ipv6:
 					return this_ref.template serialize_addr<ipv6_network_address>(is_store_, stg, hparent_section);
-				case address_type::tor:
-					return this_ref.template serialize_addr<net::tor_address>(is_store_, stg, hparent_section);
-				case address_type::i2p:
-					return this_ref.template serialize_addr<net::i2p_address>(is_store_, stg, hparent_section);
+				
 				case address_type::invalid:
 				default:
 					break;
@@ -420,7 +412,7 @@ namespace net_utils
     }
     
   private:
-    template<class t_protocol_handler>
+    template<class t_wire_handler>
     friend class connection;
     void set_details(boost::uuids::uuid connection_id, const network_address &remote_address, bool is_income, bool ssl)
     {

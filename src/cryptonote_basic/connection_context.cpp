@@ -26,14 +26,14 @@
 // STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#include "connection_context.h"
+#include "cryptonote_peer_context.h"
 
 #include "cryptonote_protocol/cryptonote_protocol_defs.h"
 #include "p2p/p2p_protocol_defs.h"
 
 namespace cryptonote
 {
-  std::size_t cryptonote_connection_context::get_max_bytes(const int command) noexcept
+  std::size_t cryptonote_peer_context::get_max_bytes(const int command) noexcept
   {
     switch (command)
     {

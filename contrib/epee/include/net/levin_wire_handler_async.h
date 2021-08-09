@@ -75,16 +75,20 @@ namespace levin
 /*                                                                      */
 /************************************************************************/
 template<class t_connection_context>
-class async_protocol_handler;
+class async_wire_handler;
 
-#include "levin_protocol_handler_async_config.inl"
+#include "levin_wire_async_shared_state.inl"
 
 /************************************************************************/
 /*                                                                      */
 /************************************************************************/
 template<class t_connection_context = net_utils::connection_context_base>
-class async_protocol_handler
+class async_wire_handler
 {
+public:
+  typedef t_connection_context connection_context;
+  typedef async_wire_shared_state<t_connection_context> shared_state;
+private:
   std::string m_fragment_buffer;
 
   bool send_message(byte_slice message)
@@ -106,9 +110,7 @@ class async_protocol_handler
     return true;
   }
 
-public:
-  typedef t_connection_context connection_context;
-  typedef async_protocol_handler_config<t_connection_context> config_type;
+
 
 #include "anvoke_wrapper.inl"
   
@@ -133,8 +135,11 @@ public:
   volatile uint32_t m_close_called;
   bucket_head2 m_current_head;
   net_utils::i_service_endpoint* m_pservice_endpoint; 
-  config_type& m_shared_state;
+
+  shared_state& m_shared_state;
+
   t_connection_context& m_connection_context;
+
   std::atomic<uint64_t> m_max_packet_size;
 
   net_utils::buffer m_cache_in_buffer;
@@ -147,7 +152,7 @@ public:
   std::list<boost::shared_ptr<invoke_response_handler_base> > m_invoke_response_handlers;
   
   template<class callback_t>
-  bool add_invoke_response_handler(const callback_t &cb, uint64_t timeout,  async_protocol_handler& con, int command)
+  bool add_invoke_response_handler(const callback_t &cb, uint64_t timeout,  async_wire_handler& con, int command)
   {
     CRITICAL_REGION_LOCAL(m_invoke_response_handlers_lock);
     if (m_protocol_released)
@@ -161,7 +166,7 @@ public:
   }
   template<class callback_t> friend struct anvoke_handler;
 public:
-  async_protocol_handler(net_utils::i_service_endpoint* psnd_hndlr, config_type& config, t_connection_context& conn_context):m_current_head(bucket_head2()),
+  async_wire_handler(net_utils::i_service_endpoint* psnd_hndlr, shared_state& config, t_connection_context& conn_context):m_current_head(bucket_head2()),
             m_pservice_endpoint(psnd_hndlr), 
             m_shared_state(config), 
             m_connection_context(conn_context),
@@ -177,7 +182,7 @@ public:
     m_invoke_buf_ready = 0;
     m_invoke_result_code = LEVIN_ERROR_CONNECTION;
   }
-  virtual ~async_protocol_handler()
+  virtual ~async_wire_handler()
   {
     try
     {
@@ -193,7 +198,7 @@ public:
     }
     CHECK_AND_ASSERT_MES_NO_RET(0 == boost::interprocess::ipcdetail::atomic_read32(&m_wait_count), "Failed to wait for operation completion. m_wait_count = " << m_wait_count);
 
-    MTRACE(m_connection_context << "~async_protocol_handler()");
+    MTRACE(m_connection_context << "~async_wire_handler()");
 
     }
     catch (...) { /* ignore */ }
@@ -251,7 +256,7 @@ public:
   void request_callback()
   {
     misc_utils::auto_scope_leave_caller scope_exit_handler = misc_utils::create_scope_leave_handler(
-      boost::bind(&async_protocol_handler::finish_outer_call, this));
+      boost::bind(&async_wire_handler::finish_outer_call, this));
 
     m_pservice_endpoint->request_callback();
   }
@@ -353,11 +358,7 @@ public:
 
           bool is_response = (m_oponent_protocol_ver == LEVIN_PROTOCOL_VER_1 && m_current_head.m_flags&LEVIN_PACKET_RESPONSE);
 
-          MDEBUG(m_connection_context << "LEVIN_PACKET_RECEIVED. [len=" << m_current_head.m_cb
-            << ", flags" << m_current_head.m_flags 
-            << ", r?=" << m_current_head.m_have_to_return_data 
-            <<", cmd = " << m_current_head.m_command 
-            << ", v=" << m_current_head.m_protocol_version);
+          MDEBUG(m_connection_context << "LEVIN_PACKET_RECEIVED. [len=" << m_current_head.m_cb<< ", flags" << m_current_head.m_flags << ", r?=" << m_current_head.m_have_to_return_data <<", cmd = " << m_current_head.m_command << ", v=" << m_current_head.m_protocol_version);
 
           if(is_response)
           {//response to some invoke 
@@ -398,8 +399,7 @@ public:
             if(m_current_head.m_have_to_return_data)
             {
               levin::message_writer return_message{32 * 1024};
-              const uint32_t return_code = m_shared_state.m_pcommands_handler->invoke(
-                m_current_head.m_command, buff_to_invoke, return_message.buffer, m_connection_context
+              const uint32_t return_code = m_shared_state.m_pcommands_handler->invoke(m_current_head.m_command, buff_to_invoke, return_message.buffer, m_connection_context
               );
 
               // peer_id remains unset if dropped
@@ -487,7 +487,7 @@ public:
   bool async_invoke(int command, message_writer in_msg, const callback_t &cb, size_t timeout = LEVIN_DEFAULT_TIMEOUT_PRECONFIGURED)
   {
     misc_utils::auto_scope_leave_caller scope_exit_handler = misc_utils::create_scope_leave_handler(
-      boost::bind(&async_protocol_handler::finish_outer_call, this));
+      boost::bind(&async_wire_handler::finish_outer_call, this));
 
     if(timeout == LEVIN_DEFAULT_TIMEOUT_PRECONFIGURED)
       timeout = m_shared_state.m_invoke_timeout;
@@ -532,7 +532,7 @@ public:
   int invoke(int command, message_writer in_msg, std::string& buff_out)
   {
     misc_utils::auto_scope_leave_caller scope_exit_handler = misc_utils::create_scope_leave_handler(
-                                      boost::bind(&async_protocol_handler::finish_outer_call, this));
+                                      boost::bind(&async_wire_handler::finish_outer_call, this));
 
     CRITICAL_REGION_LOCAL(m_call_lock);
 
@@ -587,7 +587,7 @@ public:
   int send(byte_slice message)
   {
     const misc_utils::auto_scope_leave_caller scope_exit_handler = misc_utils::create_scope_leave_handler(
-      boost::bind(&async_protocol_handler::finish_outer_call, this)
+      boost::bind(&async_wire_handler::finish_outer_call, this)
     );
 
     if (!send_message(std::move(message)))
@@ -603,6 +603,6 @@ public:
   t_connection_context& get_context_ref() {return m_connection_context;}
 };
 
-#include "levin_protocol_handler_async_config_impl.inl"
+#include "levin_wire_async_shared_state_impl.inl"
 }
 }

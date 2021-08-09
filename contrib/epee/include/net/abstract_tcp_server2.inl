@@ -76,14 +76,13 @@ namespace net_utils
   /*                                                                      */
   /************************************************************************/
 
-  template<class t_protocol_handler>
-  boosted_tcp_server<t_protocol_handler>::boosted_tcp_server( t_connection_type connection_type ) :
-    m_state(std::make_shared<typename connection<t_protocol_handler>::shared_state>()),
+  template<class t_wire_handler>
+  boosted_tcp_server<t_wire_handler>::boosted_tcp_server( t_connection_type connection_type ) :
+    m_shared_state(std::make_shared<typename connection<t_wire_handler>::shared_state>()),
     m_io_service_local_instance(new worker()),
     io_service_(m_io_service_local_instance->io_service),
     acceptor_(io_service_),
     acceptor_ipv6(io_service_),
-    default_remote(),
     m_stop_signal_sent(false), m_port(0), 
     m_threads_count(0),
     m_thread_index(0),
@@ -95,13 +94,12 @@ namespace net_utils
     m_thread_name_prefix = "NET";
   }
 
-  template<class t_protocol_handler>
-  boosted_tcp_server<t_protocol_handler>::boosted_tcp_server(boost::asio::io_service& extarnal_io_service, t_connection_type connection_type) :
-    m_state(std::make_shared<typename connection<t_protocol_handler>::shared_state>()),
+  template<class t_wire_handler>
+  boosted_tcp_server<t_wire_handler>::boosted_tcp_server(boost::asio::io_service& extarnal_io_service, t_connection_type connection_type) :
+    m_shared_state(std::make_shared<typename connection<t_wire_handler>::shared_state>()),
     io_service_(extarnal_io_service),
     acceptor_(io_service_),
     acceptor_ipv6(io_service_),
-    default_remote(),
     m_stop_signal_sent(false), m_port(0),
     m_threads_count(0),
     m_thread_index(0),
@@ -113,23 +111,23 @@ namespace net_utils
     m_thread_name_prefix = "NET";
   }
   //---------------------------------------------------------------------------------
-  template<class t_protocol_handler>
-  boosted_tcp_server<t_protocol_handler>::~boosted_tcp_server()
+  template<class t_wire_handler>
+  boosted_tcp_server<t_wire_handler>::~boosted_tcp_server()
   {
     this->send_stop_signal();
     timed_wait_server_stop(10000);
   }
   //---------------------------------------------------------------------------------
-  template<class t_protocol_handler>
-  void boosted_tcp_server<t_protocol_handler>::create_server_type_map() 
+  template<class t_wire_handler>
+  void boosted_tcp_server<t_wire_handler>::create_server_type_map() 
   {
 		server_type_map["NET"] = e_connection_type_NET;
 		server_type_map["RPC"] = e_connection_type_RPC;
 		server_type_map["P2P"] = e_connection_type_P2P;
   }
   //---------------------------------------------------------------------------------
-  template<class t_protocol_handler>
-    bool boosted_tcp_server<t_protocol_handler>::init_server(uint32_t port,  const std::string& address,
+  template<class t_wire_handler>
+    bool boosted_tcp_server<t_wire_handler>::init_server(uint32_t port,  const std::string& address,
 	uint32_t port_ipv6, const std::string& address_ipv6, bool use_ipv6, bool require_ipv4,
 	ssl_options_t ssl_options)
   {
@@ -143,7 +141,7 @@ namespace net_utils
     m_require_ipv4 = require_ipv4;
 
     if (ssl_options)
-      m_state->configure_ssl(std::move(ssl_options));
+      m_shared_state->configure_ssl(std::move(ssl_options));
 
     std::string ipv4_failed = "";
     std::string ipv6_failed = "";
@@ -161,7 +159,8 @@ namespace net_utils
       boost::asio::ip::tcp::endpoint binded_endpoint = acceptor_.local_endpoint();
       m_port = binded_endpoint.port();
       MINFO("start accept (IPv4) "<<address<<":"<<port);
-      new_connection_.reset(new connection<t_protocol_handler>(io_service_, m_state, m_connection_type, m_state->ssl_options().support));
+
+      new_connection_.reset(new connection<t_wire_handler>(io_service_, m_shared_state, m_connection_type, m_shared_state->ssl_options().support));
       
       acceptor_.async_accept(new_connection_->socket(),	boost::bind(&MyType::handle_accept_ipv4, this,boost::asio::placeholders::error));
     }
@@ -197,10 +196,9 @@ namespace net_utils
         boost::asio::ip::tcp::endpoint binded_endpoint = acceptor_ipv6.local_endpoint();
         m_port_ipv6 = binded_endpoint.port();
         MDEBUG("start accept (IPv6)");
-        new_connection_ipv6.reset(new connection<t_protocol_handler>(io_service_, m_state, m_connection_type, m_state->ssl_options().support));
-        acceptor_ipv6.async_accept(new_connection_ipv6->socket(),
-            boost::bind(&boosted_tcp_server<t_protocol_handler>::handle_accept_ipv6, this,
-              boost::asio::placeholders::error));
+        new_connection_ipv6.reset(new connection<t_wire_handler>(io_service_, m_shared_state, m_connection_type, m_shared_state->ssl_options().support));
+        
+        acceptor_ipv6.async_accept(new_connection_ipv6->socket(),boost::bind(&boosted_tcp_server<t_wire_handler>::handle_accept_ipv6, this,boost::asio::placeholders::error));
       }
       catch (const std::exception &e)
       {
@@ -233,8 +231,8 @@ namespace net_utils
   //-----------------------------------------------------------------------------
 PUSH_WARNINGS
 DISABLE_GCC_WARNING(maybe-uninitialized)
-  template<class t_protocol_handler>
-  bool boosted_tcp_server<t_protocol_handler>::init_server(const std::string port,  const std::string& address,
+  template<class t_wire_handler>
+  bool boosted_tcp_server<t_wire_handler>::init_server(const std::string port,  const std::string& address,
       const std::string port_ipv6, const std::string address_ipv6, bool use_ipv6, bool require_ipv4,
       ssl_options_t ssl_options)
   {
@@ -254,8 +252,8 @@ DISABLE_GCC_WARNING(maybe-uninitialized)
   }
 POP_WARNINGS
   //---------------------------------------------------------------------------------
-  template<class t_protocol_handler>
-  bool boosted_tcp_server<t_protocol_handler>::worker_thread()
+  template<class t_wire_handler>
+  bool boosted_tcp_server<t_wire_handler>::worker_thread()
   {
     TRY_ENTRY();
     uint32_t local_thr_index = boost::interprocess::ipcdetail::atomic_inc32(&m_thread_index); 
@@ -281,11 +279,11 @@ POP_WARNINGS
     }
     //_info("Worker thread finished");
     return true;
-    CATCH_ENTRY_L0("boosted_tcp_server<t_protocol_handler>::worker_thread", false);
+    CATCH_ENTRY_L0("boosted_tcp_server<t_wire_handler>::worker_thread", false);
   }
   //---------------------------------------------------------------------------------
-  template<class t_protocol_handler>
-  void boosted_tcp_server<t_protocol_handler>::set_threads_prefix(const std::string& prefix_name)
+  template<class t_wire_handler>
+  void boosted_tcp_server<t_wire_handler>::set_threads_prefix(const std::string& prefix_name)
   {
     m_thread_name_prefix = prefix_name;
 		auto it = server_type_map.find(m_thread_name_prefix);
@@ -294,15 +292,15 @@ POP_WARNINGS
     MINFO("Set server type to: " << connection_type << " from name: " << m_thread_name_prefix << ", prefix_name = " << prefix_name);
   }
   //---------------------------------------------------------------------------------
-  template<class t_protocol_handler>
-  void boosted_tcp_server<t_protocol_handler>::set_connection_filter(i_connection_filter* pfilter)
+  template<class t_wire_handler>
+  void boosted_tcp_server<t_wire_handler>::set_connection_filter(i_connection_filter* pfilter)
   {
-    assert(m_state != nullptr); // always set in constructor
-    m_state->pfilter = pfilter;
+    assert(m_shared_state != nullptr); // always set in constructor
+    m_shared_state->pfilter = pfilter;
   }
   //---------------------------------------------------------------------------------
-  template<class t_protocol_handler>
-  bool boosted_tcp_server<t_protocol_handler>::run_server(size_t threads_count, bool wait, const boost::thread::attributes& attrs)
+  template<class t_wire_handler>
+  bool boosted_tcp_server<t_wire_handler>::run_server(size_t threads_count, bool wait, const boost::thread::attributes& attrs)
   {
     TRY_ENTRY();
     m_threads_count = threads_count;
@@ -354,11 +352,11 @@ POP_WARNINGS
       }
     }
     return true;
-    CATCH_ENTRY_L0("boosted_tcp_server<t_protocol_handler>::run_server", false);
+    CATCH_ENTRY_L0("boosted_tcp_server<t_wire_handler>::run_server", false);
   }
   //---------------------------------------------------------------------------------
-  template<class t_protocol_handler>
-  bool boosted_tcp_server<t_protocol_handler>::is_thread_worker()
+  template<class t_wire_handler>
+  bool boosted_tcp_server<t_wire_handler>::is_thread_worker()
   {
     TRY_ENTRY();
     CRITICAL_REGION_LOCAL(m_threads_lock);
@@ -370,11 +368,11 @@ POP_WARNINGS
     if(m_threads_count == 1 && boost::this_thread::get_id() == m_main_thread_id)
       return true;
     return false;
-    CATCH_ENTRY_L0("boosted_tcp_server<t_protocol_handler>::is_thread_worker", false);
+    CATCH_ENTRY_L0("boosted_tcp_server<t_wire_handler>::is_thread_worker", false);
   }
   //---------------------------------------------------------------------------------
-  template<class t_protocol_handler>
-  bool boosted_tcp_server<t_protocol_handler>::timed_wait_server_stop(uint64_t wait_mseconds)
+  template<class t_wire_handler>
+  bool boosted_tcp_server<t_wire_handler>::timed_wait_server_stop(uint64_t wait_mseconds)
   {
     TRY_ENTRY();
     boost::chrono::milliseconds ms(wait_mseconds);
@@ -387,14 +385,14 @@ POP_WARNINGS
       }
     }
     return true;
-    CATCH_ENTRY_L0("boosted_tcp_server<t_protocol_handler>::timed_wait_server_stop", false);
+    CATCH_ENTRY_L0("boosted_tcp_server<t_wire_handler>::timed_wait_server_stop", false);
   }
   //---------------------------------------------------------------------------------
-  template<class t_protocol_handler>
-  void boosted_tcp_server<t_protocol_handler>::send_stop_signal()
+  template<class t_wire_handler>
+  void boosted_tcp_server<t_wire_handler>::send_stop_signal()
   {
     m_stop_signal_sent = true;
-    auto *state = static_cast<typename connection<t_protocol_handler>::shared_state*>(m_state.get());
+    auto *state = static_cast<typename connection<t_wire_handler>::shared_state*>(m_shared_state.get());
     state->stop_signal_sent = true;
     TRY_ENTRY();
     connections_mutex.lock();
@@ -405,23 +403,23 @@ POP_WARNINGS
     connections_.clear();
     connections_mutex.unlock();
     io_service_.stop();
-    CATCH_ENTRY_L0("boosted_tcp_server<t_protocol_handler>::send_stop_signal()", void());
+    CATCH_ENTRY_L0("boosted_tcp_server<t_wire_handler>::send_stop_signal()", void());
   }
   //---------------------------------------------------------------------------------
-  template<class t_protocol_handler>
-  void boosted_tcp_server<t_protocol_handler>::handle_accept_ipv4(const boost::system::error_code& e)
+  template<class t_wire_handler>
+  void boosted_tcp_server<t_wire_handler>::handle_accept_ipv4(const boost::system::error_code& e)
   {
     this->handle_accept(e, false);
   }
   //---------------------------------------------------------------------------------
-  template<class t_protocol_handler>
-  void boosted_tcp_server<t_protocol_handler>::handle_accept_ipv6(const boost::system::error_code& e)
+  template<class t_wire_handler>
+  void boosted_tcp_server<t_wire_handler>::handle_accept_ipv6(const boost::system::error_code& e)
   {
     this->handle_accept(e, true);
   }
   //---------------------------------------------------------------------------------
-  template<class t_protocol_handler>
-  void boosted_tcp_server<t_protocol_handler>::handle_accept(const boost::system::error_code& e, bool ipv6)
+  template<class t_wire_handler>
+  void boosted_tcp_server<t_wire_handler>::handle_accept(const boost::system::error_code& e, bool ipv6)
   {
     MINFO("handle_accept");
 
@@ -451,18 +449,16 @@ POP_WARNINGS
         (*current_new_connection)->setRpcStation(); // hopefully this is not needed actually
       }
       connection_ptr conn(std::move((*current_new_connection)));
-      (*current_new_connection).reset(new connection<t_protocol_handler>(io_service_, m_state, m_connection_type, conn->get_ssl_support()));
+
+      (*current_new_connection).reset(new connection<t_wire_handler>(io_service_, m_shared_state, m_connection_type, conn->get_ssl_support()));
+
       current_acceptor->async_accept((*current_new_connection)->socket(),
           boost::bind(accept_function_pointer, this,boost::asio::placeholders::error));
 
       boost::asio::socket_base::keep_alive opt(true);
       conn->socket().set_option(opt);
 
-      bool res;
-      if (default_remote.get_type_id() == net_utils::address_type::invalid)
-        res = conn->start(true, 1 < m_threads_count);
-      else
-        res = conn->start(true, 1 < m_threads_count, default_remote);
+      const bool res = conn->start(true, 1 < m_threads_count);
       if (!res)
       {
         conn->cancel();
@@ -473,30 +469,30 @@ POP_WARNINGS
     }
     else
     {
-      MERROR("Error in boosted_tcp_server<t_protocol_handler>::handle_accept: " << e);
+      MERROR("Error in boosted_tcp_server<t_wire_handler>::handle_accept: " << e);
     }
     }
     catch (const std::exception &e)
     {
-      MERROR("Exception in boosted_tcp_server<t_protocol_handler>::handle_accept: " << e.what());
+      MERROR("Exception in boosted_tcp_server<t_wire_handler>::handle_accept: " << e.what());
     }
 
     // error path, if e or exception
-    assert(m_state != nullptr); // always set in constructor
-    _erro("Some problems at accept: " << e.message() << ", connections_count = " << m_state->sock_count);
+    assert(m_shared_state != nullptr); // always set in constructor
+    _erro("Some problems at accept: " << e.message() << ", connections_count = " << m_shared_state->sock_count);
     misc_utils::sleep_no_w(100);
-    (*current_new_connection).reset(new connection<t_protocol_handler>(io_service_, m_state, m_connection_type, (*current_new_connection)->get_ssl_support()));
-    current_acceptor->async_accept((*current_new_connection)->socket(),
-        boost::bind(accept_function_pointer, this,
-          boost::asio::placeholders::error));
+
+    (*current_new_connection).reset(new connection<t_wire_handler>(io_service_, m_shared_state, m_connection_type, (*current_new_connection)->get_ssl_support()));
+
+    current_acceptor->async_accept((*current_new_connection)->socket(),boost::bind(accept_function_pointer, this,boost::asio::placeholders::error));
   }
   //---------------------------------------------------------------------------------
-  template<class t_protocol_handler>
-  bool boosted_tcp_server<t_protocol_handler>::add_connection(t_connection_context& out, boost::asio::ip::tcp::socket&& sock, network_address real_remote, epee::net_utils::ssl_support_t ssl_support)
+  template<class t_wire_handler>
+  bool boosted_tcp_server<t_wire_handler>::add_connection(t_connection_context& out, boost::asio::ip::tcp::socket&& sock, network_address real_remote, epee::net_utils::ssl_support_t ssl_support)
   {
     if(std::addressof(get_io_service()) == std::addressof(GET_IO_SERVICE(sock)))
     {
-      connection_ptr conn(new connection<t_protocol_handler>(std::move(sock), m_state, m_connection_type, ssl_support));
+      connection_ptr conn(new connection<t_wire_handler>(std::move(sock), m_shared_state, m_connection_type, ssl_support));
       if(conn->start(false, 1 < m_threads_count, std::move(real_remote)))
       {
         conn->get_context(out);
@@ -511,8 +507,8 @@ POP_WARNINGS
     return false;
   }
   //---------------------------------------------------------------------------------
-  template<class t_protocol_handler>
-  typename boosted_tcp_server<t_protocol_handler>::try_connect_result_t boosted_tcp_server<t_protocol_handler>::try_connect(connection_ptr new_connection_l, const std::string& adr, const std::string& port, boost::asio::ip::tcp::socket &sock_, const boost::asio::ip::tcp::endpoint &remote_endpoint, const std::string &bind_ip, uint32_t conn_timeout, epee::net_utils::ssl_support_t ssl_support)
+  template<class t_wire_handler>
+  typename boosted_tcp_server<t_wire_handler>::try_connect_result_t boosted_tcp_server<t_wire_handler>::try_connect(connection_ptr new_connection_l, const std::string& adr, const std::string& port, boost::asio::ip::tcp::socket &sock_, const boost::asio::ip::tcp::endpoint &remote_endpoint, const std::string &bind_ip, uint32_t conn_timeout, epee::net_utils::ssl_support_t ssl_support)
   {
     TRY_ENTRY();
 
@@ -611,17 +607,17 @@ POP_WARNINGS
 
     return CONNECT_SUCCESS;
 
-    CATCH_ENTRY_L0("boosted_tcp_server<t_protocol_handler>::try_connect", CONNECT_FAILURE);
+    CATCH_ENTRY_L0("boosted_tcp_server<t_wire_handler>::try_connect", CONNECT_FAILURE);
   }
   //---------------------------------------------------------------------------------
-  template<class t_protocol_handler>
-  bool boosted_tcp_server<t_protocol_handler>::connect(const std::string& adr, const std::string& port, uint32_t conn_timeout, t_connection_context& conn_context, const std::string& bind_ip, epee::net_utils::ssl_support_t ssl_support)
+  template<class t_wire_handler>
+  bool boosted_tcp_server<t_wire_handler>::connect(const std::string& adr, const std::string& port, uint32_t conn_timeout, t_connection_context& conn_context, const std::string& bind_ip, epee::net_utils::ssl_support_t ssl_support)
   {
 
 
     TRY_ENTRY();
 
-    connection_ptr new_connection_l(new connection<t_protocol_handler>(io_service_, m_state, m_connection_type, ssl_support) );
+    connection_ptr new_connection_l(new connection<t_wire_handler>(io_service_, m_shared_state, m_connection_type, ssl_support) );
     connections_mutex.lock();
     connections_.insert(new_connection_l);
     MINFO("connect "<<adr<<","<<port<<","<<conn_timeout<<",bind_ip "<<bind_ip<<",ssl "<<std::to_string((uint8_t)ssl_support)<<",connections_ size now " << connections_.size());
@@ -727,26 +723,26 @@ POP_WARNINGS
     if (r)
     {
       new_connection_l->get_context(conn_context);
-      //new_connection_l.reset(new connection<t_protocol_handler>(io_service_, m_shared_state, m_sock_count, m_pfilter));
+      //new_connection_l.reset(new connection<t_wire_handler>(io_service_, m_shared_state, m_sock_count, m_pfilter));
     }
     else
     {
-      assert(m_state != nullptr); // always set in constructor
-      _erro("[sock " << new_connection_l->socket().native_handle() << "] Failed to start connection, connections_count = " << m_state->sock_count);
+      assert(m_shared_state != nullptr); // always set in constructor
+      _erro("[sock " << new_connection_l->socket().native_handle() << "] Failed to start connection, connections_count = " << m_shared_state->sock_count);
     }
     
 	new_connection_l->save_dbg_log();
 
     return r;
 
-    CATCH_ENTRY_L0("boosted_tcp_server<t_protocol_handler>::connect", false);
+    CATCH_ENTRY_L0("boosted_tcp_server<t_wire_handler>::connect", false);
   }
   //---------------------------------------------------------------------------------
-  template<class t_protocol_handler> template<class t_callback>
-  bool boosted_tcp_server<t_protocol_handler>::connect_async(const std::string& adr, const std::string& port, uint32_t conn_timeout, const t_callback &cb, const std::string& bind_ip, epee::net_utils::ssl_support_t ssl_support)
+  template<class t_wire_handler> template<class t_callback>
+  bool boosted_tcp_server<t_wire_handler>::connect_async(const std::string& adr, const std::string& port, uint32_t conn_timeout, const t_callback &cb, const std::string& bind_ip, epee::net_utils::ssl_support_t ssl_support)
   {
     TRY_ENTRY();    
-    connection_ptr new_connection_l(new connection<t_protocol_handler>(io_service_, m_state, m_connection_type, ssl_support) );
+    connection_ptr new_connection_l(new connection<t_wire_handler>(io_service_, m_shared_state, m_connection_type, ssl_support) );
     connections_mutex.lock();
     connections_.insert(new_connection_l);
     MINFO("connect_async "<<adr<<","<<port<<","<<conn_timeout<<",bind_ip "<<bind_ip<<",ssl "<<(uint8_t)ssl_support<<",connections_ size now " << connections_.size());
@@ -875,7 +871,7 @@ POP_WARNINGS
         }
       });
     return true;
-    CATCH_ENTRY_L0("boosted_tcp_server<t_protocol_handler>::connect_async", false);
+    CATCH_ENTRY_L0("boosted_tcp_server<t_wire_handler>::connect_async", false);
   }
   
 } // namespace

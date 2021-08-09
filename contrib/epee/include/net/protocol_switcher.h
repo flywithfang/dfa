@@ -31,7 +31,7 @@
 
 #include "levin_base.h"
 #include "http_server.h"
-#include "levin_protocol_handler.h"
+#include "levin_wire_handler.h"
 //#include "abstract_tcp_server.h"
 
 namespace epee
@@ -40,22 +40,22 @@ namespace net_utils
 {
 	struct protocl_switcher_config
 	{
-		http::http_custom_handler::config_type m_http_config;
-		levin::protocol_handler::config_type m_levin_config;
+		http::http_custom_handler::shared_state m_http_config;
+		levin::wire_handler::shared_state m_levin_config;
 	};
 
 	
-	struct i_protocol_handler
+	struct i_wire_handler
 	{
 		virtual bool handle_recv(const void* ptr, size_t cb)=0;
 	};
 
 	template<class t>
-	class t_protocol_handler: public i_protocol_handler
+	class t_wire_handler: public i_wire_handler
 	{
 	public: 
 		typedef t t_type;
-		t_protocol_handler(i_service_endpoint* psnd_hndlr, typename t_type::config_type& config, const connection_context& conn_context):m_hadler(psnd_hndlr, config, conn_context)
+		t_wire_handler(i_service_endpoint* psnd_hndlr, typename t_type::shared_state& config, const connection_context& conn_context):m_hadler(psnd_hndlr, config, conn_context)
 		{}
 	private:
 		bool handle_recv(const void* ptr, size_t cb)
@@ -69,23 +69,23 @@ namespace net_utils
 	class protocol_switcher
 	{
 	public:
-		typedef protocl_switcher_config config_type;
+		typedef protocl_switcher_config shared_state;
 
-		protocol_switcher(net_utils::i_service_endpoint* psnd_hndlr, config_type& config, const net_utils::connection_context_base& conn_context);
+		protocol_switcher(net_utils::i_service_endpoint* psnd_hndlr, shared_state& config, const net_utils::connection_context_base& conn_context);
 		virtual ~protocol_switcher(){}
 
 		virtual bool handle_recv(const void* ptr, size_t cb);
 
 		bool after_init_connection(){return true;}
 	private:
-		t_protocol_handler<http::http_custom_handler> m_http_handler;
-		t_protocol_handler<levin::protocol_handler> m_levin_handler;
-		i_protocol_handler* pcurrent_handler;
+		t_wire_handler<http::http_custom_handler> m_http_handler;
+		t_wire_handler<levin::wire_handler> m_levin_handler;
+		i_wire_handler* pcurrent_handler;
 
 		std::string m_cached_buff;
 	};
 
-	protocol_switcher::protocol_switcher(net_utils::i_service_endpoint* psnd_hndlr, config_type& config, const net_utils::connection_context_base& conn_context):m_http_handler(psnd_hndlr, config.m_http_config, conn_context), m_levin_handler(psnd_hndlr, config.m_levin_config, conn_context), pcurrent_handler(NULL)
+	protocol_switcher::protocol_switcher(net_utils::i_service_endpoint* psnd_hndlr, shared_state& config, const net_utils::connection_context_base& conn_context):m_http_handler(psnd_hndlr, config.m_http_config, conn_context), m_levin_handler(psnd_hndlr, config.m_levin_config, conn_context), pcurrent_handler(NULL)
 	{}
 
 	bool protocol_switcher::handle_recv(const void* ptr, size_t cb)

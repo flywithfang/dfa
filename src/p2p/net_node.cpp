@@ -45,8 +45,6 @@
 #include "net/net_utils_base.h"
 #include "net/socks.h"
 #include "net/parse.h"
-#include "net/tor_address.h"
-#include "net/i2p_address.h"
 #include "p2p/p2p_protocol_defs.h"
 #include "string_tools.h"
 
@@ -69,29 +67,7 @@ namespace
         return {std::move(*address)};
     }
 
-    bool start_socks(std::shared_ptr<net::socks::client> client, const boost::asio::ip::tcp::endpoint& proxy, const epee::net_utils::network_address& remote)
-    {
-        CHECK_AND_ASSERT_MES(client != nullptr, false, "Unexpected null client");
-
-        bool set = false;
-        switch (remote.get_type_id())
-        {
-        case net::tor_address::get_type_id():
-            set = client->set_connect_command(remote.as<net::tor_address>());
-            break;
-        case net::i2p_address::get_type_id():
-            set = client->set_connect_command(remote.as<net::i2p_address>());
-            break;
-        default:
-            MERROR("Unsupported network address in socks_connect");
-            return false;
-        }
-
-        const bool sent =
-            set && net::socks::client::connect_and_send(std::move(client), proxy);
-        CHECK_AND_ASSERT_MES(sent, false, "Unexpected failure to init socks client");
-        return true;
-    }
+  
 }
 
 namespace nodetool
@@ -102,7 +78,9 @@ namespace nodetool
         "p2p-bind-port"
       , "Port for p2p network protocol (IPv4)"
       , std::to_string(config::P2P_DEFAULT_PORT)
-      , {{ &cryptonote::arg_testnet_on, &cryptonote::arg_stagenet_on }}
+      , {
+        { &cryptonote::arg_testnet_on, &cryptonote::arg_stagenet_on }
+    }
       , [](std::array<bool, 2> testnet_stagenet, bool defaulted, std::string val)->std::string {
           if (testnet_stagenet[0] && defaulted)
             return std::to_string(config::testnet::P2P_DEFAULT_PORT);
@@ -134,8 +112,7 @@ namespace nodetool
     const command_line::arg_descriptor<std::vector<std::string> > arg_p2p_seed_node   = {
         "seed-node", "Connect to a node to retrieve peer addresses, and disconnect"
     };
-    const command_line::arg_descriptor<std::vector<std::string> > arg_tx_proxy = {
-        "tx-proxy", "Send local txes through proxy: <network-type>,<socks-ip:port>[,max_connections][,disable_noise] i.e. \"tor,127.0.0.1:9050,100,disable_noise\""};
+
     const command_line::arg_descriptor<std::string> arg_ban_list = {"ban-list", "Specify ban list file, one IP address per line"};
     const command_line::arg_descriptor<bool> arg_p2p_hide_my_port   =    {"hide-my-port", "Do not announce yourself as peerlist candidate", false, true};
     const command_line::arg_descriptor<bool> arg_no_sync = {"no-sync", "Don't synchronize the blockchain with other peers", false};
@@ -147,7 +124,6 @@ namespace nodetool
     const command_line::arg_descriptor<bool>        arg_p2p_ignore_ipv4  = {"p2p-ignore-ipv4", "Ignore unsuccessful IPv4 bind for p2p", false};
     const command_line::arg_descriptor<int64_t>     arg_out_peers = {"out-peers", "set max number of out peers", -1};
     const command_line::arg_descriptor<int64_t>     arg_in_peers = {"in-peers", "set max number of in peers", -1};
-    const command_line::arg_descriptor<int> arg_tos_flag = {"tos-flag", "set TOS flag", -1};
 
     const command_line::arg_descriptor<int64_t> arg_limit_rate_up = {"limit-rate-up", "set limit-rate-up [kB/s]", P2P_DEFAULT_LIMIT_RATE_UP};
     const command_line::arg_descriptor<int64_t> arg_limit_rate_down = {"limit-rate-down", "set limit-rate-down [kB/s]", P2P_DEFAULT_LIMIT_RATE_DOWN};
@@ -178,58 +154,5 @@ namespace nodetool
         return true;
     }
 
-    boost::optional<boost::asio::ip::tcp::socket>
-    socks_connect_internal(const std::atomic<bool>& stop_signal, boost::asio::io_service& service, const boost::asio::ip::tcp::endpoint& proxy, const epee::net_utils::network_address& remote)
-    {
-        using socket_type = net::socks::client::stream_type::socket;
-        using client_result = std::pair<boost::system::error_code, socket_type>;
-
-        struct notify
-        {
-            boost::promise<client_result> socks_promise;
-
-            void operator()(boost::system::error_code error, socket_type&& sock)
-            {
-                socks_promise.set_value(std::make_pair(error, std::move(sock)));
-            }
-        };
-
-        boost::unique_future<client_result> socks_result{};
-        {
-            boost::promise<client_result> socks_promise{};
-            socks_result = socks_promise.get_future();
-
-            auto client = net::socks::make_connect_client(
-                boost::asio::ip::tcp::socket{service}, net::socks::version::v4a, notify{std::move(socks_promise)}
-             );
-            if (!start_socks(std::move(client), proxy, remote))
-                return boost::none;
-        }
-
-        const auto start = std::chrono::steady_clock::now();
-        while (socks_result.wait_for(future_poll_interval) == boost::future_status::timeout)
-        {
-            if (socks_connect_timeout < std::chrono::steady_clock::now() - start)
-            {
-                MERROR("Timeout on socks connect (" << proxy << " to " << remote.str() << ")");
-                return boost::none;
-            }
-
-            if (stop_signal)
-                return boost::none;
-        }
-
-        try
-        {
-            auto result = socks_result.get();
-            if (!result.first)
-                return {std::move(result.second)};
-
-            MERROR("Failed to make socks connection to " << remote.str() << " (via " << proxy << "): " << result.first.message());
-        }
-        catch (boost::broken_promise const&)
-        {}
-
-        return boost::none;
-    }
+  
 }

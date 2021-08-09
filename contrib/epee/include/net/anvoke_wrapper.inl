@@ -10,7 +10,7 @@
   template <class callback_t>
   struct anvoke_handler: invoke_response_handler_base
   {
-    anvoke_handler(const callback_t& cb, uint64_t timeout,  async_protocol_handler& con, int command)
+    anvoke_handler(const callback_t& cb, uint64_t timeout,  async_wire_handler& con, int command)
       :m_cb(cb), m_timeout(timeout), m_con(con), m_timer(con.m_pservice_endpoint->get_io_service()), m_timer_started(false),
       m_cancel_timer_called(false), m_timer_cancelled(false), m_command(command)
     {
@@ -35,14 +35,14 @@
     {}
   public:
     callback_t m_cb;
-    async_protocol_handler& m_con;
+    async_wire_handler& m_con;
     boost::asio::deadline_timer m_timer;
     bool m_timer_started;
     bool m_cancel_timer_called;
     bool m_timer_cancelled;
     uint64_t m_timeout;
     int m_command;
-    virtual bool handle(int res, const epee::span<const uint8_t> buff, typename async_protocol_handler::connection_context& context)
+    virtual bool handle(int res, const epee::span<const uint8_t> buff, typename async_wire_handler::connection_context& context)
     {
       if(!cancel_timer())
         return false;
@@ -80,7 +80,7 @@
       {
         callback_t& cb = m_cb;
         uint64_t timeout = m_timeout;
-        async_protocol_handler& con = m_con;
+        async_wire_handler& con = m_con;
         int command = m_command;
         m_timer.expires_from_now(boost::posix_time::milliseconds(m_timeout));
         m_timer.async_wait([&con, cb, command, timeout](const boost::system::error_code& ec)

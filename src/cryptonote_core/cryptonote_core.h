@@ -46,7 +46,7 @@
 #include "tx_pool.h"
 #include "blockchain.h"
 #include "cryptonote_basic/miner.h"
-#include "cryptonote_basic/connection_context.h"
+#include "cryptonote_basic/cryptonote_peer_context.h"
 #include "warnings.h"
 #include "crypto/hash.h"
 #include "span.h"
@@ -103,7 +103,7 @@ namespace cryptonote
      * @note see Blockchain::handle_get_objects()
      * @param context connection context associated with the request
      */
-     bool handle_get_objects(NOTIFY_REQUEST_GET_OBJECTS::request& arg, NOTIFY_RESPONSE_GET_OBJECTS::request& rsp, cryptonote_connection_context& context);
+     bool handle_get_objects(NOTIFY_REQUEST_GET_OBJECTS::request& arg, NOTIFY_RESPONSE_GET_OBJECTS::request& rsp, cryptonote_peer_context& context);
 
      /**
       * @brief calls various idle routines

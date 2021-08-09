@@ -1391,7 +1391,7 @@ namespace cryptonote
     CHECK_AND_ASSERT_MES(!bvc.m_verifivation_failed, false, "mined block failed verification");
     if(bvc.m_added_to_main_chain)
     {
-      cryptonote_connection_context exclude_context = {};
+      cryptonote_peer_context exclude_context = {};
       NOTIFY_NEW_BLOCK::request arg = AUTO_VAL_INIT(arg);
       arg.current_blockchain_height = m_blockchain.get_current_blockchain_height();
       std::vector<crypto::hash> missed_txs;
@@ -1550,7 +1550,7 @@ namespace cryptonote
     return m_blockchain.get_short_chain_history(ids);
   }
   //-----------------------------------------------------------------------------------------------
-  bool core::handle_get_objects(NOTIFY_REQUEST_GET_OBJECTS::request& arg, NOTIFY_RESPONSE_GET_OBJECTS::request& rsp, cryptonote_connection_context& context)
+  bool core::handle_get_objects(NOTIFY_REQUEST_GET_OBJECTS::request& arg, NOTIFY_RESPONSE_GET_OBJECTS::request& rsp, cryptonote_peer_context& context)
   {
     return m_blockchain.handle_get_objects(arg, rsp);
   }

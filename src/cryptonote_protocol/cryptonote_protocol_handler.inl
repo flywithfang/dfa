@@ -82,7 +82,7 @@ namespace cryptonote
 
   //-----------------------------------------------------------------------------------------------------------------------
   template<class t_core>
-    t_cryptonote_protocol_handler<t_core>::t_cryptonote_protocol_handler(t_core& rcore, nodetool::i_p2p_endpoint<connection_context>* p_net_layout, bool offline):m_core(rcore),m_p2p(p_net_layout),m_syncronized_connections_count(0),m_synchronized(offline),m_ask_for_txpool_complement(true),m_stopping(false),m_no_sync(false)
+    t_cryptonote_protocol_handler<t_core>::t_cryptonote_protocol_handler(t_core& rcore, nodetool::i_p2p_endpoint<cryptonote_peer_context>* p2p, bool offline):m_core(rcore),m_p2p(p2p),m_syncronized_connections_count(0),m_synchronized(offline),m_ask_for_txpool_complement(true),m_stopping(false),m_no_sync(false)
 
   {
     if(!m_p2p)
@@ -116,7 +116,7 @@ namespace cryptonote
   }
   //------------------------------------------------------------------------------------------------------------------------
   template<class t_core>
-  void t_cryptonote_protocol_handler<t_core>::set_p2p_endpoint(nodetool::i_p2p_endpoint<connection_context>* p2p)
+  void t_cryptonote_protocol_handler<t_core>::set_p2p_endpoint(nodetool::i_p2p_endpoint<cryptonote_peer_context>* p2p)
   {
     if(p2p)
       m_p2p = p2p;
@@ -125,7 +125,7 @@ namespace cryptonote
   }
   //------------------------------------------------------------------------------------------------------------------------
   template<class t_core>
-  bool t_cryptonote_protocol_handler<t_core>::on_callback(cryptonote_connection_context& context)
+  bool t_cryptonote_protocol_handler<t_core>::on_callback(cryptonote_peer_context& context)
   {
     LOG_PRINT_CCONTEXT_L2("callback fired");
     CHECK_AND_ASSERT_MES_CC( context.m_callback_request_count > 0, false, "false callback fired, but context.m_callback_request_count=" << context.m_callback_request_count);
@@ -134,7 +134,7 @@ namespace cryptonote
     uint32_t notified = true;
     if (context.m_idle_peer_notification.compare_exchange_strong(notified, not notified))
     {
-      if (context.m_state == cryptonote_connection_context::state_synchronizing && context.m_last_request_time != boost::date_time::not_a_date_time)
+      if (context.m_state == cryptonote_peer_context::state_synchronizing && context.m_last_request_time != boost::date_time::not_a_date_time)
       {
         const boost::posix_time::ptime now = boost::posix_time::microsec_clock::universal_time();
         const boost::posix_time::time_duration dt = now - context.m_last_request_time;
@@ -147,7 +147,7 @@ namespace cryptonote
             context.m_last_request_time = boost::date_time::not_a_date_time;
             context.m_expect_response = 0;
             context.m_expect_height = 0;
-            context.m_state = cryptonote_connection_context::state_standby; // we'll go back to adding, then (if we can't), download
+            context.m_state = cryptonote_peer_context::state_standby; // we'll go back to adding, then (if we can't), download
           }
           else
           {
@@ -162,11 +162,11 @@ namespace cryptonote
     notified = true;
     if (context.m_new_stripe_notification.compare_exchange_strong(notified, not notified))
     {
-      if (context.m_state == cryptonote_connection_context::state_normal)
-        context.m_state = cryptonote_connection_context::state_synchronizing;
+      if (context.m_state == cryptonote_peer_context::state_normal)
+        context.m_state = cryptonote_peer_context::state_synchronizing;
     }
 
-    if(context.m_state == cryptonote_connection_context::state_synchronizing && context.m_last_request_time == boost::posix_time::not_a_date_time)
+    if(context.m_state == cryptonote_peer_context::state_synchronizing && context.m_last_request_time == boost::posix_time::not_a_date_time)
     {
       NOTIFY_REQUEST_CHAIN::request r = {};
       context.m_needed_objects.clear();
@@ -179,9 +179,9 @@ namespace cryptonote
       post_notify<NOTIFY_REQUEST_CHAIN>(r, context);
       MLOG_PEER_STATE("requesting chain");
     }
-    else if(context.m_state == cryptonote_connection_context::state_standby)
+    else if(context.m_state == cryptonote_peer_context::state_standby)
     {
-      context.m_state = cryptonote_connection_context::state_synchronizing;
+      context.m_state = cryptonote_peer_context::state_synchronizing;
       try_add_next_blocks(context);
     }
 
@@ -211,7 +211,7 @@ namespace cryptonote
       << std::setw(13) << "Up(now)"
       << ENDL;
 
-    m_p2p->for_each_connection([&](const connection_context& cntxt, nodetool::peerid_type peer_id, uint32_t support_flags)
+    m_p2p->for_each_connection([&](const cryptonote_peer_context& cntxt, nodetool::peerid_type peer_id, uint32_t support_flags)
     {
       bool local_ip = cntxt.m_remote_address.is_local();
       auto connection_time = time(NULL) - cntxt.m_started;
@@ -258,7 +258,7 @@ namespace cryptonote
   {
     std::list<connection_info> connections;
 
-    m_p2p->for_each_connection([&](const connection_context& cntxt, nodetool::peerid_type peer_id, uint32_t support_flags)
+    m_p2p->for_each_connection([&](const cryptonote_peer_context& cntxt, nodetool::peerid_type peer_id, uint32_t support_flags)
     {
       connection_info cnx;
       auto timestamp = time(NULL);
@@ -326,12 +326,12 @@ namespace cryptonote
   }
   //------------------------------------------------------------------------------------------------------------------------
   template<class t_core>
-  bool t_cryptonote_protocol_handler<t_core>::process_payload_sync_data(const CORE_SYNC_DATA& hshd, cryptonote_connection_context& context, bool is_inital)
+  bool t_cryptonote_protocol_handler<t_core>::process_payload_sync_data(const CORE_SYNC_DATA& hshd, cryptonote_peer_context& context, bool is_inital)
   {
-    if(context.m_state == cryptonote_connection_context::state_before_handshake && !is_inital)
+    if(context.m_state == cryptonote_peer_context::state_before_handshake && !is_inital)
       return true;
 
-    if(context.m_state == cryptonote_connection_context::state_synchronizing)
+    if(context.m_state == cryptonote_peer_context::state_synchronizing)
       return true;
 
     // from v6, if the peer advertises a top block version, reject if it's not what it should be (will only work if no voting)
@@ -370,7 +370,7 @@ namespace cryptonote
 
     if(m_core.have_block(hshd.top_id))
     {
-      context.m_state = cryptonote_connection_context::state_normal;
+      context.m_state = cryptonote_peer_context::state_normal;
       if(is_inital  && hshd.current_height >= target && target == m_core.get_current_blockchain_height())
         on_connection_synchronized();
       return true;
@@ -410,11 +410,11 @@ namespace cryptonote
 
     if (m_no_sync)
     {
-      context.m_state = cryptonote_connection_context::state_normal;
+      context.m_state = cryptonote_peer_context::state_normal;
       return true;
     }
 
-    context.m_state = cryptonote_connection_context::state_synchronizing;
+    context.m_state = cryptonote_peer_context::state_synchronizing;
     //let the socket to send response to handshake, but request callback, to let send request data after response
     LOG_PRINT_CCONTEXT_L2("requesting callback");
     ++context.m_callback_request_count;
@@ -447,12 +447,12 @@ namespace cryptonote
   }
   //------------------------------------------------------------------------------------------------------------------------
     template<class t_core>
-    int t_cryptonote_protocol_handler<t_core>::handle_notify_new_block(int command, NOTIFY_NEW_BLOCK::request& arg, cryptonote_connection_context& context)
+    int t_cryptonote_protocol_handler<t_core>::handle_notify_new_block(int command, NOTIFY_NEW_BLOCK::request& arg, cryptonote_peer_context& context)
   {
 
 
 
-    if(context.m_state != cryptonote_connection_context::state_normal)
+    if(context.m_state != cryptonote_peer_context::state_normal)
       return 1;
     if(!is_synchronized()) // can happen if a peer connection goes to normal but another thread still hasn't finished adding queued blocks
     {
@@ -472,10 +472,10 @@ namespace cryptonote
     }
 
 
-    for(auto tx_blob_it = arg.b.txs.begin(); tx_blob_it!=arg.b.txs.end();tx_blob_it++)
+    for(auto  tx_data: arg.b.txs)
     {
       cryptonote::tx_verification_context tvc = AUTO_VAL_INIT(tvc);
-      m_core.handle_incoming_tx(*tx_blob_it, tvc, relay_method::block, true);
+      m_core.handle_incoming_tx(tx_data, tvc, relay_method::block, true);
       if(tvc.m_verifivation_failed)
       {
         LOG_PRINT_CCONTEXT_L1("Block verification failed: transaction verification failed, dropping connection");
@@ -513,7 +513,7 @@ namespace cryptonote
     }else if(bvc.m_marked_as_orphaned)
     {
       context.m_needed_objects.clear();
-      context.m_state = cryptonote_connection_context::state_synchronizing;
+      context.m_state = cryptonote_peer_context::state_synchronizing;
       NOTIFY_REQUEST_CHAIN::request r = {};
       context.m_expect_height = m_core.get_current_blockchain_height();
       m_core.get_short_chain_history(r.block_ids);
@@ -531,10 +531,10 @@ namespace cryptonote
   }
   //------------------------------------------------------------------------------------------------------------------------
   template<class t_core>
-  int t_cryptonote_protocol_handler<t_core>::handle_notify_new_fluffy_block(int command, NOTIFY_NEW_FLUFFY_BLOCK::request& arg, cryptonote_connection_context& context)
+  int t_cryptonote_protocol_handler<t_core>::handle_notify_new_fluffy_block(int command, NOTIFY_NEW_FLUFFY_BLOCK::request& arg, cryptonote_peer_context& context)
   {
 
-    if(context.m_state != cryptonote_connection_context::state_normal)
+    if(context.m_state != cryptonote_peer_context::state_normal)
       return 1;
     if(!is_synchronized()) // can happen if a peer connection goes to normal but another thread still hasn't finished adding queued blocks
     {
@@ -797,7 +797,7 @@ namespace cryptonote
         else if( bvc.m_marked_as_orphaned )
         {
           context.m_needed_objects.clear();
-          context.m_state = cryptonote_connection_context::state_synchronizing;
+          context.m_state = cryptonote_peer_context::state_synchronizing;
           NOTIFY_REQUEST_CHAIN::request r = {};
           context.m_expect_height = m_core.get_current_blockchain_height();
           m_core.get_short_chain_history(r.block_ids);
@@ -830,10 +830,10 @@ namespace cryptonote
   }  
   //------------------------------------------------------------------------------------------------------------------------  
   template<class t_core>
-  int t_cryptonote_protocol_handler<t_core>::handle_request_fluffy_missing_tx(int command, NOTIFY_REQUEST_FLUFFY_MISSING_TX::request& arg, cryptonote_connection_context& context)
+  int t_cryptonote_protocol_handler<t_core>::handle_request_fluffy_missing_tx(int command, NOTIFY_REQUEST_FLUFFY_MISSING_TX::request& arg, cryptonote_peer_context& context)
   {
     MLOG_P2P_MESSAGE("Received NOTIFY_REQUEST_FLUFFY_MISSING_TX (" << arg.missing_tx_indices.size() << " txes), block hash " << arg.block_hash);
-    if (context.m_state == cryptonote_connection_context::state_before_handshake)
+    if (context.m_state == cryptonote_peer_context::state_before_handshake)
     {
       LOG_ERROR_CCONTEXT("Requested fluffy tx before handshake, dropping connection");
       drop_connection(context, false, false);
@@ -928,10 +928,10 @@ namespace cryptonote
   }
   //------------------------------------------------------------------------------------------------------------------------
   template<class t_core>
-  int t_cryptonote_protocol_handler<t_core>::handle_notify_get_txpool_complement(int command, NOTIFY_GET_TXPOOL_COMPLEMENT::request& arg, cryptonote_connection_context& context)
+  int t_cryptonote_protocol_handler<t_core>::handle_notify_get_txpool_complement(int command, NOTIFY_GET_TXPOOL_COMPLEMENT::request& arg, cryptonote_peer_context& context)
   {
     MLOG_P2P_MESSAGE("Received NOTIFY_GET_TXPOOL_COMPLEMENT (" << arg.hashes.size() << " txes)");
-    if(context.m_state != cryptonote_connection_context::state_normal)
+    if(context.m_state != cryptonote_peer_context::state_normal)
       return 1;
 
     std::vector<std::pair<cryptonote::blobdata, block>> local_blocks;
@@ -958,13 +958,13 @@ namespace cryptonote
   }
   //------------------------------------------------------------------------------------------------------------------------
   template<class t_core>
-  int t_cryptonote_protocol_handler<t_core>::handle_notify_new_transactions(int command, NOTIFY_NEW_TRANSACTIONS::request& arg, cryptonote_connection_context& context)
+  int t_cryptonote_protocol_handler<t_core>::handle_notify_new_transactions(int command, NOTIFY_NEW_TRANSACTIONS::request& arg, cryptonote_peer_context& context)
   {
     MLOG_P2P_MESSAGE("Received NOTIFY_NEW_TRANSACTIONS (" << arg.txs.size() << " txes)");
     for (const auto &blob: arg.txs)
       MLOGIF_P2P_MESSAGE(cryptonote::transaction tx; crypto::hash hash; bool ret = cryptonote::parse_and_validate_tx_from_blob(blob, tx, hash);, ret, "Including transaction " << hash);
 
-    if(context.m_state != cryptonote_connection_context::state_normal)
+    if(context.m_state != cryptonote_peer_context::state_normal)
       return 1;
 
     // while syncing, core will lock for a long time, so we ignore
@@ -1042,9 +1042,9 @@ namespace cryptonote
   }
   //------------------------------------------------------------------------------------------------------------------------
   template<class t_core>
-  int t_cryptonote_protocol_handler<t_core>::handle_request_get_objects(int command, NOTIFY_REQUEST_GET_OBJECTS::request& arg, cryptonote_connection_context& context)
+  int t_cryptonote_protocol_handler<t_core>::handle_request_get_objects(int command, NOTIFY_REQUEST_GET_OBJECTS::request& arg, cryptonote_peer_context& context)
   {
-    if (context.m_state == cryptonote_connection_context::state_before_handshake)
+    if (context.m_state == cryptonote_peer_context::state_before_handshake)
     {
       LOG_ERROR_CCONTEXT("Requested objects before handshake, dropping connection");
       drop_connection(context, false, false);
@@ -1094,7 +1094,7 @@ namespace cryptonote
   }
 
   template<class t_core>
-  int t_cryptonote_protocol_handler<t_core>::handle_response_get_objects(int command, NOTIFY_RESPONSE_GET_OBJECTS::request& arg, cryptonote_connection_context& context)
+  int t_cryptonote_protocol_handler<t_core>::handle_response_get_objects(int command, NOTIFY_RESPONSE_GET_OBJECTS::request& arg, cryptonote_peer_context& context)
   {
     MLOG_P2P_MESSAGE("Received NOTIFY_RESPONSE_GET_OBJECTS (" << arg.blocks.size() << " blocks)");
     MLOG_PEER_STATE("received objects");
@@ -1358,7 +1358,7 @@ namespace cryptonote
   }
 
   template<class t_core>
-  int t_cryptonote_protocol_handler<t_core>::try_add_next_blocks(cryptonote_connection_context& context)
+  int t_cryptonote_protocol_handler<t_core>::try_add_next_blocks(cryptonote_peer_context& context)
   {
     bool force_next_span = false;
 
@@ -1524,7 +1524,7 @@ namespace cryptonote
               if(tvc[i].m_verifivation_failed)
               {
                 drop_connections(span_origin);
-                if (!m_p2p->for_connection(span_connection_id, [&](cryptonote_connection_context& context, nodetool::peerid_type peer_id, uint32_t f)->bool{
+                if (!m_p2p->for_connection(span_connection_id, [&](cryptonote_peer_context& context, nodetool::peerid_type peer_id, uint32_t f)->bool{
                   cryptonote::transaction tx;
                   crypto::hash txid;
                   if (it->prunable_hash == crypto::null_hash)
@@ -1566,7 +1566,7 @@ namespace cryptonote
             if(bvc.m_verifivation_failed)
             {
               drop_connections(span_origin);
-              if (!m_p2p->for_connection(span_connection_id, [&](cryptonote_connection_context& context, nodetool::peerid_type peer_id, uint32_t f)->bool{
+              if (!m_p2p->for_connection(span_connection_id, [&](cryptonote_peer_context& context, nodetool::peerid_type peer_id, uint32_t f)->bool{
                 LOG_PRINT_CCONTEXT_L1("Block verification failed, dropping connection");
                 drop_connection_with_score(context, bvc.m_bad_pow ? P2P_IP_FAILS_BEFORE_BLOCK : 1, true);
                 return 1;
@@ -1586,7 +1586,7 @@ namespace cryptonote
             if(bvc.m_marked_as_orphaned)
             {
               drop_connections(span_origin);
-              if (!m_p2p->for_connection(span_connection_id, [&](cryptonote_connection_context& context, nodetool::peerid_type peer_id, uint32_t f)->bool{
+              if (!m_p2p->for_connection(span_connection_id, [&](cryptonote_peer_context& context, nodetool::peerid_type peer_id, uint32_t f)->bool{
                 LOG_PRINT_CCONTEXT_L1("Block received at sync phase was marked as orphaned, dropping connection");
                 drop_connection(context, true, true);
                 return 1;
@@ -1689,13 +1689,13 @@ skip:
   }
   //------------------------------------------------------------------------------------------------------------------------
   template<class t_core>
-  void t_cryptonote_protocol_handler<t_core>::notify_new_stripe(cryptonote_connection_context& cntxt, uint32_t stripe)
+  void t_cryptonote_protocol_handler<t_core>::notify_new_stripe(cryptonote_peer_context& cntxt, uint32_t stripe)
   {
-    m_p2p->for_each_connection([&](cryptonote_connection_context& context, nodetool::peerid_type peer_id, uint32_t support_flags)->bool
+    m_p2p->for_each_connection([&](cryptonote_peer_context& context, nodetool::peerid_type peer_id, uint32_t support_flags)->bool
     {
       if (cntxt.m_connection_id == context.m_connection_id)
         return true;
-      if (context.m_state == cryptonote_connection_context::state_normal)
+      if (context.m_state == cryptonote_peer_context::state_normal)
       {
         const uint32_t peer_stripe = tools::get_pruning_stripe(context.m_pruning_seed);
         if (stripe && peer_stripe && peer_stripe != stripe)
@@ -1723,9 +1723,9 @@ skip:
   bool t_cryptonote_protocol_handler<t_core>::kick_idle_peers()
   {
     MTRACE("Checking for idle peers...");
-    m_p2p->for_each_connection([&](cryptonote_connection_context& context, nodetool::peerid_type peer_id, uint32_t support_flags)->bool
+    m_p2p->for_each_connection([&](cryptonote_peer_context& context, nodetool::peerid_type peer_id, uint32_t support_flags)->bool
     {
-      if (context.m_state == cryptonote_connection_context::state_synchronizing && context.m_last_request_time != boost::date_time::not_a_date_time)
+      if (context.m_state == cryptonote_peer_context::state_synchronizing && context.m_last_request_time != boost::date_time::not_a_date_time)
       {
         const boost::posix_time::ptime now = boost::posix_time::microsec_clock::universal_time();
         const boost::posix_time::time_duration dt = now - context.m_last_request_time;
@@ -1756,13 +1756,13 @@ skip:
     MTRACE("Checking for outgoing syncing peers...");
     unsigned n_syncing = 0, n_synced = 0;
     boost::uuids::uuid last_synced_peer_id(boost::uuids::nil_uuid());
-    m_p2p->for_each_connection([&](cryptonote_connection_context& context, nodetool::peerid_type peer_id, uint32_t support_flags)->bool
+    m_p2p->for_each_connection([&](cryptonote_peer_context& context, nodetool::peerid_type peer_id, uint32_t support_flags)->bool
     {
       if (!peer_id || context.m_is_income) // only consider connected outgoing peers
         return true;
-      if (context.m_state == cryptonote_connection_context::state_synchronizing)
+      if (context.m_state == cryptonote_peer_context::state_synchronizing)
         ++n_syncing;
-      if (context.m_state == cryptonote_connection_context::state_normal)
+      if (context.m_state == cryptonote_peer_context::state_normal)
       {
         ++n_synced;
         if (!context.m_anchor)
@@ -1775,7 +1775,7 @@ skip:
     // if we're at max out peers, and not enough are syncing
     if (n_synced + n_syncing >= m_max_out_peers && n_syncing < P2P_DEFAULT_SYNC_SEARCH_CONNECTIONS_COUNT && last_synced_peer_id != boost::uuids::nil_uuid())
     {
-      if (!m_p2p->for_connection(last_synced_peer_id, [&](cryptonote_connection_context& ctx, nodetool::peerid_type peer_id, uint32_t f)->bool{
+      if (!m_p2p->for_connection(last_synced_peer_id, [&](cryptonote_peer_context& ctx, nodetool::peerid_type peer_id, uint32_t f)->bool{
         MINFO(ctx << "dropping synced peer, " << n_syncing << " syncing, " << n_synced << " synced");
         drop_connection(ctx, false, false);
         return true;
@@ -1789,9 +1789,9 @@ skip:
   template<class t_core>
   bool t_cryptonote_protocol_handler<t_core>::check_standby_peers()
   {
-    m_p2p->for_each_connection([&](cryptonote_connection_context& context, nodetool::peerid_type peer_id, uint32_t support_flags)->bool
+    m_p2p->for_each_connection([&](cryptonote_peer_context& context, nodetool::peerid_type peer_id, uint32_t support_flags)->bool
     {
-      if (context.m_state == cryptonote_connection_context::state_standby)
+      if (context.m_state == cryptonote_peer_context::state_standby)
       {
         LOG_PRINT_CCONTEXT_L2("requesting callback");
         ++context.m_callback_request_count;
@@ -1803,10 +1803,10 @@ skip:
   }
   //------------------------------------------------------------------------------------------------------------------------
   template<class t_core>
-  int t_cryptonote_protocol_handler<t_core>::handle_request_chain(int command, NOTIFY_REQUEST_CHAIN::request& arg, cryptonote_connection_context& context)
+  int t_cryptonote_protocol_handler<t_core>::handle_request_chain(int command, NOTIFY_REQUEST_CHAIN::request& arg, cryptonote_peer_context& context)
   {
     MLOG_P2P_MESSAGE("Received NOTIFY_REQUEST_CHAIN (" << arg.block_ids.size() << " blocks");
-    if (context.m_state == cryptonote_connection_context::state_before_handshake)
+    if (context.m_state == cryptonote_peer_context::state_before_handshake)
     {
       LOG_ERROR_CCONTEXT("Requested chain before handshake, dropping connection");
       drop_connection(context, false, false);
@@ -1834,7 +1834,7 @@ skip:
   }
   //------------------------------------------------------------------------------------------------------------------------
   template<class t_core>
-  bool t_cryptonote_protocol_handler<t_core>::should_download_next_span(cryptonote_connection_context& context, bool standby)
+  bool t_cryptonote_protocol_handler<t_core>::should_download_next_span(cryptonote_peer_context& context, bool standby)
   {
     std::vector<crypto::hash> hashes;
     boost::posix_time::ptime request_time;
@@ -1868,7 +1868,7 @@ skip:
         if (standby && dt >= REQUEST_NEXT_SCHEDULED_SPAN_THRESHOLD_STANDBY && dl_speed > 0)
         {
           bool download = false;
-          if (m_p2p->for_connection(connection_id, [&](cryptonote_connection_context& ctx, nodetool::peerid_type peer_id, uint32_t f)->bool{
+          if (m_p2p->for_connection(connection_id, [&](cryptonote_peer_context& ctx, nodetool::peerid_type peer_id, uint32_t f)->bool{
             const time_t nowt = time(NULL);
             const time_t time_since_last_recv = nowt - ctx.m_last_recv;
             const float last_activity = std::min((float)time_since_last_recv, dt/1e6f);
@@ -1919,7 +1919,7 @@ skip:
   }
   //------------------------------------------------------------------------------------------------------------------------
   template<class t_core>
-  bool t_cryptonote_protocol_handler<t_core>::should_drop_connection(cryptonote_connection_context& context, uint32_t next_stripe)
+  bool t_cryptonote_protocol_handler<t_core>::should_drop_connection(cryptonote_peer_context& context, uint32_t next_stripe)
   {
     if (context.m_anchor)
     {
@@ -1958,10 +1958,10 @@ skip:
     if (next_stripe > 0)
     {
       unsigned int n_out_peers = 0, n_peers_on_next_stripe = 0;
-      m_p2p->for_each_connection([&](cryptonote_connection_context& ctx, nodetool::peerid_type peer_id, uint32_t support_flags)->bool{
+      m_p2p->for_each_connection([&](cryptonote_peer_context& ctx, nodetool::peerid_type peer_id, uint32_t support_flags)->bool{
         if (!ctx.m_is_income)
           ++n_out_peers;
-        if (ctx.m_state >= cryptonote_connection_context::state_synchronizing && tools::get_pruning_stripe(ctx.m_pruning_seed) == next_stripe)
+        if (ctx.m_state >= cryptonote_peer_context::state_synchronizing && tools::get_pruning_stripe(ctx.m_pruning_seed) == next_stripe)
           ++n_peers_on_next_stripe;
         return true;
       });
@@ -1979,7 +1979,7 @@ skip:
   }
   //------------------------------------------------------------------------------------------------------------------------
   template<class t_core>
-  size_t t_cryptonote_protocol_handler<t_core>::skip_unneeded_hashes(cryptonote_connection_context& context, bool check_block_queue) const
+  size_t t_cryptonote_protocol_handler<t_core>::skip_unneeded_hashes(cryptonote_peer_context& context, bool check_block_queue) const
   {
     // take out blocks we already have
     size_t skip = 0;
@@ -2000,7 +2000,7 @@ skip:
   }
   //------------------------------------------------------------------------------------------------------------------------
   template<class t_core>
-  bool t_cryptonote_protocol_handler<t_core>::should_ask_for_pruned_data(cryptonote_connection_context& context, uint64_t first_block_height, uint64_t nblocks, bool check_block_weights) const
+  bool t_cryptonote_protocol_handler<t_core>::should_ask_for_pruned_data(cryptonote_peer_context& context, uint64_t first_block_height, uint64_t nblocks, bool check_block_weights) const
   {
     if (!m_sync_pruned_blocks)
       return false;
@@ -2024,11 +2024,11 @@ skip:
   }
   //------------------------------------------------------------------------------------------------------------------------
   template<class t_core>
-  bool t_cryptonote_protocol_handler<t_core>::request_missing_objects(cryptonote_connection_context& context, bool check_having_blocks, bool force_next_span)
+  bool t_cryptonote_protocol_handler<t_core>::request_missing_objects(cryptonote_peer_context& context, bool check_having_blocks, bool force_next_span)
   {
     // flush stale spans
     std::set<boost::uuids::uuid> live_connections;
-    m_p2p->for_each_connection([&](cryptonote_connection_context& context, nodetool::peerid_type peer_id, uint32_t support_flags)->bool{
+    m_p2p->for_each_connection([&](cryptonote_peer_context& context, nodetool::peerid_type peer_id, uint32_t support_flags)->bool{
       live_connections.insert(context.m_connection_id);
       return true;
     });
@@ -2058,7 +2058,7 @@ skip:
             return false;
           }
           MDEBUG(context << "Nothing to get from this peer, and it's not ahead of us, all done");
-          context.m_state = cryptonote_connection_context::state_normal;
+          context.m_state = cryptonote_peer_context::state_normal;
           return true;
         }
         uint64_t next_needed_height = m_block_queue.get_next_needed_height(bc_height);
@@ -2096,7 +2096,7 @@ skip:
 
         if (proceed)
         {
-          if (context.m_state != cryptonote_connection_context::state_standby)
+          if (context.m_state != cryptonote_peer_context::state_standby)
           {
             LOG_DEBUG_CC(context, "Block queue is " << nspans << " and " << size << ", resuming");
             MLOG_PEER_STATE("resuming");
@@ -2116,7 +2116,7 @@ skip:
           {
             LOG_DEBUG_CC(context, "No other thread is adding blocks, and next span needed is ready, resuming");
             MLOG_PEER_STATE("resuming");
-            context.m_state = cryptonote_connection_context::state_standby;
+            context.m_state = cryptonote_peer_context::state_standby;
             ++context.m_callback_request_count;
             m_p2p->request_callback(context);
             return true;
@@ -2140,19 +2140,19 @@ skip:
           }
         }
 
-        if (context.m_state != cryptonote_connection_context::state_standby)
+        if (context.m_state != cryptonote_peer_context::state_standby)
         {
           if (!queue_proceed)
             LOG_DEBUG_CC(context, "Block queue is " << nspans << " and " << size << ", pausing");
           else if (!stripe_proceed_main && !stripe_proceed_secondary)
             LOG_DEBUG_CC(context, "We do not have the stripe required to download another block, pausing");
-          context.m_state = cryptonote_connection_context::state_standby;
+          context.m_state = cryptonote_peer_context::state_standby;
           MLOG_PEER_STATE("pausing");
         }
 
         return true;
       } while(0);
-      context.m_state = cryptonote_connection_context::state_synchronizing;
+      context.m_state = cryptonote_peer_context::state_synchronizing;
     }
 
     MDEBUG(context << " request_missing_objects: check " << check_having_blocks << ", force_next_span " << force_next_span
@@ -2205,7 +2205,7 @@ skip:
             return false;
           }
           MDEBUG(context << "Nothing to get from this peer, and it's not ahead of us, all done");
-          context.m_state = cryptonote_connection_context::state_normal;
+          context.m_state = cryptonote_peer_context::state_normal;
           return true;
         }
 
@@ -2316,7 +2316,7 @@ skip:
       const uint64_t blockchain_height = m_core.get_current_blockchain_height();
       if (std::max(blockchain_height, m_block_queue.get_next_needed_height(blockchain_height)) >= m_core.get_target_blockchain_height())
       {
-        context.m_state = cryptonote_connection_context::state_normal;
+        context.m_state = cryptonote_peer_context::state_normal;
         MLOG_PEER_STATE("Nothing to do for now, switching to normal state");
         return true;
       }
@@ -2343,7 +2343,7 @@ skip:
         {
           LOG_DEBUG_CC(context, "No other thread is adding blocks, resuming");
           MLOG_PEER_STATE("will try to add blocks next");
-          context.m_state = cryptonote_connection_context::state_standby;
+          context.m_state = cryptonote_peer_context::state_standby;
           ++context.m_callback_request_count;
           m_p2p->request_callback(context);
           return true;
@@ -2392,7 +2392,7 @@ skip:
                            << "\r\nm_requested_objects.size()=" << context.m_requested_objects.size()
                            << "\r\non connection [" << epee::net_utils::print_connection_context_short(context)<< "]");
 
-      context.m_state = cryptonote_connection_context::state_normal;
+      context.m_state = cryptonote_peer_context::state_normal;
       if (context.m_remote_blockchain_height >= m_core.get_target_blockchain_height())
       {
         if (m_core.get_current_blockchain_height() >= m_core.get_target_blockchain_height())
@@ -2462,9 +2462,9 @@ skip:
     val_expected = true;
     if (m_ask_for_txpool_complement.compare_exchange_strong(val_expected, false))
     {
-      m_p2p->for_each_connection([&](cryptonote_connection_context& context, nodetool::peerid_type peer_id, uint32_t support_flags)->bool
+      m_p2p->for_each_connection([&](cryptonote_peer_context& context, nodetool::peerid_type peer_id, uint32_t support_flags)->bool
       {
-        if(context.m_state < cryptonote_connection_context::state_synchronizing)
+        if(context.m_state < cryptonote_peer_context::state_synchronizing)
         {
           MDEBUG(context << "not ready, ignoring");
           return true;
@@ -2485,8 +2485,8 @@ skip:
   size_t t_cryptonote_protocol_handler<t_core>::get_synchronizing_connections_count()
   {
     size_t count = 0;
-    m_p2p->for_each_connection([&](cryptonote_connection_context& context, nodetool::peerid_type peer_id, uint32_t support_flags)->bool{
-      if(context.m_state == cryptonote_connection_context::state_synchronizing)
+    m_p2p->for_each_connection([&](cryptonote_peer_context& context, nodetool::peerid_type peer_id, uint32_t support_flags)->bool{
+      if(context.m_state == cryptonote_peer_context::state_synchronizing)
         ++count;
       return true;
     });
@@ -2494,7 +2494,7 @@ skip:
   }
   //------------------------------------------------------------------------------------------------------------------------
   template<class t_core>
-  int t_cryptonote_protocol_handler<t_core>::handle_response_chain_entry(int command, NOTIFY_RESPONSE_CHAIN_ENTRY::request& arg, cryptonote_connection_context& context)
+  int t_cryptonote_protocol_handler<t_core>::handle_response_chain_entry(int command, NOTIFY_RESPONSE_CHAIN_ENTRY::request& arg, cryptonote_peer_context& context)
   {
     MLOG_P2P_MESSAGE("Received NOTIFY_RESPONSE_CHAIN_ENTRY: m_block_ids.size()=" << arg.m_block_ids.size()
       << ", m_start_height=" << arg.start_height << ", m_total_height=" << arg.total_height);
@@ -2659,7 +2659,7 @@ skip:
   }
   //------------------------------------------------------------------------------------------------------------------------
   template<class t_core>
-  bool t_cryptonote_protocol_handler<t_core>::relay_block(NOTIFY_NEW_BLOCK::request& arg, cryptonote_connection_context& exclude_context)
+  bool t_cryptonote_protocol_handler<t_core>::relay_block(NOTIFY_NEW_BLOCK::request& arg, cryptonote_peer_context& exclude_context)
   {
     NOTIFY_NEW_FLUFFY_BLOCK::request fluffy_arg = AUTO_VAL_INIT(fluffy_arg);
     fluffy_arg.current_blockchain_height = arg.current_blockchain_height;    
@@ -2669,7 +2669,7 @@ skip:
 
     // sort peers between fluffy ones and others
     std::vector< boost::uuids::uuid> fullConnections, fluffyConnections;
-    m_p2p->for_each_connection([this, &exclude_context, &fullConnections, &fluffyConnections](connection_context& context, nodetool::peerid_type peer_id, uint32_t support_flags)
+    m_p2p->for_each_connection([this, &exclude_context, &fullConnections, &fluffyConnections](cryptonote_peer_context& context, nodetool::peerid_type peer_id, uint32_t support_flags)
     {
       // peer_id also filters out connections before handshake
       if (peer_id && exclude_context.m_connection_id != context.m_connection_id )
@@ -2717,7 +2717,7 @@ skip:
   }
   //------------------------------------------------------------------------------------------------------------------------
   template<class t_core>
-  bool t_cryptonote_protocol_handler<t_core>::request_txpool_complement(cryptonote_connection_context &context)
+  bool t_cryptonote_protocol_handler<t_core>::request_txpool_complement(cryptonote_peer_context &context)
   {
     NOTIFY_GET_TXPOOL_COMPLEMENT::request r = {};
     if (!m_core.get_pool_transaction_hashes(r.hashes, false))
@@ -2732,7 +2732,7 @@ skip:
   }
   //------------------------------------------------------------------------------------------------------------------------
   template<class t_core>
-  void t_cryptonote_protocol_handler<t_core>::hit_score(cryptonote_connection_context &context, int32_t score)
+  void t_cryptonote_protocol_handler<t_core>::hit_score(cryptonote_peer_context &context, int32_t score)
   {
     if (score <= 0)
     {
@@ -2749,7 +2749,7 @@ skip:
   {
     std::stringstream ss;
     const boost::posix_time::ptime now = boost::posix_time::microsec_clock::universal_time();
-    m_p2p->for_each_connection([&](const connection_context &ctx, nodetool::peerid_type peer_id, uint32_t support_flags) {
+    m_p2p->for_each_connection([&](const cryptonote_peer_context &ctx, nodetool::peerid_type peer_id, uint32_t support_flags) {
       const uint32_t stripe = tools::get_pruning_stripe(ctx.m_pruning_seed);
       char state_char = cryptonote::get_protocol_state_char(ctx.m_state);
       ss << stripe + state_char;
@@ -2777,8 +2777,8 @@ skip:
     // if we already have a few peers on this stripe, but none on next one, try next one
     unsigned int n_next = 0, n_subsequent = 0, n_others = 0;
     const uint32_t subsequent_pruning_stripe = 1 + next_pruning_stripe % (1<<CRYPTONOTE_PRUNING_LOG_STRIPES);
-    m_p2p->for_each_connection([&](const connection_context &context, nodetool::peerid_type peer_id, uint32_t support_flags) {
-      if (context.m_state >= cryptonote_connection_context::state_synchronizing)
+    m_p2p->for_each_connection([&](const cryptonote_peer_context &context, nodetool::peerid_type peer_id, uint32_t support_flags) {
+      if (context.m_state >= cryptonote_peer_context::state_synchronizing)
       {
         if (context.m_pruning_seed == 0 || tools::get_pruning_stripe(context.m_pruning_seed) == next_pruning_stripe)
           ++n_next;
@@ -2808,7 +2808,7 @@ skip:
     if (target && target <= height)
       return false;
     size_t n_out_peers = 0;
-    m_p2p->for_each_connection([&](cryptonote_connection_context& ctx, nodetool::peerid_type peer_id, uint32_t support_flags)->bool{
+    m_p2p->for_each_connection([&](cryptonote_peer_context& ctx, nodetool::peerid_type peer_id, uint32_t support_flags)->bool{
       if (!ctx.m_is_income)
         ++n_out_peers;
       return true;
@@ -2826,7 +2826,7 @@ skip:
   }
   //------------------------------------------------------------------------------------------------------------------------
   template<class t_core>
-  void t_cryptonote_protocol_handler<t_core>::drop_connection_with_score(cryptonote_connection_context &context, unsigned score, bool flush_all_spans)
+  void t_cryptonote_protocol_handler<t_core>::drop_connection_with_score(cryptonote_peer_context &context, unsigned score, bool flush_all_spans)
   {
     LOG_DEBUG_CC(context, "dropping connection id " << context.m_connection_id << " (pruning seed " <<
         epee::string_tools::to_string_hex(context.m_pruning_seed) <<
@@ -2841,7 +2841,7 @@ skip:
   }
   //------------------------------------------------------------------------------------------------------------------------
   template<class t_core>
-  void t_cryptonote_protocol_handler<t_core>::drop_connection(cryptonote_connection_context &context, bool add_fail, bool flush_all_spans)
+  void t_cryptonote_protocol_handler<t_core>::drop_connection(cryptonote_peer_context &context, bool add_fail, bool flush_all_spans)
   {
     return drop_connection_with_score(context, add_fail ? 1 : 0, flush_all_spans);
   }
@@ -2854,7 +2854,7 @@ skip:
     m_p2p->add_host_fail(address, 5);
 
     std::vector<boost::uuids::uuid> drop;
-    m_p2p->for_each_connection([&](const connection_context& cntxt, nodetool::peerid_type peer_id, uint32_t support_flags) {
+    m_p2p->for_each_connection([&](const cryptonote_peer_context& cntxt, nodetool::peerid_type peer_id, uint32_t support_flags) {
       if (address.is_same_host(cntxt.m_remote_address))
         drop.push_back(cntxt.m_connection_id);
       return true;
@@ -2862,7 +2862,7 @@ skip:
     for (const boost::uuids::uuid &id: drop)
     {
       m_block_queue.flush_spans(id, true);
-      m_p2p->for_connection(id, [&](cryptonote_connection_context& context, nodetool::peerid_type peer_id, uint32_t f)->bool{
+      m_p2p->for_connection(id, [&](cryptonote_peer_context& context, nodetool::peerid_type peer_id, uint32_t f)->bool{
         drop_connection(context, true, false);
         return true;
       });
@@ -2870,11 +2870,11 @@ skip:
   }
   //------------------------------------------------------------------------------------------------------------------------
   template<class t_core>
-  void t_cryptonote_protocol_handler<t_core>::on_connection_close(cryptonote_connection_context &context)
+  void t_cryptonote_protocol_handler<t_core>::on_connection_close(cryptonote_peer_context &context)
   {
     uint64_t target = 0;
-    m_p2p->for_each_connection([&](const connection_context& cntxt, nodetool::peerid_type peer_id, uint32_t support_flags) {
-      if (cntxt.m_state >= cryptonote_connection_context::state_synchronizing && cntxt.m_connection_id != context.m_connection_id)
+    m_p2p->for_each_connection([&](const cryptonote_peer_context& cntxt, nodetool::peerid_type peer_id, uint32_t support_flags) {
+      if (cntxt.m_state >= cryptonote_peer_context::state_synchronizing && cntxt.m_connection_id != context.m_connection_id)
         target = std::max(target, cntxt.m_remote_blockchain_height);
       return true;
     });
@@ -2883,7 +2883,7 @@ skip:
     {
       MINFO("Target height decreasing from " << previous_target << " to " << target);
       m_core.set_target_blockchain_height(target);
-      if (target == 0 && context.m_state > cryptonote_connection_context::state_before_handshake && !m_stopping)
+      if (target == 0 && context.m_state > cryptonote_peer_context::state_before_handshake && !m_stopping)
       {
         MCWARNING("global", "monerod is now disconnected from the network");
         m_ask_for_txpool_complement = true;

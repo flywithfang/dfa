@@ -42,7 +42,7 @@
 #include "cryptonote_config.h"
 #include "crypto/crypto.h"
 #include "crypto/duration.h"
-#include "cryptonote_basic/connection_context.h"
+#include "cryptonote_basic/cryptonote_peer_context.h"
 #include "cryptonote_core/i_core_events.h"
 #include "cryptonote_protocol/cryptonote_protocol_defs.h"
 #include "net/dandelionpp.h"

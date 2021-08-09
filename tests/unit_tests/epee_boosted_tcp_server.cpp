@@ -37,7 +37,7 @@
 #include "include_base_utils.h"
 #include "string_tools.h"
 #include "net/abstract_tcp_server2.h"
-#include "net/levin_protocol_handler_async.h"
+#include "net/levin_wire_handler_async.h"
 
 namespace
 {
@@ -55,9 +55,9 @@ namespace
   struct test_protocol_handler
   {
     typedef test_connection_context connection_context;
-    typedef test_protocol_handler_config config_type;
+    typedef test_protocol_handler_config shared_state;
 
-    test_protocol_handler(epee::net_utils::i_service_endpoint* /*psnd_hndlr*/, config_type& /*config*/, connection_context& /*conn_context*/)
+    test_protocol_handler(epee::net_utils::i_service_endpoint* /*psnd_hndlr*/, shared_state& /*config*/, connection_context& /*conn_context*/)
     {
     }
 
@@ -144,7 +144,7 @@ TEST(test_epee_connection, test_lifetime)
   };
 
   using functional_obj_t = std::function<void ()>;
-  struct command_handler_t: epee::levin::levin_commands_handler<context_t> {
+  struct command_handler_t: epee::levin::i_levin_commands_handler<context_t> {
     size_t delay;
     functional_obj_t on_connection_close_f;
     command_handler_t(size_t delay = 0,
@@ -162,10 +162,10 @@ TEST(test_epee_connection, test_lifetime)
         on_connection_close_f();
     }
     virtual ~command_handler_t() override {}
-    static void destroy(epee::levin::levin_commands_handler<context_t>* ptr) { delete ptr; }
+    static void destroy(epee::levin::i_levin_commands_handler<context_t>* ptr) { delete ptr; }
   };
 
-  using handler_t = epee::levin::async_protocol_handler<context_t>;
+  using handler_t = epee::levin::async_wire_handler<context_t>;
   using connection_t = epee::net_utils::connection<handler_t>;
   using connection_ptr = boost::shared_ptr<connection_t>;
   using shared_state_t = typename connection_t::shared_state;

@@ -44,7 +44,7 @@ namespace epee
 {
 namespace levin
 {
-    template<typename> class async_protocol_handler_config;
+    template<typename> class async_wire_shared_state;
 }
 }
 
@@ -59,11 +59,11 @@ namespace levin
 {
   namespace detail
   {
-    using p2p_context = nodetool::p2p_connection_context_t<cryptonote::cryptonote_connection_context>;
+    using p2p_context = nodetool::p2p_connection_context_t<cryptonote::cryptonote_peer_context>;
     struct zone; //!< Internal data needed for zone notifications
   } // detail
 
-  using connections = epee::levin::async_protocol_handler_config<detail::p2p_context>;
+  using connections = epee::levin::async_wire_shared_state<detail::p2p_context>;
 
   //! Provides tx notification privacy
   class notify

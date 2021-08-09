@@ -1,9 +1,9 @@
 
 template<class t_connection_context>
-class async_protocol_handler_config
+class async_wire_shared_state
 {
 private:
-  typedef  async_protocol_handler<t_connection_context>  AsyncConn;
+  typedef  async_wire_handler<t_connection_context>  AsyncConn;
   typedef boost::unordered_map<boost::uuids::uuid, AsyncConn* > connections_map;
 
 public:
@@ -13,9 +13,9 @@ public:
   uint64_t m_invoke_timeout;
 
 
-  async_protocol_handler_config():m_pcommands_handler(NULL), m_pcommands_handler_destroy(NULL), m_initial_max_packet_size(LEVIN_INITIAL_MAX_PACKET_SIZE), m_max_packet_size(LEVIN_DEFAULT_MAX_PACKET_SIZE), m_invoke_timeout(LEVIN_DEFAULT_TIMEOUT_PRECONFIGURED)
+  async_wire_shared_state():m_pcommands_handler(NULL), m_pcommands_handler_destroy(NULL), m_initial_max_packet_size(LEVIN_INITIAL_MAX_PACKET_SIZE), m_max_packet_size(LEVIN_DEFAULT_MAX_PACKET_SIZE), m_invoke_timeout(LEVIN_DEFAULT_TIMEOUT_PRECONFIGURED)
   {}
-  ~async_protocol_handler_config() { set_handler(NULL, NULL); }
+  ~async_wire_shared_state() { set_handler(NULL, NULL); }
   
   int invoke(int command, message_writer in_msg, std::string& buff_out, boost::uuids::uuid connection_id);
   
@@ -34,7 +34,7 @@ public:
   size_t get_connections_count();
   size_t get_out_connections_count();
   size_t get_in_connections_count();
-  void set_handler(levin_commands_handler<t_connection_context>* handler, void (*destroy)(levin_commands_handler<t_connection_context>*) = NULL);
+  void set_handler(i_levin_commands_handler<t_connection_context>* handler, void (*destroy)(i_levin_commands_handler<t_connection_context>*) = NULL);
 
 
   void del_out_connections(size_t count);
@@ -50,18 +50,18 @@ private:
   AsyncConn* find_connection(boost::uuids::uuid connection_id) const;
   int find_and_lock_connection(boost::uuids::uuid connection_id, AsyncConn*& aph);
 
-  friend class async_protocol_handler<t_connection_context>;
+  friend class async_wire_handler<t_connection_context>;
 
   
-  void (*m_pcommands_handler_destroy)(levin_commands_handler<t_connection_context>*);
+  void (*m_pcommands_handler_destroy)(i_levin_commands_handler<t_connection_context>*);
 
   void delete_connections (size_t count, bool incoming);
 
 private:
 
   critical_section m_connects_lock;
-  connections_map m_connects;
-  levin_commands_handler<t_connection_context>* m_pcommands_handler;
+  connections_map m_connections;
+  i_levin_commands_handler<t_connection_context>* m_pcommands_handler;
 
 };
 

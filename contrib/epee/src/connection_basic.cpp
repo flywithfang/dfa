@@ -93,8 +93,6 @@ class connection_basic_pimpl {
 	public:
 		connection_basic_pimpl(const std::string &name);
 
-		static int m_default_tos;
-
 		network_throttle_bw m_throttle; // per-perr
     critical_section m_throttle_lock;
 
@@ -124,8 +122,6 @@ connection_basic_pimpl::connection_basic_pimpl(const std::string &name) : m_thro
 // connection_basic
 // ================================================================================================
 
-// static variables:
-int connection_basic_pimpl::m_default_tos;
 
 // methods:
 connection_basic::connection_basic(boost::asio::ip::tcp::socket&& sock, std::shared_ptr<connection_basic_shared_state> state, ssl_support_t ssl_support)
@@ -226,13 +222,7 @@ uint64_t connection_basic::get_rate_down_limit() {
 void connection_basic::save_limit_to_file(int limit) {
 }
  
-void connection_basic::set_tos_flag(int tos) {
-	connection_basic_pimpl::m_default_tos = tos;
-}
 
-int connection_basic::get_tos_flag() {
-	return connection_basic_pimpl::m_default_tos;
-}
 
 void connection_basic::sleep_before_packet(size_t packet_size, int phase,  int q_len) {
 	double delay=0; // will be calculated
@@ -265,12 +255,12 @@ void connection_basic::sleep_before_packet(size_t packet_size, int phase,  int q
 }
 
 void connection_basic::do_send_handler_write(const void* ptr , size_t cb ) {
-        // No sleeping here; sleeping is done once and for all in connection<t_protocol_handler>::handle_write
+        // No sleeping here; sleeping is done once and for all in connection<t_wire_handler>::handle_write
 	MTRACE("handler_write (direct) - before ASIO write, for packet="<<cb<<" B (after sleep)");
 }
 
 void connection_basic::do_send_handler_write_from_queue( const boost::system::error_code& e, size_t cb, int q_len ) {
-        // No sleeping here; sleeping is done once and for all in connection<t_protocol_handler>::handle_write
+        // No sleeping here; sleeping is done once and for all in connection<t_wire_handler>::handle_write
 	MTRACE("handler_write (after write, from queue="<<q_len<<") - before ASIO write, for packet="<<cb<<" B (after sleep)");
 }
 

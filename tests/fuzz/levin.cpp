@@ -31,7 +31,7 @@
 #include "net/net_utils_base.h"
 #include "net/abstract_tcp_server2.h"
 #include "storages/levin_abstract_invoke2.h"
-#include "net/levin_protocol_handler_async.h"
+#include "net/levin_wire_handler_async.h"
 #include "fuzzer.h"
 
 namespace
@@ -57,10 +57,10 @@ namespace
     size_t get_max_bytes(int command) const { return LEVIN_DEFAULT_MAX_PACKET_SIZE; }
   };
 
-  typedef epee::levin::async_protocol_handler_config<test_levin_connection_context> test_levin_protocol_handler_config;
-  typedef epee::levin::async_protocol_handler<test_levin_connection_context> test_levin_protocol_handler;
+  typedef epee::levin::async_wire_shared_state<test_levin_connection_context> test_levin_protocol_handler_config;
+  typedef epee::levin::async_wire_handler<test_levin_connection_context> test_levin_protocol_handler;
 
-  struct test_levin_commands_handler : public epee::levin::levin_commands_handler<test_levin_connection_context>
+  struct test_levin_commands_handler : public epee::levin::i_levin_commands_handler<test_levin_connection_context>
   {
     test_levin_commands_handler()
       : m_return_code(LEVIN_OK)
@@ -140,14 +140,14 @@ namespace
   public:
     test_connection(boost::asio::io_service& io_service, test_levin_protocol_handler_config& protocol_config)
       : m_io_service(io_service)
-      , m_protocol_handler(this, protocol_config, m_context)
+      , m_wire_handler(this, protocol_config, m_context)
       , m_send_return(true)
     {
     }
 
     void start()
     {
-      m_protocol_handler.after_init_connection();
+      m_wire_handler.after_init_connection();
     }
 
     // Implement epee::net_utils::i_service_endpoint interface
@@ -177,7 +177,7 @@ namespace
 
   public:
     test_levin_connection_context m_context;
-    test_levin_protocol_handler m_protocol_handler;
+    test_levin_protocol_handler m_wire_handler;
 
   private:
     boost::asio::io_service& m_io_service;
@@ -203,7 +203,7 @@ namespace
       m_pcommands_handler(new test_levin_commands_handler()),
       m_commands_handler(*m_pcommands_handler)
     {
-      m_handler_config.set_handler(m_pcommands_handler, [](epee::levin::levin_commands_handler<test_levin_connection_context> *handler) { delete handler; });
+      m_handler_config.set_handler(m_pcommands_handler, [](epee::levin::i_levin_commands_handler<test_levin_connection_context> *handler) { delete handler; });
       m_handler_config.m_invoke_timeout = invoke_timeout;
       m_handler_config.m_max_packet_size = max_packet_size;
     }
@@ -303,10 +303,10 @@ BEGIN_SIMPLE_FUZZER()
     boost::asio::io_service io_service;
     test_levin_protocol_handler_config m_handler_config;
     test_levin_commands_handler *m_pcommands_handler = new test_levin_commands_handler();
-    m_handler_config.set_handler(m_pcommands_handler, [](epee::levin::levin_commands_handler<test_levin_connection_context> *handler) { delete handler; });
+    m_handler_config.set_handler(m_pcommands_handler, [](epee::levin::i_levin_commands_handler<test_levin_connection_context> *handler) { delete handler; });
     std::unique_ptr<test_connection> conn(new test_connection(io_service, m_handler_config));
     conn->start();
     //m_commands_handler.invoke_out_buf(expected_out_data);
     //m_commands_handler.return_code(expected_return_code);
-    conn->m_protocol_handler.handle_recv(buf, len);
+    conn->m_wire_handler.handle_recv(buf, len);
 END_SIMPLE_FUZZER()

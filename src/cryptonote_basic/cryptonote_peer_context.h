@@ -39,9 +39,9 @@
 
 namespace cryptonote
 {
-  struct cryptonote_connection_context: public epee::net_utils::connection_context_base
+  struct cryptonote_peer_context: public epee::net_utils::connection_context_base
   {
-    cryptonote_connection_context(): m_state(state_before_handshake), m_remote_blockchain_height(0), m_last_response_height(0),
+    cryptonote_peer_context(): m_state(state_before_handshake), m_remote_blockchain_height(0), m_last_response_height(0),
         m_last_request_time(boost::date_time::not_a_date_time), m_callback_request_count(0),
         m_last_known_hash(crypto::null_hash), m_pruning_seed(0), m_rpc_port(0), m_rpc_credits_per_hash(0), m_anchor(false), m_score(0),
         m_expect_response(0), m_expect_height(0), m_num_requested(0) {}
@@ -81,38 +81,38 @@ namespace cryptonote
     epee::copyable_atomic m_idle_peer_notification{0};
   };
 
-  inline std::string get_protocol_state_string(cryptonote_connection_context::state s)
+  inline std::string get_protocol_state_string(cryptonote_peer_context::state s)
   {
     switch (s)
     {
-    case cryptonote_connection_context::state_before_handshake:
+    case cryptonote_peer_context::state_before_handshake:
       return "before_handshake";
-    case cryptonote_connection_context::state_synchronizing:
+    case cryptonote_peer_context::state_synchronizing:
       return "synchronizing";
-    case cryptonote_connection_context::state_standby:
+    case cryptonote_peer_context::state_standby:
       return "standby";
-    case cryptonote_connection_context::state_idle:
+    case cryptonote_peer_context::state_idle:
       return "idle";
-    case cryptonote_connection_context::state_normal:
+    case cryptonote_peer_context::state_normal:
       return "normal";
     default:
       return "unknown";
     }    
   }
 
-  inline char get_protocol_state_char(cryptonote_connection_context::state s)
+  inline char get_protocol_state_char(cryptonote_peer_context::state s)
   {
     switch (s)
     {
-    case cryptonote_connection_context::state_before_handshake:
+    case cryptonote_peer_context::state_before_handshake:
       return 'h';
-    case cryptonote_connection_context::state_synchronizing:
+    case cryptonote_peer_context::state_synchronizing:
       return 's';
-    case cryptonote_connection_context::state_standby:
+    case cryptonote_peer_context::state_standby:
       return 'w';
-    case cryptonote_connection_context::state_idle:
+    case cryptonote_peer_context::state_idle:
       return 'i';
-    case cryptonote_connection_context::state_normal:
+    case cryptonote_peer_context::state_normal:
       return 'n';
     default:
       return 'u';

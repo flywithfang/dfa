@@ -30,8 +30,8 @@
 #include <boost/bind.hpp> 
 
 #include "net/abstract_tcp_server2.h"
-#include "net/levin_protocol_handler.h"
-#include "net/levin_protocol_handler_async.h"
+#include "net/levin_wire_handler.h"
+#include "net/levin_wire_handler_async.h"
 #include "storages/abstract_invoke.h"
 
 namespace epee
@@ -122,7 +122,7 @@ namespace tests
   };
   typedef boost::uuids::uuid uuid;
 
-  class test_levin_server: public levin::levin_commands_handler<>
+  class test_levin_server: public levin::i_levin_commands_handler<>
   {
     test_levin_server(const test_levin_server&){}
   public:
@@ -200,8 +200,8 @@ namespace tests
   private: 
 
 
-    CHAIN_LEVIN_INVOKE_TO_MAP(); //move levin_commands_handler interface invoke(...) callbacks into invoke map
-    CHAIN_LEVIN_NOTIFY_TO_STUB(); //move levin_commands_handler interface notify(...) callbacks into nothing
+    CHAIN_LEVIN_INVOKE_TO_MAP(); //move i_levin_commands_handler interface invoke(...) callbacks into invoke map
+    CHAIN_LEVIN_NOTIFY_TO_STUB(); //move i_levin_commands_handler interface notify(...) callbacks into nothing
 
     BEGIN_INVOKE_MAP(test_levin_server)
       HANDLE_INVOKE_T(COMMAND_EXAMPLE_1, &test_levin_server::handle_1)

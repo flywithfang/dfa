@@ -53,7 +53,7 @@ set(cryptonote_basic_headers)
 set(cryptonote_basic_private_headers
   account.h
   account_boost_serialization.h
-  connection_context.h
+  cryptonote_peer_context.h
   cryptonote_basic.h
   cryptonote_basic_impl.h
   cryptonote_boost_serialization.h

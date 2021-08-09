@@ -1,6 +1,6 @@
  //-----------------------------------------------------------------------------------
-  template<class t_payload_net_handler>
-  bool node_server<t_payload_net_handler>::idle_worker()
+  template<class t_payload_handler>
+  bool node_server<t_payload_handler>::idle_worker()
   {
     m_connections_maker_interval.do_call(boost::bind(&MyType::connections_maker, this));
     m_peer_handshake_idle_maker_interval.do_call(boost::bind(&MyType::peer_sync_idle_maker, this));
@@ -12,8 +12,8 @@
   }
 
    //-----------------------------------------------------------------------------------
-  template<class t_payload_net_handler>
-  bool node_server<t_payload_net_handler>::peer_sync_idle_maker()
+  template<class t_payload_handler>
+  bool node_server<t_payload_handler>::peer_sync_idle_maker()
   {
     MDEBUG("STARTED PEERLIST IDLE HANDSHAKE");
     typedef std::list<std::pair<epee::net_utils::connection_context_base, peerid_type> > local_connects_type;
@@ -36,8 +36,8 @@
     return true;
   }
   //-----------------------------------------------------------------------------------
-  template<class t_payload_net_handler>
-  bool node_server<t_payload_net_handler>::do_peer_timed_sync(const epee::net_utils::connection_context_base& context_, peerid_type peer_id)
+  template<class t_payload_handler>
+  bool node_server<t_payload_handler>::do_peer_timed_sync(const epee::net_utils::connection_context_base& context_, peerid_type peer_id)
   {
     typename COMMAND_TIMED_SYNC::request arg{};
     m_payload_handler.get_payload_sync_data(arg.payload_data);
@@ -76,8 +76,8 @@
   }
 
    //-----------------------------------------------------------------------------------
-  template<class t_payload_net_handler>
-  bool node_server<t_payload_net_handler>::handle_remote_peerlist(const std::vector<peerlist_entry>& peerlist, const epee::net_utils::connection_context_base& context)
+  template<class t_payload_handler>
+  bool node_server<t_payload_handler>::handle_remote_peerlist(const std::vector<peerlist_entry>& peerlist, const epee::net_utils::connection_context_base& context)
   {
     if (peerlist.size() > P2P_MAX_PEERS_IN_HANDSHAKE)
     {
@@ -98,8 +98,8 @@
 
 
   //-----------------------------------------------------------------------------------
-  template<class t_payload_net_handler>
-  bool node_server<t_payload_net_handler>::sanitize_peerlist(std::vector<peerlist_entry>& local_peerlist)
+  template<class t_payload_handler>
+  bool node_server<t_payload_handler>::sanitize_peerlist(std::vector<peerlist_entry>& local_peerlist)
   {
     for (size_t i = 0; i < local_peerlist.size(); ++i)
     {
@@ -136,8 +136,8 @@
  ///////////////////////////////////////////////////////////////////////
  
   //-----------------------------------------------------------------------------------
-  template<class t_payload_net_handler>
-  bool node_server<t_payload_net_handler>::connections_maker()
+  template<class t_payload_handler>
+  bool node_server<t_payload_handler>::connections_maker()
   {
     if (m_offline) return true;
 
@@ -215,8 +215,8 @@
   }
 
    //-----------------------------------------------------------------------------------
-  template<class t_payload_net_handler>
-  bool node_server<t_payload_net_handler>::make_expected_connection( PeerType peer_type, size_t expected_connections)
+  template<class t_payload_handler>
+  bool node_server<t_payload_handler>::make_expected_connection( PeerType peer_type, size_t expected_connections)
   {
     if (m_offline)
       return false;
@@ -252,8 +252,8 @@
   }
 
    //-----------------------------------------------------------------------------------
-  template<class t_payload_net_handler>
-  bool node_server<t_payload_net_handler>::make_new_connection_from_anchor_peerlist(const std::vector<anchor_peerlist_entry>& anchor_peerlist)
+  template<class t_payload_handler>
+  bool node_server<t_payload_handler>::make_new_connection_from_anchor_peerlist(const std::vector<anchor_peerlist_entry>& anchor_peerlist)
   {
     for (const auto& pe: anchor_peerlist) {
       MGINFO("Considering connecting (out) to anchor peer: " << peerid_to_string(pe.id) << " " << pe.adr.str());
@@ -290,8 +290,8 @@
 
 
    //-----------------------------------------------------------------------------------
-  template<class t_payload_net_handler>
-  bool node_server<t_payload_net_handler>::make_new_connection_from_peerlist( bool use_white_list)
+  template<class t_payload_handler>
+  bool node_server<t_payload_handler>::make_new_connection_from_peerlist( bool use_white_list)
   {
     size_t max_random_index = 0;
 
@@ -481,8 +481,8 @@
   }
 
   //-----------------------------------------------------------------------------------
-  template<class t_payload_net_handler>
-  bool node_server<t_payload_net_handler>::block_host(epee::net_utils::network_address addr, time_t seconds, bool add_only)
+  template<class t_payload_handler>
+  bool node_server<t_payload_handler>::block_host(epee::net_utils::network_address addr, time_t seconds, bool add_only)
   {
     if(!addr.is_blockable())
       return false;
@@ -540,8 +540,8 @@
   }
 
   //-----------------------------------------------------------------------------------
-  template<class t_payload_net_handler>
-  bool node_server<t_payload_net_handler>::block_subnet(const epee::net_utils::ipv4_network_subnet &subnet, time_t seconds)
+  template<class t_payload_handler>
+  bool node_server<t_payload_handler>::block_subnet(const epee::net_utils::ipv4_network_subnet &subnet, time_t seconds)
   {
     const time_t now = time(nullptr);
 
@@ -581,8 +581,8 @@
 
 
 
-  template<class t_payload_net_handler>
-  bool node_server<t_payload_net_handler>::gray_peerlist_housekeeping()
+  template<class t_payload_handler>
+  bool node_server<t_payload_handler>::gray_peerlist_housekeeping()
   {
     if (m_offline) return true;
     if (!m_exclusive_peers.empty()) return true;

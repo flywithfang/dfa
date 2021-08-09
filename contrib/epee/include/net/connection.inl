@@ -48,16 +48,16 @@ namespace net_utils
   /*                                                                      */
   /************************************************************************/
   /// Represents a single connection from a client.
-  template<class t_protocol_handler>
-  class connection: public boost::enable_shared_from_this<connection<t_protocol_handler> >,private boost::noncopyable, public i_service_endpoint,public connection_basic
+  template<class t_wire_handler>
+  class connection: public boost::enable_shared_from_this<connection<t_wire_handler> >,private boost::noncopyable, public i_service_endpoint,public connection_basic
   {
   public:
-    typedef typename t_protocol_handler::connection_context t_connection_context;
-    typedef connection<t_protocol_handler> MyType;
-    struct shared_state : connection_basic_shared_state, t_protocol_handler::config_type
+    typedef typename t_wire_handler::connection_context t_connection_context;
+    typedef connection<t_wire_handler> MyType;
+    struct shared_state : connection_basic_shared_state, t_wire_handler::shared_state
     {
       shared_state()
-        : connection_basic_shared_state(), t_protocol_handler::config_type(), pfilter(nullptr), stop_signal_sent(false)
+        : connection_basic_shared_state(), t_wire_handler::shared_state(), pfilter(nullptr), stop_signal_sent(false)
       {}
 
       i_connection_filter* pfilter;
@@ -81,7 +81,7 @@ namespace net_utils
     // `real_remote` is the actual endpoint (if connection is to proxy, etc.)
     bool start(bool is_income, bool is_multithreaded, network_address real_remote);
 
-    void get_context(t_connection_context& context_){context_ = context;}
+    void get_context(t_connection_context& context_){context_ = m_con_context;}
 
     void call_back_starter();
     
@@ -105,7 +105,7 @@ namespace net_utils
     //------------------------------------------------------
     bool do_send_chunk(byte_slice chunk); ///< will send (or queue) a part of data. internal use only
 
-    boost::shared_ptr<connection<t_protocol_handler> > safe_shared_from_this();
+    boost::shared_ptr<connection<t_wire_handler> > safe_shared_from_this();
     bool shutdown();
     /// Handle completion of a receive operation.
     void handle_receive(const boost::system::error_code& e,std::size_t bytes_transferred);
@@ -129,14 +129,14 @@ private:
     boost::array<char, 8192> buffer_;
     size_t buffer_ssl_init_fill;
 
-    t_connection_context context;
+    t_connection_context m_con_context;
 
 	// TODO what do they mean about wait on destructor?? --rfree :
     //this should be the last one, because it could be wait on destructor, while other activities possible on other threads
-    t_protocol_handler m_protocol_handler;
-    //typename t_protocol_handler::config_type m_dummy_config;
+    t_wire_handler m_wire_handler;
+    //typename t_wire_handler::shared_state m_dummy_config;
     size_t m_reference_count = 0; // reference count managed through add_ref/release support
-    boost::shared_ptr<connection<t_protocol_handler> > m_self_ref; // the reference to hold
+    boost::shared_ptr<connection<t_wire_handler> > m_self_ref; // the reference to hold
     critical_section m_self_refs_lock;
     critical_section m_chunking_lock; // held while we add small chunks of the big do_send() to small do_send_chunk()
     critical_section m_shutdown_lock; // held while shutting down

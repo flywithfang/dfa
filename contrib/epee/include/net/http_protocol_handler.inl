@@ -197,7 +197,7 @@ namespace net_utils
 
 		//--------------------------------------------------------------------------------------------
 		template<class t_connection_context>
-		simple_http_connection_handler<t_connection_context>::simple_http_connection_handler(i_service_endpoint* psnd_hndlr, config_type& config, t_connection_context& conn_context):
+		simple_http_connection_handler<t_connection_context>::simple_http_connection_handler(i_service_endpoint* psnd_hndlr, shared_state & config, t_connection_context& conn_context):
 		m_state(http_state_retriving_comand_line),
 		m_body_transfer_type(http_body_transfer_undefined),
 		m_is_stop_handling(false),

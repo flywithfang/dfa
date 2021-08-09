@@ -41,22 +41,22 @@ namespace levin
   template<class t_connection_context = net_utils::connection_context_base>
 	struct protocl_handler_config
 	{
-		levin_commands_handler<t_connection_context>* m_pcommands_handler;
-		void (*m_pcommands_handler_destroy)(levin_commands_handler<t_connection_context>*);
+		i_levin_commands_handler<t_connection_context>* m_pcommands_handler;
+		void (*m_pcommands_handler_destroy)(i_levin_commands_handler<t_connection_context>*);
 		~protocl_handler_config() {
 		 if (m_pcommands_handler && m_pcommands_handler_destroy) 
 		 	(*m_pcommands_handler_destroy)(m_pcommands_handler); }
 	};
 
   template<class t_connection_context = net_utils::connection_context_base>
-	class protocol_handler
+	class wire_handler
 	{
 	public:
     typedef t_connection_context connection_context;
-		typedef protocl_handler_config<t_connection_context> config_type;
+		typedef protocl_handler_config<t_connection_context> shared_state;
 
-		protocol_handler(net_utils::i_service_endpoint* psnd_hndlr, config_type& config, t_connection_context& conn_context);
-		virtual ~protocol_handler(){}
+		wire_handler(net_utils::i_service_endpoint* psnd_hndlr, shared_state& config, t_connection_context& conn_context);
+		virtual ~wire_handler(){}
 
 		virtual bool handle_recv(const void* ptr, size_t cb);
 
@@ -69,7 +69,7 @@ namespace levin
 		};
 
 
-		config_type& m_shared_state;
+		shared_state& m_shared_state;
 		t_connection_context& m_conn_context;
 		net_utils::i_service_endpoint* m_psnd_hndlr; 
 		std::string m_cach_in_buffer;
@@ -78,7 +78,7 @@ namespace levin
 	};
 
   template<class t_connection_context>
-	protocol_handler<t_connection_context>::protocol_handler(net_utils::i_service_endpoint* psnd_hndlr, config_type& config, t_connection_context& conn_context):
+	wire_handler<t_connection_context>::wire_handler(net_utils::i_service_endpoint* psnd_hndlr, shared_state& config, t_connection_context& conn_context):
                   m_shared_state(config), 
                   m_conn_context(conn_context),
                   m_psnd_hndlr(psnd_hndlr), 
@@ -87,7 +87,7 @@ namespace levin
 	{}
 
   template<class t_connection_context>
-	bool protocol_handler<t_connection_context>::handle_recv(const void* ptr, size_t len)
+	bool wire_handler<t_connection_context>::handle_recv(const void* ptr, size_t len)
 	{
 		if(!m_shared_state.m_pcommands_handler)
 		{

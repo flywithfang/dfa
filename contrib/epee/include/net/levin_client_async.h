@@ -51,8 +51,8 @@ namespace levin
 
   class levin_client_async
 	{
-    levin_commands_handler* m_pcommands_handler;
-    void (*commands_handler_destroy)(levin_commands_handler*);
+    i_levin_commands_handler* m_pcommands_handler;
+    void (*commands_handler_destroy)(i_levin_commands_handler*);
 		volatile uint32_t m_is_stop;
 		volatile uint32_t m_threads_count;
 		::critical_section m_send_lock;
@@ -102,7 +102,7 @@ namespace levin
 			set_handler(NULL);
 		}
 
-		void set_handler(levin_commands_handler* phandler, void (*destroy)(levin_commands_handler*) = NULL)
+		void set_handler(i_levin_commands_handler* phandler, void (*destroy)(i_levin_commands_handler*) = NULL)
 		{
 			if (commands_handler_destroy && m_pcommands_handler)
 				(*commands_handler_destroy)(m_pcommands_handler);

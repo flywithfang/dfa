@@ -31,9 +31,9 @@
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/utility/string_ref.hpp>
 #include <cstdint>
-
 #include "common/expect.h"
 #include "net/net_utils_base.h"
+#include "net/error.h"
 
 namespace net
 {

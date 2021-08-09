@@ -67,9 +67,9 @@ namespace net_utils
 		{
 		public:
 			typedef t_connection_context connection_context;//t_connection_context net_utils::connection_context_base connection_context;
-			typedef http_server_config config_type;
+			typedef http_server_config shared_state;
 
-			simple_http_connection_handler(i_service_endpoint* psnd_hndlr, config_type& config, t_connection_context& conn_context);
+			simple_http_connection_handler(i_service_endpoint* psnd_hndlr, shared_state& config, t_connection_context& conn_context);
 			virtual ~simple_http_connection_handler(){}
 
 			bool release_protocol()
@@ -139,7 +139,7 @@ namespace net_utils
 			bool m_is_stop_handling;
 			http::http_request_info m_query_info;
 			size_t m_len_summary, m_len_remain;
-			config_type& m_shared_state;
+			shared_state& m_shared_state;
 			bool m_want_close;
 			size_t m_newlines;
 		protected:
@@ -171,9 +171,9 @@ namespace net_utils
 		class http_custom_handler: public simple_http_connection_handler<t_connection_context>
 		{
 		public:
-			typedef custum_handler_config<t_connection_context> config_type;
+			typedef custum_handler_config<t_connection_context> shared_state;
 			
-			http_custom_handler(i_service_endpoint* psnd_hndlr, config_type& config, t_connection_context& conn_context)
+			http_custom_handler(i_service_endpoint* psnd_hndlr, shared_state& config, t_connection_context& conn_context)
 				: simple_http_connection_handler<t_connection_context>(psnd_hndlr, config, conn_context),
 					m_shared_state(config),
 					m_auth(m_shared_state.m_user ? http_server_auth{*m_shared_state.m_user, config.rng} : http_server_auth{})
@@ -215,8 +215,8 @@ namespace net_utils
 			}
 
 		private:
-			//simple_http_connection_handler::config_type m_stub_config;
-			config_type& m_shared_state;
+			//simple_http_connection_handler::shared_state m_stub_config;
+			shared_state& m_shared_state;
 			http_server_auth m_auth;
 		};
 	}

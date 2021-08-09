@@ -57,8 +57,6 @@ namespace {
       case epee::net_utils::address_type::invalid: return "invalid";
       case epee::net_utils::address_type::ipv4: return "IPv4";
       case epee::net_utils::address_type::ipv6: return "IPv6";
-      case epee::net_utils::address_type::i2p: return "I2P";
-      case epee::net_utils::address_type::tor: return "Tor";
     }
   }
 

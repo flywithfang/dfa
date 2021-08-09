@@ -65,7 +65,7 @@ public:
   void resume_mine(){}
   bool on_idle(){return true;}
   bool find_blockchain_supplement(const std::list<crypto::hash>& qblock_ids, bool clip_pruned, cryptonote::NOTIFY_RESPONSE_CHAIN_ENTRY::request& resp){return true;}
-  bool handle_get_objects(cryptonote::NOTIFY_REQUEST_GET_OBJECTS::request& arg, cryptonote::NOTIFY_RESPONSE_GET_OBJECTS::request& rsp, cryptonote::cryptonote_connection_context& context){return true;}
+  bool handle_get_objects(cryptonote::NOTIFY_REQUEST_GET_OBJECTS::request& arg, cryptonote::NOTIFY_RESPONSE_GET_OBJECTS::request& rsp, cryptonote::cryptonote_peer_context& context){return true;}
   cryptonote::blockchain_storage &get_blockchain_storage() { throw std::runtime_error("Called invalid member function: please never call get_blockchain_storage on the TESTING class test_core."); }
   bool get_test_drop_download() const {return true;}
   bool get_test_drop_download_height() const {return true;}
@@ -326,11 +326,11 @@ TEST(cryptonote_protocol_handler, race_condition)
 {
   struct contexts {
     using basic = epee::net_utils::connection_context_base;
-    using cryptonote = cryptonote::cryptonote_connection_context;
+    using cryptonote = cryptonote::cryptonote_peer_context;
     using p2p = nodetool::p2p_connection_context_t<cryptonote>;
   };
   using context_t = contexts::p2p;
-  using handler_t = epee::levin::async_protocol_handler<context_t>;
+  using handler_t = epee::levin::async_wire_handler<context_t>;
   using connection_t = epee::net_utils::connection<handler_t>;
   using connection_ptr = boost::shared_ptr<connection_t>;
   using connections_t = std::vector<connection_ptr>;
@@ -372,7 +372,7 @@ TEST(cryptonote_protocol_handler, race_condition)
   using work_t = boost::asio::io_service::work;
   using work_ptr = std::shared_ptr<work_t>;
   using workers_t = std::vector<std::thread>;
-  using commands_handler_t = epee::levin::levin_commands_handler<context_t>;
+  using commands_handler_t = epee::levin::i_levin_commands_handler<context_t>;
   using p2p_endpoint_t = nodetool::i_p2p_endpoint<contexts::cryptonote>;
   using core_t = cryptonote::core;
   using core_ptr = std::unique_ptr<core_t>;

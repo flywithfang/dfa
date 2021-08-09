@@ -41,16 +41,12 @@ namespace net_utils
 		invalid = 0,
 		ipv4 = 1,
 		ipv6 = 2,
-		i2p = 3,
-		tor = 4
 	};
 
 	enum class zone : std::uint8_t
 	{
 		invalid = 0,
 		public_ = 1, // public is keyword
-		i2p = 2,     // order from here changes priority of selection for origin TXes
-		tor = 3
 	};
 
 	// implementations in src/net_utils_base.cpp

@@ -71,7 +71,7 @@ namespace net_utils
   /************************************************************************/
   /*                                                                      */
   /************************************************************************/
-  template<class t_protocol_handler>
+  template<class t_wire_handler>
   class boosted_tcp_server    : private boost::noncopyable
   {
     enum try_connect_result_t
@@ -82,10 +82,10 @@ namespace net_utils
     };
 
   public:
-    typedef boosted_tcp_server<t_protocol_handler> MyType;
-    typedef connection<t_protocol_handler> ConnectionType;
-    typedef boost::shared_ptr<connection<t_protocol_handler> > connection_ptr;
-    typedef typename t_protocol_handler::connection_context t_connection_context;
+    typedef boosted_tcp_server<t_wire_handler> MyType;
+    typedef connection<t_wire_handler> ConnectionType;
+    typedef boost::shared_ptr<connection<t_wire_handler> > connection_ptr;
+    typedef typename t_wire_handler::connection_context t_connection_context;
     /// Construct the server to listen on the specified TCP address and port, and
     /// serve up files from the given directory.
 
@@ -124,10 +124,6 @@ namespace net_utils
 
     void set_connection_filter(i_connection_filter* pfilter);
 
-    void set_default_remote(epee::net_utils::network_address remote)
-    {
-      default_remote = std::move(remote);
-    }
 
     bool add_connection(t_connection_context& out, boost::asio::ip::tcp::socket&& sock, network_address real_remote, epee::net_utils::ssl_support_t ssl_support = epee::net_utils::ssl_support_t::e_ssl_support_autodetect);
     try_connect_result_t try_connect(connection_ptr new_connection_l, const std::string& adr, const std::string& port, boost::asio::ip::tcp::socket &sock_, const boost::asio::ip::tcp::endpoint &remote_endpoint, const std::string &bind_ip, uint32_t conn_timeout, epee::net_utils::ssl_support_t ssl_support);
@@ -137,20 +133,20 @@ namespace net_utils
 
     boost::asio::ssl::context& get_ssl_context() noexcept
     {
-      assert(m_state != nullptr);
-      return m_state->ssl_context;
+      assert(m_shared_state != nullptr);
+      return m_shared_state->ssl_context;
     }
 
-    typename t_protocol_handler::config_type& get_shared_state()
+    typename t_wire_handler::shared_state& get_shared_state()
     {
-      assert(m_state != nullptr); // always set in constructor
-      return *m_state;
+      assert(m_shared_state != nullptr); // always set in constructor
+      return *m_shared_state;
     }
 
-    std::shared_ptr<typename t_protocol_handler::config_type> get_config_shared()
+    std::shared_ptr<typename t_wire_handler::shared_state> get_config_shared()
     {
-      assert(m_state != nullptr); // always set in constructor
-      return {m_state};
+      assert(m_shared_state != nullptr); // always set in constructor
+      return {m_shared_state};
     }
 
     int get_binded_port(){return m_port;}
@@ -158,8 +154,8 @@ namespace net_utils
 
     long get_connections_count() const
     {
-      assert(m_state != nullptr); // always set in constructor
-      auto connections_count = m_state->sock_count > 0 ? (m_state->sock_count - 1) : 0; // Socket count minus listening socket
+      assert(m_shared_state != nullptr); // always set in constructor
+      auto connections_count = m_shared_state->sock_count > 0 ? (m_shared_state->sock_count - 1) : 0; // Socket count minus listening socket
       return connections_count;
     }
 
@@ -231,7 +227,7 @@ namespace net_utils
 
     bool is_thread_worker();
 
-    const std::shared_ptr<typename connection<t_protocol_handler>::shared_state> m_state;
+    const std::shared_ptr<typename connection<t_wire_handler>::shared_state> m_shared_state;
 
     /// The io_service used to perform asynchronous operations.
     struct worker
@@ -249,7 +245,6 @@ namespace net_utils
     /// Acceptor used to listen for incoming connections.
     boost::asio::ip::tcp::acceptor acceptor_;
     boost::asio::ip::tcp::acceptor acceptor_ipv6;
-    epee::net_utils::network_address default_remote;
 
     std::atomic<bool> m_stop_signal_sent;
     uint32_t m_port;

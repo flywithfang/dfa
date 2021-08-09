@@ -33,8 +33,6 @@
 namespace net
 {
     enum class error : int;
-    class tor_address;
-    class i2p_address;
 
     namespace socks
     {

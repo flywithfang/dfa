@@ -37,7 +37,7 @@
 
 #include "include_base_utils.h"
 #include "string_tools.h"
-#include "net/levin_protocol_handler_async.h"
+#include "net/levin_wire_handler_async.h"
 #include "net/abstract_tcp_server2.h"
 #include "serialization/keyvalue_serialization.h"
 
@@ -54,12 +54,12 @@ namespace net_load_tests
     volatile bool m_closed;
   };
 
-  typedef epee::levin::async_protocol_handler<test_connection_context> test_levin_protocol_handler;
-  typedef epee::levin::async_protocol_handler_config<test_connection_context> test_levin_protocol_handler_config;
+  typedef epee::levin::async_wire_handler<test_connection_context> test_levin_protocol_handler;
+  typedef epee::levin::async_wire_shared_state<test_connection_context> test_levin_protocol_handler_config;
   typedef epee::net_utils::connection<test_levin_protocol_handler> test_connection;
   typedef epee::net_utils::boosted_tcp_server<test_levin_protocol_handler> test_tcp_server;
 
-  struct test_levin_commands_handler : public epee::levin::levin_commands_handler<test_connection_context>
+  struct test_levin_commands_handler : public epee::levin::i_levin_commands_handler<test_connection_context>
   {
     test_levin_commands_handler()
       //: m_return_code(LEVIN_OK)

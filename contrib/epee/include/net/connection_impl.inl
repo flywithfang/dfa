@@ -16,17 +16,16 @@ namespace net_utils
   /************************************************************************/
 PRAGMA_WARNING_DISABLE_VS(4355)
 
-  template<class t_protocol_handler>
-  connection<t_protocol_handler>::connection( boost::asio::io_service& io_service,std::shared_ptr<shared_state> state,t_connection_type connection_type, ssl_support_t ssl_support	)
+  template<class t_wire_handler>
+  connection<t_wire_handler>::connection( boost::asio::io_service& io_service,std::shared_ptr<shared_state> state,t_connection_type connection_type, ssl_support_t ssl_support	)
 	: connection(boost::asio::ip::tcp::socket{io_service}, std::move(state), connection_type, ssl_support)
   {
   }
 
-  template<class t_protocol_handler>
-  connection<t_protocol_handler>::connection( boost::asio::ip::tcp::socket&& sock,std::shared_ptr<shared_state> state,
-		t_connection_type connection_type,ssl_support_t ssl_support	)
+  template<class t_wire_handler>
+  connection<t_wire_handler>::connection( boost::asio::ip::tcp::socket&& sock,std::shared_ptr<shared_state> state,t_connection_type connection_type,ssl_support_t ssl_support	)
 	: connection_basic(std::move(sock), state, ssl_support),
-		m_protocol_handler(this, check_and_get(state), context),
+		m_wire_handler(this, check_and_get(state), m_con_context),
 		buffer_ssl_init_fill(0),
 		m_connection_type( connection_type ),
 		m_throttle_speed_in("speed_in", "throttle_speed_in"),
@@ -40,8 +39,8 @@ PRAGMA_WARNING_DISABLE_VS(4355)
 
 PRAGMA_WARNING_DISABLE_VS(4355)
   //---------------------------------------------------------------------------------
-  template<class t_protocol_handler>
-  connection<t_protocol_handler>::~connection() noexcept(false)
+  template<class t_wire_handler>
+  connection<t_wire_handler>::~connection() noexcept(false)
   {
     if(!m_was_shutdown)
     {
@@ -52,22 +51,22 @@ PRAGMA_WARNING_DISABLE_VS(4355)
     MINFO("[sock " << socket().native_handle() << "] Socket destroyed");
   }
   //---------------------------------------------------------------------------------
-  template<class t_protocol_handler>
-  boost::shared_ptr<connection<t_protocol_handler> > connection<t_protocol_handler>::safe_shared_from_this()
+  template<class t_wire_handler>
+  boost::shared_ptr<connection<t_wire_handler> > connection<t_wire_handler>::safe_shared_from_this()
   {
     try
     {
-      return connection<t_protocol_handler>::shared_from_this();
+      return connection<t_wire_handler>::shared_from_this();
     }
     catch (const boost::bad_weak_ptr&)
     {
       // It happens when the connection is being deleted
-      return boost::shared_ptr<connection<t_protocol_handler> >();
+      return boost::shared_ptr<connection<t_wire_handler> >();
     }
   }
   //---------------------------------------------------------------------------------
-  template<class t_protocol_handler>
-  bool connection<t_protocol_handler>::start(bool is_income, bool is_multithreaded)
+  template<class t_wire_handler>
+  bool connection<t_wire_handler>::start(bool is_income, bool is_multithreaded)
   {
     TRY_ENTRY();
 
@@ -86,11 +85,11 @@ PRAGMA_WARNING_DISABLE_VS(4355)
       const auto ip_ = remote_ep.address().to_v6();
       return start(is_income, is_multithreaded, ipv6_network_address{ip_, remote_ep.port()});
     }
-    CATCH_ENTRY_L0("connection<t_protocol_handler>::start()", false);
+    CATCH_ENTRY_L0("connection<t_wire_handler>::start()", false);
   }
   //---------------------------------------------------------------------------------
-  template<class t_protocol_handler>
-  bool connection<t_protocol_handler>::start(bool is_income, bool is_multithreaded, network_address real_remote)
+  template<class t_wire_handler>
+  bool connection<t_wire_handler>::start(bool is_income, bool is_multithreaded, network_address real_remote)
   {
     TRY_ENTRY();
 
@@ -105,29 +104,29 @@ PRAGMA_WARNING_DISABLE_VS(4355)
     // create a random uuid, we don't need crypto strength here
     const boost::uuids::uuid random_uuid = boost::uuids::random_generator()();
 
-    context = t_connection_context{};
+    m_con_context = t_connection_context{};
     bool ssl = m_ssl_support == epee::net_utils::ssl_support_t::e_ssl_support_enabled;
-    context.set_details(random_uuid, std::move(real_remote), is_income, ssl);
+    m_con_context.set_details(random_uuid, std::move(real_remote), is_income, ssl);
 
     boost::system::error_code ec;
     auto local_ep = socket().local_endpoint(ec);
     CHECK_AND_NO_ASSERT_MES(!ec, false, "Failed to get local endpoint: " << ec.message() << ':' << ec.value());
 
-    MINFO("connection start() [sock " << socket_.native_handle() << "] from " << print_connection_context_short(context) <<
+    MINFO("connection start() [sock " << socket_.native_handle() << "] from " << print_connection_context_short(m_con_context) <<
       " to " << local_ep.address().to_string() << ':' << local_ep.port() <<
       ", total sockets objects " << get_state().sock_count);
 
-    if(static_cast<shared_state&>(get_state()).pfilter && !static_cast<shared_state&>(get_state()).pfilter->is_remote_host_allowed(context.m_remote_address))
+    if(static_cast<shared_state&>(get_state()).pfilter && !static_cast<shared_state&>(get_state()).pfilter->is_remote_host_allowed(m_con_context.m_remote_address))
     {
-      MINFO("[sock " << socket().native_handle() << "] host denied " << context.m_remote_address.host_str() << ", shutdowning connection");
+      MINFO("[sock " << socket().native_handle() << "] host denied " << m_con_context.m_remote_address.host_str() << ", shutdowning connection");
       close();
       return false;
     }
 
-    m_host = context.m_remote_address.host_str();
+    m_host = m_con_context.m_remote_address.host_str();
     try { host_count(m_host, 1); } catch(...) { /* ignore */ }
 
-    m_protocol_handler.after_init_connection();
+    m_wire_handler.after_init_connection();
 
     reset_timer(boost::posix_time::milliseconds(m_local ? NEW_CONNECTION_TIMEOUT_LOCAL : NEW_CONNECTION_TIMEOUT_REMOTE), false);
 
@@ -146,33 +145,33 @@ PRAGMA_WARNING_DISABLE_VS(4355)
 	
     return true;
 
-    CATCH_ENTRY_L0("connection<t_protocol_handler>::start()", false);
+    CATCH_ENTRY_L0("connection<t_wire_handler>::start()", false);
   }
   //---------------------------------------------------------------------------------
-  template<class t_protocol_handler>
-  bool connection<t_protocol_handler>::request_callback()
+  template<class t_wire_handler>
+  bool connection<t_wire_handler>::request_callback()
   {
     TRY_ENTRY();
-    MINFO("[" << print_connection_context_short(context) << "] request_callback");
+    MINFO("[" << print_connection_context_short(m_con_context) << "] request_callback");
     // Use safe_shared_from_this, because of this is public method and it can be called on the object being deleted
     auto self = safe_shared_from_this();
     if(!self)
       return false;
 
-    strand_.post(boost::bind(&connection<t_protocol_handler>::call_back_starter, self));
-    CATCH_ENTRY_L0("connection<t_protocol_handler>::request_callback()", false);
+    strand_.post(boost::bind(&connection<t_wire_handler>::call_back_starter, self));
+    CATCH_ENTRY_L0("connection<t_wire_handler>::request_callback()", false);
     return true;
   }
   //---------------------------------------------------------------------------------
-  template<class t_protocol_handler>
-  boost::asio::io_service& connection<t_protocol_handler>::get_io_service()
+  template<class t_wire_handler>
+  boost::asio::io_service& connection<t_wire_handler>::get_io_service()
   {;
     auto & s = socket();
     return ((boost::asio::io_context&)(s).get_executor().context());
   }
   //---------------------------------------------------------------------------------
-  template<class t_protocol_handler>
-  bool connection<t_protocol_handler>::add_ref()
+  template<class t_wire_handler>
+  bool connection<t_wire_handler>::add_ref()
   {
     TRY_ENTRY();
 
@@ -186,17 +185,17 @@ PRAGMA_WARNING_DISABLE_VS(4355)
     ++m_reference_count;
     m_self_ref = std::move(self);
     return true;
-    CATCH_ENTRY_L0("connection<t_protocol_handler>::add_ref()", false);
+    CATCH_ENTRY_L0("connection<t_wire_handler>::add_ref()", false);
   }
   //---------------------------------------------------------------------------------
-  template<class t_protocol_handler>
-  bool connection<t_protocol_handler>::release()
+  template<class t_wire_handler>
+  bool connection<t_wire_handler>::release()
   {
     TRY_ENTRY();
-    boost::shared_ptr<connection<t_protocol_handler> >  back_connection_copy;
-    LOG_TRACE_CC(context, "[sock " << socket().native_handle() << "] release");
+    boost::shared_ptr<connection<t_wire_handler> >  back_connection_copy;
+    LOG_TRACE_CC(m_con_context, "[sock " << socket().native_handle() << "] release");
     CRITICAL_REGION_BEGIN(m_self_refs_lock);
-    CHECK_AND_ASSERT_MES(m_reference_count, false, "[sock " << socket().native_handle() << "] m_reference_count already at 0 at connection<t_protocol_handler>::release() call");
+    CHECK_AND_ASSERT_MES(m_reference_count, false, "[sock " << socket().native_handle() << "] m_reference_count already at 0 at connection<t_wire_handler>::release() call");
     // is this the last reference?
     if (--m_reference_count == 0) {
         // move the held reference to a local variable, keeping the object alive until the function terminates
@@ -204,20 +203,20 @@ PRAGMA_WARNING_DISABLE_VS(4355)
     }
     CRITICAL_REGION_END();
     return true;
-    CATCH_ENTRY_L0("connection<t_protocol_handler>::release()", false);
+    CATCH_ENTRY_L0("connection<t_wire_handler>::release()", false);
   }
   //---------------------------------------------------------------------------------
-  template<class t_protocol_handler>
-  void connection<t_protocol_handler>::call_back_starter()
+  template<class t_wire_handler>
+  void connection<t_wire_handler>::call_back_starter()
   {
     TRY_ENTRY();
-    MINFO("[" << print_connection_context_short(context) << "] fired_callback");
-    m_protocol_handler.handle_qued_callback();
-    CATCH_ENTRY_L0("connection<t_protocol_handler>::call_back_starter()", void());
+    MINFO("[" << print_connection_context_short(m_con_context) << "] fired_callback");
+    m_wire_handler.handle_qued_callback();
+    CATCH_ENTRY_L0("connection<t_wire_handler>::call_back_starter()", void());
   }
   //---------------------------------------------------------------------------------
-  template<class t_protocol_handler>
-  void connection<t_protocol_handler>::save_dbg_log()
+  template<class t_wire_handler>
+  void connection<t_wire_handler>::save_dbg_log()
   {
     std::string address, port;
     boost::system::error_code e;
@@ -235,11 +234,11 @@ PRAGMA_WARNING_DISABLE_VS(4355)
     }
     MDEBUG("save_dbg_log  connection type " << to_string( m_connection_type ) << " "
         << socket().local_endpoint().address().to_string() << ":" << socket().local_endpoint().port()
-        << " <--> " << context.m_remote_address.str() << " (via " << address << ":" << port << ")");
+        << " <--> " << m_con_context.m_remote_address.str() << " (via " << address << ":" << port << ")");
   }
   //---------------------------------------------------------------------------------
-  template<class t_protocol_handler>
-  void connection<t_protocol_handler>::handle_read(const boost::system::error_code& e,
+  template<class t_wire_handler>
+  void connection<t_wire_handler>::handle_read(const boost::system::error_code& e,
     std::size_t bytes_transferred)
   {
     TRY_ENTRY();
@@ -256,8 +255,8 @@ PRAGMA_WARNING_DISABLE_VS(4355)
 			m_throttle_speed_in.handle_trafic_exact(bytes_transferred);
 			current_speed_down = m_throttle_speed_in.get_current_speed();
 		}
-        context.m_current_speed_down = current_speed_down;
-        context.m_max_speed_down = std::max(context.m_max_speed_down, current_speed_down);
+        m_con_context.m_current_speed_down = current_speed_down;
+        m_con_context.m_max_speed_down = std::max(m_con_context.m_max_speed_down, current_speed_down);
     
     {
 			CRITICAL_REGION_LOCAL(	epee::net_utils::network_throttle_manager::network_throttle_manager::m_lock_get_global_throttle_in );
@@ -289,10 +288,10 @@ PRAGMA_WARNING_DISABLE_VS(4355)
 		
       //_info("[sock " << socket().native_handle() << "] RECV " << bytes_transferred);
       logger_handle_net_read(bytes_transferred);
-      context.m_last_recv = time(NULL);
-      context.m_recv_cnt += bytes_transferred;
+      m_con_context.m_last_recv = time(NULL);
+      m_con_context.m_recv_cnt += bytes_transferred;
       m_ready_to_close = false;
-      bool recv_res = m_protocol_handler.handle_recv(buffer_.data(), bytes_transferred);
+      bool recv_res = m_wire_handler.handle_recv(buffer_.data(), bytes_transferred);
       if(!recv_res)
       {  
         //_info("[sock " << socket().native_handle() << "] protocol_want_close");
@@ -310,7 +309,7 @@ PRAGMA_WARNING_DISABLE_VS(4355)
         reset_timer(get_timeout_from_bytes_read(bytes_transferred), false);
         async_read_some(boost::asio::buffer(buffer_),
           strand_.wrap(
-            boost::bind(&MyType::handle_read, connection<t_protocol_handler>::shared_from_this(),
+            boost::bind(&MyType::handle_read, connection<t_wire_handler>::shared_from_this(),
               boost::asio::placeholders::error,
               boost::asio::placeholders::bytes_transferred)));
         //_info("[sock " << socket().native_handle() << "]Async read requested.");
@@ -340,11 +339,11 @@ PRAGMA_WARNING_DISABLE_VS(4355)
     // means that all shared_ptr references to the connection object will
     // disappear and the object will be destroyed automatically after this
     // handler returns. The connection class's destructor closes the socket.
-    CATCH_ENTRY_L0("connection<t_protocol_handler>::handle_read", void());
+    CATCH_ENTRY_L0("connection<t_wire_handler>::handle_read", void());
   }
   //---------------------------------------------------------------------------------
-  template<class t_protocol_handler>
-  void connection<t_protocol_handler>::handle_receive(const boost::system::error_code& e,
+  template<class t_wire_handler>
+  void connection<t_wire_handler>::handle_receive(const boost::system::error_code& e,
     std::size_t bytes_transferred)
   {
     TRY_ENTRY();
@@ -364,7 +363,7 @@ PRAGMA_WARNING_DISABLE_VS(4355)
     {
       socket().async_receive(boost::asio::buffer(buffer_.data() + buffer_ssl_init_fill, buffer_.size() - buffer_ssl_init_fill),
         strand_.wrap(
-          boost::bind(&connection<t_protocol_handler>::handle_receive, connection<t_protocol_handler>::shared_from_this(),
+          boost::bind(&connection<t_wire_handler>::handle_receive, connection<t_wire_handler>::shared_from_this(),
             boost::asio::placeholders::error,
             boost::asio::placeholders::bytes_transferred)));
       return;
@@ -411,7 +410,7 @@ PRAGMA_WARNING_DISABLE_VS(4355)
 
     async_read_some(boost::asio::buffer(buffer_),
       strand_.wrap(
-        boost::bind(&MyType::handle_read, connection<t_protocol_handler>::shared_from_this(),
+        boost::bind(&MyType::handle_read, connection<t_wire_handler>::shared_from_this(),
           boost::asio::placeholders::error,
           boost::asio::placeholders::bytes_transferred)));
 
@@ -419,11 +418,11 @@ PRAGMA_WARNING_DISABLE_VS(4355)
     // means that all shared_ptr references to the connection object will
     // disappear and the object will be destroyed automatically after this
     // handler returns. The connection class's destructor closes the socket.
-    CATCH_ENTRY_L0("connection<t_protocol_handler>::handle_receive", void());
+    CATCH_ENTRY_L0("connection<t_wire_handler>::handle_receive", void());
   }
   //---------------------------------------------------------------------------------
-  template<class t_protocol_handler>
-  bool connection<t_protocol_handler>::call_run_once_service_io()
+  template<class t_wire_handler>
+  bool connection<t_wire_handler>::call_run_once_service_io()
   {
     TRY_ENTRY();
     if(!m_is_multithreaded)
@@ -445,11 +444,11 @@ PRAGMA_WARNING_DISABLE_VS(4355)
     }
     
     return true;
-    CATCH_ENTRY_L0("connection<t_protocol_handler>::call_run_once_service_io", false);
+    CATCH_ENTRY_L0("connection<t_wire_handler>::call_run_once_service_io", false);
   }
   //---------------------------------------------------------------------------------
-    template<class t_protocol_handler>
-  bool connection<t_protocol_handler>::do_send(byte_slice message) {
+    template<class t_wire_handler>
+  bool connection<t_wire_handler>::do_send(byte_slice message) {
     TRY_ENTRY();
 
     // Use safe_shared_from_this, because of this is public method and it can be called on the object being deleted
@@ -513,12 +512,12 @@ PRAGMA_WARNING_DISABLE_VS(4355)
 			return do_send_chunk(std::move(message)); // just send as 1 big chunk
 		}
 
-    CATCH_ENTRY_L0("connection<t_protocol_handler>::do_send", false);
+    CATCH_ENTRY_L0("connection<t_wire_handler>::do_send", false);
 	} // do_send()
 
   //---------------------------------------------------------------------------------
-  template<class t_protocol_handler>
-  bool connection<t_protocol_handler>::do_send_chunk(byte_slice chunk)
+  template<class t_wire_handler>
+  bool connection<t_wire_handler>::do_send_chunk(byte_slice chunk)
   {
     TRY_ENTRY();
     // Use safe_shared_from_this, because of this is public method and it can be called on the object being deleted
@@ -533,12 +532,12 @@ PRAGMA_WARNING_DISABLE_VS(4355)
 		m_throttle_speed_out.handle_trafic_exact(chunk.size());
 		current_speed_up = m_throttle_speed_out.get_current_speed();
 	}
-    context.m_current_speed_up = current_speed_up;
-    context.m_max_speed_up = std::max(context.m_max_speed_up, current_speed_up);
+    m_con_context.m_current_speed_up = current_speed_up;
+    m_con_context.m_max_speed_up = std::max(m_con_context.m_max_speed_up, current_speed_up);
 
     //_info("[sock " << socket().native_handle() << "] SEND " << cb);
-    context.m_last_send = time(NULL);
-    context.m_send_cnt += chunk.size();
+    m_con_context.m_last_send = time(NULL);
+    m_con_context.m_send_cnt += chunk.size();
     //some data should be wrote to stream
     //request complete
     
@@ -592,7 +591,7 @@ PRAGMA_WARNING_DISABLE_VS(4355)
         MDEBUG("do_send_chunk() NOW just queues: packet="<<size_now<<" B, is added to queue-size="<<m_send_que.size());
         //do_send_handler_delayed( ptr , size_now ); // (((H))) // empty function
       
-      LOG_TRACE_CC(context, "[sock " << socket().native_handle() << "] Async send requested " << m_send_que.front().size());
+      LOG_TRACE_CC(m_con_context, "[sock " << socket().native_handle() << "] Async send requested " << m_send_que.front().size());
     }
     else
     { // no active operation
@@ -612,7 +611,7 @@ PRAGMA_WARNING_DISABLE_VS(4355)
         reset_timer(get_default_timeout(), false);
             async_write(boost::asio::buffer(m_send_que.front().data(), size_now ) ,
                                  strand_.wrap(
-                                 std::bind(&connection<t_protocol_handler>::handle_write, self, std::placeholders::_1, std::placeholders::_2)
+                                 std::bind(&connection<t_wire_handler>::handle_write, self, std::placeholders::_1, std::placeholders::_2)
                                  )
                                  );
         //MINFO("(chunk): " << size_now);
@@ -624,11 +623,11 @@ PRAGMA_WARNING_DISABLE_VS(4355)
 
     return true;
 
-    CATCH_ENTRY_L0("connection<t_protocol_handler>::do_send_chunk", false);
+    CATCH_ENTRY_L0("connection<t_wire_handler>::do_send_chunk", false);
   } // do_send_chunk
   //---------------------------------------------------------------------------------
-  template<class t_protocol_handler>
-  boost::posix_time::milliseconds connection<t_protocol_handler>::get_default_timeout()
+  template<class t_wire_handler>
+  boost::posix_time::milliseconds connection<t_wire_handler>::get_default_timeout()
   {
     unsigned count;
     try { count = host_count(m_host); } catch (...) { count = 0; }
@@ -641,8 +640,8 @@ PRAGMA_WARNING_DISABLE_VS(4355)
     return timeout;
   }
   //---------------------------------------------------------------------------------
-  template<class t_protocol_handler>
-  boost::posix_time::milliseconds connection<t_protocol_handler>::get_timeout_from_bytes_read(size_t bytes)
+  template<class t_wire_handler>
+  boost::posix_time::milliseconds connection<t_wire_handler>::get_timeout_from_bytes_read(size_t bytes)
   {
     boost::posix_time::milliseconds ms = (boost::posix_time::milliseconds)(unsigned)(bytes * TIMEOUT_EXTRA_MS_PER_BYTE);
     const auto cur = m_timer.expires_from_now().total_milliseconds();
@@ -653,8 +652,8 @@ PRAGMA_WARNING_DISABLE_VS(4355)
     return ms;
   }
   //---------------------------------------------------------------------------------
-  template<class t_protocol_handler>
-  unsigned int connection<t_protocol_handler>::host_count(const std::string &host, int delta)
+  template<class t_wire_handler>
+  unsigned int connection<t_wire_handler>::host_count(const std::string &host, int delta)
   {
     static boost::mutex hosts_mutex;
     CRITICAL_REGION_LOCAL(hosts_mutex);
@@ -670,8 +669,8 @@ PRAGMA_WARNING_DISABLE_VS(4355)
     return val;
   }
   //---------------------------------------------------------------------------------
-  template<class t_protocol_handler>
-  void connection<t_protocol_handler>::reset_timer(boost::posix_time::milliseconds ms, bool add)
+  template<class t_wire_handler>
+  void connection<t_wire_handler>::reset_timer(boost::posix_time::milliseconds ms, bool add)
   {
     const auto tms = ms.total_milliseconds();
     if (tms < 0 || (add && tms == 0))
@@ -702,13 +701,13 @@ PRAGMA_WARNING_DISABLE_VS(4355)
     {
       if(ec == boost::asio::error::operation_aborted)
         return;
-      MDEBUG(context << "connection timeout, closing");
+      MDEBUG(m_con_context << "connection timeout, closing");
       self->close();
     });
   }
   //---------------------------------------------------------------------------------
-  template<class t_protocol_handler>
-  bool connection<t_protocol_handler>::shutdown()
+  template<class t_wire_handler>
+  bool connection<t_wire_handler>::shutdown()
   {
     CRITICAL_REGION_BEGIN(m_shutdown_lock);
     if (m_was_shutdown)
@@ -730,12 +729,12 @@ PRAGMA_WARNING_DISABLE_VS(4355)
       m_host = "";
     }
     CRITICAL_REGION_END();
-    m_protocol_handler.release_protocol();
+    m_wire_handler.release_protocol();
     return true;
   }
   //---------------------------------------------------------------------------------
-  template<class t_protocol_handler>
-  bool connection<t_protocol_handler>::close()
+  template<class t_wire_handler>
+  bool connection<t_wire_handler>::close()
   {
     TRY_ENTRY();
     auto self = safe_shared_from_this();
@@ -754,11 +753,11 @@ PRAGMA_WARNING_DISABLE_VS(4355)
     }
     
     return true;
-    CATCH_ENTRY_L0("connection<t_protocol_handler>::close", false);
+    CATCH_ENTRY_L0("connection<t_wire_handler>::close", false);
   }
   //---------------------------------------------------------------------------------
-  template<class t_protocol_handler>
-  bool connection<t_protocol_handler>::send_done()
+  template<class t_wire_handler>
+  bool connection<t_wire_handler>::send_done()
   {
     if (m_ready_to_close)
       return close();
@@ -766,17 +765,17 @@ PRAGMA_WARNING_DISABLE_VS(4355)
     return true;
   }
   //---------------------------------------------------------------------------------
-  template<class t_protocol_handler>
-  bool connection<t_protocol_handler>::cancel()
+  template<class t_wire_handler>
+  bool connection<t_wire_handler>::cancel()
   {
     return close();
   }
   //---------------------------------------------------------------------------------
-  template<class t_protocol_handler>
-  void connection<t_protocol_handler>::handle_write(const boost::system::error_code& e, size_t cb)
+  template<class t_wire_handler>
+  void connection<t_wire_handler>::handle_write(const boost::system::error_code& e, size_t cb)
   {
     TRY_ENTRY();
-    LOG_TRACE_CC(context, "[sock " << socket().native_handle() << "] Async send calledback " << cb);
+    LOG_TRACE_CC(m_con_context, "[sock " << socket().native_handle() << "] Async send calledback " << cb);
 
     if (e)
     {
@@ -819,7 +818,7 @@ PRAGMA_WARNING_DISABLE_VS(4355)
     
 		  async_write(boost::asio::buffer(m_send_que.front().data(), size_now) , 
            strand_.wrap(
-            std::bind(&connection<t_protocol_handler>::handle_write, connection<t_protocol_handler>::shared_from_this(), std::placeholders::_1, std::placeholders::_2)
+            std::bind(&connection<t_wire_handler>::handle_write, connection<t_wire_handler>::shared_from_this(), std::placeholders::_1, std::placeholders::_2)
 			  )
           );
       //MINFO("(normal)" << size_now);
@@ -830,20 +829,20 @@ PRAGMA_WARNING_DISABLE_VS(4355)
     {
       shutdown();
     }
-    CATCH_ENTRY_L0("connection<t_protocol_handler>::handle_write", void());
+    CATCH_ENTRY_L0("connection<t_wire_handler>::handle_write", void());
   }
 
   //---------------------------------------------------------------------------------
-  template<class t_protocol_handler>
-  void connection<t_protocol_handler>::setRpcStation()
+  template<class t_wire_handler>
+  void connection<t_wire_handler>::setRpcStation()
   {
     m_connection_type = e_connection_type_RPC; 
     MDEBUG("set m_connection_type = RPC ");
   }
 
 
-  template<class t_protocol_handler>
-  bool connection<t_protocol_handler>::speed_limit_is_enabled() const {
+  template<class t_wire_handler>
+  bool connection<t_wire_handler>::speed_limit_is_enabled() const {
 		return m_connection_type != e_connection_type_RPC ;
 	}
 }

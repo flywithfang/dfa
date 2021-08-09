@@ -83,8 +83,6 @@ class connection_basic_pimpl {
 	public:
 		connection_basic_pimpl(const std::string &name);
 
-		static int m_default_tos;
-
 		network_throttle_bw m_throttle; // per-perr
     critical_section m_throttle_lock;
 

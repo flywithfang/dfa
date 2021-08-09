@@ -89,8 +89,8 @@ namespace nodetool
   //-----------------------------------------------------------------------------------
   inline bool append_net_address(std::vector<epee::net_utils::network_address> & seed_nodes, std::string const & addr, uint16_t default_port);
   //-----------------------------------------------------------------------------------
-  template<class t_payload_net_handler>
-  void node_server<t_payload_net_handler>::init_options(boost::program_options::options_description& desc)
+  template<class t_payload_handler>
+  void node_server<t_payload_handler>::init_options(boost::program_options::options_description& desc)
   {
     command_line::add_arg(desc, arg_p2p_bind_ip);
     command_line::add_arg(desc, arg_p2p_bind_ipv6_address);
@@ -104,7 +104,6 @@ namespace nodetool
     command_line::add_arg(desc, arg_p2p_add_priority_node);
     command_line::add_arg(desc, arg_p2p_add_exclusive_node);
     command_line::add_arg(desc, arg_p2p_seed_node);
-    command_line::add_arg(desc, arg_tx_proxy);
     command_line::add_arg(desc, arg_ban_list);
     command_line::add_arg(desc, arg_p2p_hide_my_port);
     command_line::add_arg(desc, arg_no_sync);
@@ -113,7 +112,6 @@ namespace nodetool
     command_line::add_arg(desc, arg_igd);
     command_line::add_arg(desc, arg_out_peers);
     command_line::add_arg(desc, arg_in_peers);
-    command_line::add_arg(desc, arg_tos_flag);
     command_line::add_arg(desc, arg_limit_rate_up);
     command_line::add_arg(desc, arg_limit_rate_down);
     command_line::add_arg(desc, arg_limit_rate);
@@ -121,7 +119,7 @@ namespace nodetool
     command_line::add_arg(desc, arg_max_connections_per_ip);
   }
   //-----------------------------------------------------------------------------------
-  template<class t_payload_net_handler>  bool node_server<t_payload_net_handler>::init_config()
+  template<class t_payload_handler>  bool node_server<t_payload_handler>::init_config()
   {
     TRY_ENTRY();
     auto storage = peerlist_storage::open(m_config_folder + "/" + P2P_NET_DATA_FILENAME);
@@ -139,16 +137,16 @@ namespace nodetool
     return true;
   }
   //-----------------------------------------------------------------------------------
-  template<class t_payload_net_handler>
-  void node_server<t_payload_net_handler>::for_each_connection(std::function<bool(typename t_payload_net_handler::connection_context&, peerid_type, uint32_t)> f)
+  template<class t_payload_handler>
+  void node_server<t_payload_handler>::for_each_connection(std::function<bool(typename t_payload_handler::peer_context&, peerid_type, uint32_t)> f)
   {
      m_network.m_net_server.get_shared_state().foreach_connection([&](p2p_connection_context& cntx){
         return f(cntx, cntx.peer_id, cntx.support_flags);
       });
   }
   //-----------------------------------------------------------------------------------
-  template<class t_payload_net_handler>
-  bool node_server<t_payload_net_handler>::for_connection(const boost::uuids::uuid &connection_id, std::function<bool(typename t_payload_net_handler::connection_context&, peerid_type, uint32_t)> f)
+  template<class t_payload_handler>
+  bool node_server<t_payload_handler>::for_connection(const boost::uuids::uuid &connection_id, std::function<bool(typename t_payload_handler::peer_context&, peerid_type, uint32_t)> f)
   {
       const bool result = m_network.m_net_server.get_shared_state().for_connection(connection_id, [&](p2p_connection_context& cntx){
         return f(cntx, cntx.peer_id, cntx.support_flags);
@@ -156,8 +154,8 @@ namespace nodetool
       return result;
   }
   //-----------------------------------------------------------------------------------
-  template<class t_payload_net_handler>
-  bool node_server<t_payload_net_handler>::is_remote_host_allowed(const epee::net_utils::network_address &address, time_t *t)
+  template<class t_payload_handler>
+  bool node_server<t_payload_handler>::is_remote_host_allowed(const epee::net_utils::network_address &address, time_t *t)
   {
     CRITICAL_REGION_LOCAL(m_blocked_hosts_lock);
 
@@ -209,8 +207,8 @@ namespace nodetool
   }
   
   //-----------------------------------------------------------------------------------
-  template<class t_payload_net_handler>
-  bool node_server<t_payload_net_handler>::unblock_host(const epee::net_utils::network_address &address)
+  template<class t_payload_handler>
+  bool node_server<t_payload_handler>::unblock_host(const epee::net_utils::network_address &address)
   {
     CRITICAL_REGION_LOCAL(m_blocked_hosts_lock);
     auto i = m_blocked_hosts.find(address.host_str());
@@ -222,8 +220,8 @@ namespace nodetool
   }
   
   //-----------------------------------------------------------------------------------
-  template<class t_payload_net_handler>
-  bool node_server<t_payload_net_handler>::unblock_subnet(const epee::net_utils::ipv4_network_subnet &subnet)
+  template<class t_payload_handler>
+  bool node_server<t_payload_handler>::unblock_subnet(const epee::net_utils::ipv4_network_subnet &subnet)
   {
     CRITICAL_REGION_LOCAL(m_blocked_hosts_lock);
     auto i = m_blocked_subnets.find(subnet);
@@ -234,8 +232,8 @@ namespace nodetool
     return true;
   }
   //-----------------------------------------------------------------------------------
-  template<class t_payload_net_handler>
-  bool node_server<t_payload_net_handler>::add_host_fail(const epee::net_utils::network_address &address, unsigned int score)
+  template<class t_payload_handler>
+  bool node_server<t_payload_handler>::add_host_fail(const epee::net_utils::network_address &address, unsigned int score)
   {
     if(!address.is_blockable())
       return false;
@@ -253,8 +251,8 @@ namespace nodetool
     return true;
   }
   //-----------------------------------------------------------------------------------
-  template<class t_payload_net_handler>
-  bool node_server<t_payload_net_handler>::handle_command_line(const boost::program_options::variables_map& vm)
+  template<class t_payload_handler>
+  bool node_server<t_payload_handler>::handle_command_line(const boost::program_options::variables_map& vm)
   {
     bool testnet = command_line::get_arg(vm, cryptonote::arg_testnet_on);
     bool stagenet = command_line::get_arg(vm, cryptonote::arg_stagenet_on);
@@ -410,9 +408,6 @@ namespace nodetool
     if ( !set_max_in_peers(public_zone, command_line::get_arg(vm, arg_in_peers) ) )
       return false;
 
-    if ( !set_tos_flag(vm, command_line::get_arg(vm, arg_tos_flag) ) )
-      return false;
-
     if ( !set_rate_up_limit(vm, command_line::get_arg(vm, arg_limit_rate_up) ) )
       return false;
 
@@ -481,8 +476,8 @@ namespace nodetool
 
 
   //-----------------------------------------------------------------------------------
-  template<class t_payload_net_handler>
-  bool node_server<t_payload_net_handler>::init(const boost::program_options::variables_map& vm)
+  template<class t_payload_handler>
+  bool node_server<t_payload_handler>::init(const boost::program_options::variables_map& vm)
   {
     bool res = handle_command_line(vm);
 
@@ -584,14 +579,14 @@ namespace nodetool
     return res;
   }
   //-----------------------------------------------------------------------------------
-  template<class t_payload_net_handler>
-  t_payload_net_handler& node_server<t_payload_net_handler>::get_payload_object()
+  template<class t_payload_handler>
+  t_payload_handler& node_server<t_payload_handler>::get_payload_object()
   {
     return m_payload_handler;
   }
   //-----------------------------------------------------------------------------------
-  template<class t_payload_net_handler>
-  bool node_server<t_payload_net_handler>::run()
+  template<class t_payload_handler>
+  bool node_server<t_payload_handler>::run()
   {
     // creating thread to log number of connections
     mPeersLoggerThread.reset(new boost::thread([&]()
@@ -626,7 +621,7 @@ namespace nodetool
 
     network_zone& public_zone =  m_network;
     public_zone.m_net_server.add_idle_handler(boost::bind(&MyType::idle_worker, this), 1000);
-    public_zone.m_net_server.add_idle_handler(boost::bind(&t_payload_net_handler::on_idle, &m_payload_handler), 1000);
+    public_zone.m_net_server.add_idle_handler(boost::bind(&t_payload_handler::on_idle, &m_payload_handler), 1000);
 
     //here you can set worker threads count
     int thrds_count = 2;
@@ -643,14 +638,14 @@ namespace nodetool
     return true;
   }
   //-----------------------------------------------------------------------------------
-  template<class t_payload_net_handler>
-  uint64_t node_server<t_payload_net_handler>::get_public_connections_count()
+  template<class t_payload_handler>
+  uint64_t node_server<t_payload_handler>::get_public_connections_count()
   {
     return m_network.m_net_server.get_shared_state().get_connections_count();
   }
   //-----------------------------------------------------------------------------------
-  template<class t_payload_net_handler>
-  bool node_server<t_payload_net_handler>::deinit()
+  template<class t_payload_handler>
+  bool node_server<t_payload_handler>::deinit()
   {
     kill();
 
@@ -664,8 +659,8 @@ namespace nodetool
     return store_config();
   }
   //-----------------------------------------------------------------------------------
-  template<class t_payload_net_handler>
-  bool node_server<t_payload_net_handler>::store_config()
+  template<class t_payload_handler>
+  bool node_server<t_payload_handler>::store_config()
   {
     TRY_ENTRY();
 
@@ -692,8 +687,8 @@ namespace nodetool
     return true;
   }
   //-----------------------------------------------------------------------------------
-  template<class t_payload_net_handler>
-  bool node_server<t_payload_net_handler>::send_stop_signal()
+  template<class t_payload_handler>
+  bool node_server<t_payload_handler>::send_stop_signal()
   {
     MDEBUG("[node] sending stop signal");
         m_network.m_net_server.send_stop_signal();
@@ -714,8 +709,8 @@ namespace nodetool
 
   
   //-----------------------------------------------------------------------------------
-  template<class t_payload_net_handler>
-  size_t node_server<t_payload_net_handler>::get_random_index_with_fixed_probability(size_t max_index)
+  template<class t_payload_handler>
+  size_t node_server<t_payload_handler>::get_random_index_with_fixed_probability(size_t max_index)
   {
     //divide by zero workaround
     if(!max_index)
@@ -727,8 +722,8 @@ namespace nodetool
     return res;
   }
   //-----------------------------------------------------------------------------------
-  template<class t_payload_net_handler>
-  bool node_server<t_payload_net_handler>::is_peer_used(const peerlist_entry& peer)
+  template<class t_payload_handler>
+  bool node_server<t_payload_handler>::is_peer_used(const peerlist_entry& peer)
   {
  
     if( m_network.m_shared_state.m_peer_id == peer.id)
@@ -747,8 +742,8 @@ namespace nodetool
     return used;
   }
   //-----------------------------------------------------------------------------------
-  template<class t_payload_net_handler>
-  bool node_server<t_payload_net_handler>::is_peer_used(const anchor_peerlist_entry& peer)
+  template<class t_payload_handler>
+  bool node_server<t_payload_handler>::is_peer_used(const anchor_peerlist_entry& peer)
   {
 
     if(m_network.m_shared_state.m_peer_id == peer.id)
@@ -767,8 +762,8 @@ namespace nodetool
     return used;
   }
   //-----------------------------------------------------------------------------------
-  template<class t_payload_net_handler>
-  bool node_server<t_payload_net_handler>::is_addr_connected(const epee::net_utils::network_address& peer)
+  template<class t_payload_handler>
+  bool node_server<t_payload_handler>::is_addr_connected(const epee::net_utils::network_address& peer)
   {
 
 
@@ -787,8 +782,8 @@ namespace nodetool
   }
 
 
-  template<class t_payload_net_handler>
-  bool node_server<t_payload_net_handler>::check_connection_and_handshake_with_peer(const epee::net_utils::network_address& na, uint64_t last_seen_stamp)
+  template<class t_payload_handler>
+  bool node_server<t_payload_handler>::check_connection_and_handshake_with_peer(const epee::net_utils::network_address& na, uint64_t last_seen_stamp)
   {
     MINFO("Connecting to " << na.str() << "(last_seen: " << (last_seen_stamp ? epee::misc_utils::get_time_interval_string(time(NULL) - last_seen_stamp):"never")<< ")...");
 
@@ -822,15 +817,15 @@ namespace nodetool
 #include "net_node_p2p.inl"
 
   //-----------------------------------------------------------------------------------
-  template<class t_payload_net_handler>
-  void node_server<t_payload_net_handler>::record_addr_failed(const epee::net_utils::network_address& addr)
+  template<class t_payload_handler>
+  void node_server<t_payload_handler>::record_addr_failed(const epee::net_utils::network_address& addr)
   {
     CRITICAL_REGION_LOCAL(m_conn_fails_cache_lock);
     m_conn_fails_cache[addr.host_str()] = time(NULL);
   }
   //-----------------------------------------------------------------------------------
-  template<class t_payload_net_handler>
-  bool node_server<t_payload_net_handler>::is_addr_recently_failed(const epee::net_utils::network_address& addr)
+  template<class t_payload_handler>
+  bool node_server<t_payload_handler>::is_addr_recently_failed(const epee::net_utils::network_address& addr)
   {
     CRITICAL_REGION_LOCAL(m_conn_fails_cache_lock);
     auto it = m_conn_fails_cache.find(addr.host_str());
@@ -845,8 +840,8 @@ namespace nodetool
  
  
   //-----------------------------------------------------------------------------------
-  template<class t_payload_net_handler>
-  size_t node_server<t_payload_net_handler>::get_outgoing_connections_count()
+  template<class t_payload_handler>
+  size_t node_server<t_payload_handler>::get_outgoing_connections_count()
   {
    size_t count = 0;
     {
@@ -860,8 +855,8 @@ namespace nodetool
     return count;
   }
   //-----------------------------------------------------------------------------------
-  template<class t_payload_net_handler>
-  size_t node_server<t_payload_net_handler>::get_incoming_connections_count()
+  template<class t_payload_handler>
+  size_t node_server<t_payload_handler>::get_incoming_connections_count()
   {
     size_t count = 0;
     {
@@ -875,29 +870,29 @@ namespace nodetool
     return count;
   }
   //-----------------------------------------------------------------------------------
-  template<class t_payload_net_handler>
-  size_t node_server<t_payload_net_handler>::get_public_white_peers_count()
+  template<class t_payload_handler>
+  size_t node_server<t_payload_handler>::get_public_white_peers_count()
   {
     return m_network.m_peerlist.get_white_peers_count();
   }
   //-----------------------------------------------------------------------------------
-  template<class t_payload_net_handler>
-  size_t node_server<t_payload_net_handler>::get_public_gray_peers_count()
+  template<class t_payload_handler>
+  size_t node_server<t_payload_handler>::get_public_gray_peers_count()
   {
     return m_network.m_peerlist.get_gray_peers_count();
   }
  
   //-----------------------------------------------------------------------------------
-  template<class t_payload_net_handler>
-  void node_server<t_payload_net_handler>::get_peerlist(std::vector<peerlist_entry>& gray, std::vector<peerlist_entry>& white)
+  template<class t_payload_handler>
+  void node_server<t_payload_handler>::get_peerlist(std::vector<peerlist_entry>& gray, std::vector<peerlist_entry>& white)
   {
       m_network.m_peerlist.get_peerlist(gray, white); // appends
   }
  #include "net_node_idle.inl"
  
   //-----------------------------------------------------------------------------------
-  template<class t_payload_net_handler>
-  bool node_server<t_payload_net_handler>::check_incoming_connections()
+  template<class t_payload_handler>
+  bool node_server<t_payload_handler>::check_incoming_connections()
   {
     if (m_offline)
       return true;
@@ -927,8 +922,8 @@ namespace nodetool
   }
  
   //-----------------------------------------------------------------------------------
-  template<class t_payload_net_handler>
-  bool node_server<t_payload_net_handler>::get_local_node_data(basic_node_data& node_data)
+  template<class t_payload_handler>
+  bool node_server<t_payload_handler>::get_local_node_data(basic_node_data& node_data)
   {
     node_data.peer_id = m_network.m_shared_state.m_peer_id;
     if(!m_hide_my_port && m_network.m_can_pingback)
@@ -943,14 +938,14 @@ namespace nodetool
   }
 
   //-----------------------------------------------------------------------------------
-  template<class t_payload_net_handler>
-  void node_server<t_payload_net_handler>::request_callback(const epee::net_utils::connection_context_base& context)
+  template<class t_payload_handler>
+  void node_server<t_payload_handler>::request_callback(const epee::net_utils::connection_context_base& context)
   {
     m_network.m_net_server.get_shared_state().request_callback(context.m_connection_id);
   }
   //-----------------------------------------------------------------------------------
-  template<class t_payload_net_handler>
-  bool node_server<t_payload_net_handler>::relay_notify_to_list(int command, epee::levin::message_writer data_buff, std::vector<boost::uuids::uuid> connections)
+  template<class t_payload_handler>
+  bool node_server<t_payload_handler>::relay_notify_to_list(int command, epee::levin::message_writer data_buff, std::vector<boost::uuids::uuid> connections)
   {
     epee::byte_slice message = data_buff.finalize_notify(command);
     for(const auto& c_id: connections)
@@ -960,20 +955,20 @@ namespace nodetool
     return true;
   }
   //-----------------------------------------------------------------------------------
-  template<class t_payload_net_handler>
- bool node_server<t_payload_net_handler>::send_txs(std::vector<cryptonote::blobdata> txs,const boost::uuids::uuid& source, const cryptonote::relay_method tx_relay)
+  template<class t_payload_handler>
+ bool node_server<t_payload_handler>::send_txs(std::vector<cryptonote::blobdata> txs,const boost::uuids::uuid& source, const cryptonote::relay_method tx_relay)
   {
       return m_network.m_notifier.send_txs(std::move(txs), source, tx_relay);
   }
   //-----------------------------------------------------------------------------------
-  template<class t_payload_net_handler>
-  void node_server<t_payload_net_handler>::callback(p2p_connection_context& context)
+  template<class t_payload_handler>
+  void node_server<t_payload_handler>::callback(p2p_connection_context& context)
   {
     m_payload_handler.on_callback(context);
   }
   //-----------------------------------------------------------------------------------
-  template<class t_payload_net_handler>
-  bool node_server<t_payload_net_handler>::invoke_notify_to_peer(const int command, epee::levin::message_writer message, const epee::net_utils::connection_context_base& context)
+  template<class t_payload_handler>
+  bool node_server<t_payload_handler>::invoke_notify_to_peer(const int command, epee::levin::message_writer message, const epee::net_utils::connection_context_base& context)
   {
     if(is_filtered_command(context.m_remote_address, command))
       return false;
@@ -982,16 +977,16 @@ namespace nodetool
     return res > 0;
   }
   //-----------------------------------------------------------------------------------
-  template<class t_payload_net_handler>
-  bool node_server<t_payload_net_handler>::drop_connection(const epee::net_utils::connection_context_base& context)
+  template<class t_payload_handler>
+  bool node_server<t_payload_handler>::drop_connection(const epee::net_utils::connection_context_base& context)
   {
     m_network.m_net_server.get_shared_state().close(context.m_connection_id);
     return true;
   }
 
   //-----------------------------------------------------------------------------------
-  template<class t_payload_net_handler>
-  bool node_server<t_payload_net_handler>::log_peerlist()
+  template<class t_payload_handler>
+  bool node_server<t_payload_handler>::log_peerlist()
   {
     std::vector<peerlist_entry> pl_white;
     std::vector<peerlist_entry> pl_gray;
@@ -1000,15 +995,15 @@ namespace nodetool
     return true;
   }
   //-----------------------------------------------------------------------------------
-  template<class t_payload_net_handler>
-  bool node_server<t_payload_net_handler>::log_connections()
+  template<class t_payload_handler>
+  bool node_server<t_payload_handler>::log_connections()
   {
     MINFO("Connections: \r\n" << print_connections_container() );
     return true;
   }
   //-----------------------------------------------------------------------------------
-  template<class t_payload_net_handler>
-  std::string node_server<t_payload_net_handler>::print_connections_container()
+  template<class t_payload_handler>
+  std::string node_server<t_payload_handler>::print_connections_container()
   {
 
     std::stringstream ss;
@@ -1026,14 +1021,14 @@ namespace nodetool
     return s;
   }
   //-----------------------------------------------------------------------------------
-  template<class t_payload_net_handler>
-  void node_server<t_payload_net_handler>::on_connection_new(p2p_connection_context& context)
+  template<class t_payload_handler>
+  void node_server<t_payload_handler>::on_connection_new(p2p_connection_context& context)
   {
     MINFO("["<< epee::net_utils::print_connection_context(context) << "] NEW CONNECTION");
   }
   //-----------------------------------------------------------------------------------
-  template<class t_payload_net_handler>
-  void node_server<t_payload_net_handler>::on_connection_close(p2p_connection_context& context)
+  template<class t_payload_handler>
+  void node_server<t_payload_handler>::on_connection_close(p2p_connection_context& context)
   {
     if (!m_network.m_net_server.is_stop_signal_sent() && !context.m_is_income) {
       epee::net_utils::network_address na = AUTO_VAL_INIT(na);
@@ -1047,14 +1042,14 @@ namespace nodetool
     MINFO("["<< epee::net_utils::print_connection_context(context) << "] CLOSE CONNECTION");
   }
 
-  template<class t_payload_net_handler>
-  bool node_server<t_payload_net_handler>::is_priority_node(const epee::net_utils::network_address& na)
+  template<class t_payload_handler>
+  bool node_server<t_payload_handler>::is_priority_node(const epee::net_utils::network_address& na)
   {
     return (std::find(m_priority_peers.begin(), m_priority_peers.end(), na) != m_priority_peers.end()) || (std::find(m_exclusive_peers.begin(), m_exclusive_peers.end(), na) != m_exclusive_peers.end());
   }
 
-  template<class t_payload_net_handler> template <class Container>
-  bool node_server<t_payload_net_handler>::connect_to_peerlist(const Container& peers)
+  template<class t_payload_handler> template <class Container>
+  bool node_server<t_payload_handler>::connect_to_peerlist(const Container& peers)
   {
     for(const epee::net_utils::network_address& na: peers)
     {
@@ -1070,8 +1065,8 @@ namespace nodetool
     return true;
   }
 
-  template<class t_payload_net_handler> template <class Container>
-  bool node_server<t_payload_net_handler>::parse_peers_and_add_to_container(const boost::program_options::variables_map& vm, const command_line::arg_descriptor<std::vector<std::string> > & arg, Container& container)
+  template<class t_payload_handler> template <class Container>
+  bool node_server<t_payload_handler>::parse_peers_and_add_to_container(const boost::program_options::variables_map& vm, const command_line::arg_descriptor<std::vector<std::string> > & arg, Container& container)
   {
     std::vector<std::string> perrs = command_line::get_arg(vm, arg);
 
@@ -1096,8 +1091,8 @@ namespace nodetool
     return true;
   }
 
-  template<class t_payload_net_handler>
-  bool node_server<t_payload_net_handler>::set_max_out_peers(network_zone& zone, int64_t max)
+  template<class t_payload_handler>
+  bool node_server<t_payload_handler>::set_max_out_peers(network_zone& zone, int64_t max)
   {
     if(max == -1) {
       zone.m_shared_state.m_net_config.max_out_connection_count = P2P_DEFAULT_CONNECTIONS_COUNT;
@@ -1107,15 +1102,15 @@ namespace nodetool
     return true;
   }
 
-  template<class t_payload_net_handler>
-  bool node_server<t_payload_net_handler>::set_max_in_peers(network_zone& zone, int64_t max)
+  template<class t_payload_handler>
+  bool node_server<t_payload_handler>::set_max_in_peers(network_zone& zone, int64_t max)
   {
     zone.m_shared_state.m_net_config.max_in_connection_count = max;
     return true;
   }
 
-  template<class t_payload_net_handler>
-  void node_server<t_payload_net_handler>::change_max_out_public_peers(size_t count)
+  template<class t_payload_handler>
+  void node_server<t_payload_handler>::change_max_out_public_peers(size_t count)
   {
     {
       const auto current = m_network.m_net_server.get_shared_state().get_out_connections_count();
@@ -1126,14 +1121,14 @@ namespace nodetool
     }
   }
 
-  template<class t_payload_net_handler>
-  uint32_t node_server<t_payload_net_handler>::get_max_out_public_peers() const
+  template<class t_payload_handler>
+  uint32_t node_server<t_payload_handler>::get_max_out_public_peers() const
   {
     return m_network.m_shared_state.m_net_config.max_out_connection_count;
   }
 
-  template<class t_payload_net_handler>
-  void node_server<t_payload_net_handler>::change_max_in_public_peers(size_t count)
+  template<class t_payload_handler>
+  void node_server<t_payload_handler>::change_max_in_public_peers(size_t count)
   {
     {
       const auto current = m_network.m_net_server.get_shared_state().get_in_connections_count();
@@ -1143,25 +1138,14 @@ namespace nodetool
     }
   }
 
-  template<class t_payload_net_handler>
-  uint32_t node_server<t_payload_net_handler>::get_max_in_public_peers() const
+  template<class t_payload_handler>
+  uint32_t node_server<t_payload_handler>::get_max_in_public_peers() const
   {
     return m_network.m_shared_state.m_net_config.max_in_connection_count;
   }
 
-  template<class t_payload_net_handler>
-  bool node_server<t_payload_net_handler>::set_tos_flag(const boost::program_options::variables_map& vm, int flag)
-  {
-    if(flag==-1){
-      return true;
-    }
-    epee::net_utils::connection<epee::levin::async_protocol_handler<p2p_connection_context> >::set_tos_flag(flag);
-    _dbg1("Set ToS flag  " << flag);
-    return true;
-  }
-
-  template<class t_payload_net_handler>
-  bool node_server<t_payload_net_handler>::set_rate_up_limit(const boost::program_options::variables_map& vm, int64_t limit)
+  template<class t_payload_handler>
+  bool node_server<t_payload_handler>::set_rate_up_limit(const boost::program_options::variables_map& vm, int64_t limit)
   {
     this->islimitup=(limit != -1) && (limit != default_limit_up);
 
@@ -1169,14 +1153,14 @@ namespace nodetool
       limit=default_limit_up;
     }
 
-    //epee::net_utils::connection<epee::levin::async_protocol_handler<p2p_connection_context> >::set_rate_up_limit( limit );
+    //epee::net_utils::connection<epee::levin::async_wire_handler<p2p_connection_context> >::set_rate_up_limit( limit );
     net_server::ConnectionType::set_rate_up_limit(limit);
     MINFO("Set limit-up to " << limit << " kB/s");
     return true;
   }
 
-  template<class t_payload_net_handler>
-  bool node_server<t_payload_net_handler>::set_rate_down_limit(const boost::program_options::variables_map& vm, int64_t limit)
+  template<class t_payload_handler>
+  bool node_server<t_payload_handler>::set_rate_down_limit(const boost::program_options::variables_map& vm, int64_t limit)
   {
     this->islimitdown=(limit != -1) && (limit != default_limit_down);
     if(limit==-1) {
@@ -1187,8 +1171,8 @@ namespace nodetool
     return true;
   }
 
-  template<class t_payload_net_handler>
-  bool node_server<t_payload_net_handler>::set_rate_limit(const boost::program_options::variables_map& vm, int64_t limit)
+  template<class t_payload_handler>
+  bool node_server<t_payload_handler>::set_rate_limit(const boost::program_options::variables_map& vm, int64_t limit)
   {
     int64_t limit_up = 0;
     int64_t limit_down = 0;
@@ -1204,19 +1188,19 @@ namespace nodetool
       limit_down = limit;
     }
     if(!this->islimitup) {
-      epee::net_utils::connection<epee::levin::async_protocol_handler<p2p_connection_context> >::set_rate_up_limit(limit_up);
+      epee::net_utils::connection<epee::levin::async_wire_handler<p2p_connection_context> >::set_rate_up_limit(limit_up);
       MINFO("Set limit-up to " << limit_up << " kB/s");
     }
     if(!this->islimitdown) {
-      epee::net_utils::connection<epee::levin::async_protocol_handler<p2p_connection_context> >::set_rate_down_limit(limit_down);
+      epee::net_utils::connection<epee::levin::async_wire_handler<p2p_connection_context> >::set_rate_down_limit(limit_down);
       MINFO("Set limit-down to " << limit_down << " kB/s");
     }
 
     return true;
   }
 
-  template<class t_payload_net_handler>
-  bool node_server<t_payload_net_handler>::has_too_many_connections(const epee::net_utils::network_address &address)
+  template<class t_payload_handler>
+  bool node_server<t_payload_handler>::has_too_many_connections(const epee::net_utils::network_address &address)
   {
     uint32_t count = 0;
 
@@ -1236,8 +1220,8 @@ namespace nodetool
     return count > max_connections;
   }
 
-  template<class t_payload_net_handler>
-  void node_server<t_payload_net_handler>::add_used_stripe_peer(const typename t_payload_net_handler::connection_context &context)
+  template<class t_payload_handler>
+  void node_server<t_payload_handler>::add_used_stripe_peer(const typename t_payload_handler::peer_context &context)
   {
     const uint32_t stripe = tools::get_pruning_stripe(context.m_pruning_seed);
     if (stripe == 0 || stripe > (1ul << CRYPTONOTE_PRUNING_LOG_STRIPES))
@@ -1250,8 +1234,8 @@ namespace nodetool
     m_used_stripe_peers[index].push_back(context.m_remote_address);
   }
 
-  template<class t_payload_net_handler>
-  void node_server<t_payload_net_handler>::remove_used_stripe_peer(const typename t_payload_net_handler::connection_context &context)
+  template<class t_payload_handler>
+  void node_server<t_payload_handler>::remove_used_stripe_peer(const typename t_payload_handler::peer_context &context)
   {
     const uint32_t stripe = tools::get_pruning_stripe(context.m_pruning_seed);
     if (stripe == 0 || stripe > (1ul << CRYPTONOTE_PRUNING_LOG_STRIPES))
@@ -1263,8 +1247,8 @@ namespace nodetool
         [&context](const epee::net_utils::network_address &na){ return context.m_remote_address == na; }), m_used_stripe_peers[index].end());
   }
 
-  template<class t_payload_net_handler>
-  void node_server<t_payload_net_handler>::clear_used_stripe_peers()
+  template<class t_payload_handler>
+  void node_server<t_payload_handler>::clear_used_stripe_peers()
   {
     CRITICAL_REGION_LOCAL(m_used_stripe_peers_mutex);
     MINFO("clearing used stripe peers");
@@ -1272,8 +1256,8 @@ namespace nodetool
       e.clear();
   }
 
-  template<class t_payload_net_handler>
-  void node_server<t_payload_net_handler>::add_upnp_port_mapping_impl(uint32_t port, bool ipv6) // if ipv6 false, do ipv4
+  template<class t_payload_handler>
+  void node_server<t_payload_handler>::add_upnp_port_mapping_impl(uint32_t port, bool ipv6) // if ipv6 false, do ipv4
   {
     std::string ipversion = ipv6 ? "(IPv6)" : "(IPv4)";
     MDEBUG("Attempting to add IGD port mapping " << ipversion << ".");
@@ -1321,28 +1305,28 @@ namespace nodetool
     }
   }
 
-  template<class t_payload_net_handler>
-  void node_server<t_payload_net_handler>::add_upnp_port_mapping_v4(uint32_t port)
+  template<class t_payload_handler>
+  void node_server<t_payload_handler>::add_upnp_port_mapping_v4(uint32_t port)
   {
     add_upnp_port_mapping_impl(port, false);
   }
 
-  template<class t_payload_net_handler>
-  void node_server<t_payload_net_handler>::add_upnp_port_mapping_v6(uint32_t port)
+  template<class t_payload_handler>
+  void node_server<t_payload_handler>::add_upnp_port_mapping_v6(uint32_t port)
   {
     add_upnp_port_mapping_impl(port, true);
   }
 
-  template<class t_payload_net_handler>
-  void node_server<t_payload_net_handler>::add_upnp_port_mapping(uint32_t port, bool ipv4, bool ipv6)
+  template<class t_payload_handler>
+  void node_server<t_payload_handler>::add_upnp_port_mapping(uint32_t port, bool ipv4, bool ipv6)
   {
     if (ipv4) add_upnp_port_mapping_v4(port);
     if (ipv6) add_upnp_port_mapping_v6(port);
   }
 
 
-  template<class t_payload_net_handler>
-  void node_server<t_payload_net_handler>::delete_upnp_port_mapping_impl(uint32_t port, bool ipv6)
+  template<class t_payload_handler>
+  void node_server<t_payload_handler>::delete_upnp_port_mapping_impl(uint32_t port, bool ipv6)
   {
     std::string ipversion = ipv6 ? "(IPv6)" : "(IPv4)";
     MDEBUG("Attempting to delete IGD port mapping " << ipversion << ".");
@@ -1386,20 +1370,20 @@ namespace nodetool
     }
   }
 
-  template<class t_payload_net_handler>
-  void node_server<t_payload_net_handler>::delete_upnp_port_mapping_v4(uint32_t port)
+  template<class t_payload_handler>
+  void node_server<t_payload_handler>::delete_upnp_port_mapping_v4(uint32_t port)
   {
     delete_upnp_port_mapping_impl(port, false);
   }
 
-  template<class t_payload_net_handler>
-  void node_server<t_payload_net_handler>::delete_upnp_port_mapping_v6(uint32_t port)
+  template<class t_payload_handler>
+  void node_server<t_payload_handler>::delete_upnp_port_mapping_v6(uint32_t port)
   {
     delete_upnp_port_mapping_impl(port, true);
   }
 
-  template<class t_payload_net_handler>
-  void node_server<t_payload_net_handler>::delete_upnp_port_mapping(uint32_t port)
+  template<class t_payload_handler>
+  void node_server<t_payload_handler>::delete_upnp_port_mapping(uint32_t port)
   {
     delete_upnp_port_mapping_v4(port);
     delete_upnp_port_mapping_v6(port);

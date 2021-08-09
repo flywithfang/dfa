@@ -38,7 +38,7 @@
 
 #include "byte_slice.h"
 #include "crypto/crypto.h"
-#include "cryptonote_basic/connection_context.h"
+#include "cryptonote_basic/cryptonote_peer_context.h"
 #include "cryptonote_config.h"
 #include "cryptonote_core/cryptonote_core.h"
 #include "cryptonote_core/i_core_events.h"
@@ -168,7 +168,7 @@ namespace
     {
         test_endpoint endpoint_;
         cryptonote::levin::detail::p2p_context context_;
-        epee::levin::async_protocol_handler<cryptonote::levin::detail::p2p_context> handler_;
+        epee::levin::async_wire_handler<cryptonote::levin::detail::p2p_context> handler_;
 
     public:
         test_connection(boost::asio::io_service& io_service, cryptonote::levin::connections& connections, boost::uuids::random_generator& random_generator, const bool is_incoming)
@@ -178,7 +178,7 @@ namespace
         {
             using base_type = epee::net_utils::connection_context_base;
             static_cast<base_type&>(context_) = base_type{random_generator(), {}, is_incoming, false};
-            context_.m_state = cryptonote::cryptonote_connection_context::state_normal;
+            context_.m_state = cryptonote::cryptonote_peer_context::state_normal;
             handler_.after_init_connection();
         }
 
@@ -211,7 +211,7 @@ namespace
         std::string payload;
     };
 
-    class test_receiver final : public epee::levin::levin_commands_handler<cryptonote::levin::detail::p2p_context>
+    class test_receiver final : public epee::levin::i_levin_commands_handler<cryptonote::levin::detail::p2p_context>
     {
         std::deque<received_message> invoked_;
         std::deque<received_message> notified_;
@@ -273,7 +273,7 @@ namespace
 
     public:
         test_receiver()
-          : epee::levin::levin_commands_handler<cryptonote::levin::detail::p2p_context>(),
+          : epee::levin::i_levin_commands_handler<cryptonote::levin::detail::p2p_context>(),
             invoked_(),
             notified_()
         {}
