@@ -256,7 +256,6 @@ namespace nodetool
   {
     bool testnet = command_line::get_arg(vm, cryptonote::arg_testnet_on);
     bool stagenet = command_line::get_arg(vm, cryptonote::arg_stagenet_on);
-    const bool pad_txs = command_line::get_arg(vm, arg_pad_transactions);
     m_nettype = testnet ? cryptonote::TESTNET : stagenet ? cryptonote::STAGENET : cryptonote::MAINNET;
 
     network_zone& public_zone = m_network;
@@ -301,7 +300,7 @@ namespace nodetool
     m_require_ipv4 = !command_line::get_arg(vm, arg_p2p_ignore_ipv4);
 
     public_zone.m_notifier = cryptonote::levin::notify{
-      m_network.m_net_server.get_io_service(), public_zone.m_net_server.get_config_shared(), pad_txs, m_payload_handler.get_core()
+      m_network.m_net_server.get_io_service(), public_zone.m_net_server.get_config_shared(), m_payload_handler.get_core()
     };
 
     if (command_line::has_arg(vm, arg_p2p_add_peer))

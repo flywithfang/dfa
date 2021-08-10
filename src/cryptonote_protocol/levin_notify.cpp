@@ -155,7 +155,7 @@ namespace levin
       return get_out_connections(p2p, get_blockchain_height(p2p, core));
     }
 
-    epee::levin::message_writer make_tx_message(std::vector<blobdata>&& txs, const bool pad, const bool fluff)
+    epee::levin::message_writer make_tx_message(std::vector<blobdata>&& txs, const bool fluff)
     {
       NOTIFY_NEW_TRANSACTIONS::request request{};
       request.txs = std::move(txs);
@@ -170,7 +170,7 @@ namespace levin
 
     bool make_payload_send_txs(shared_state& p2p, std::vector<blobdata>&& txs, const boost::uuids::uuid& destination, const bool fluff)
     {
-      epee::byte_slice blob = make_tx_message(std::move(txs), pad, fluff).finalize_notify(NOTIFY_NEW_TRANSACTIONS::ID);
+      epee::byte_slice blob = make_tx_message(std::move(txs),  fluff).finalize_notify(NOTIFY_NEW_TRANSACTIONS::ID);
       return p2p.send(std::move(blob), destination);
     }
 
@@ -210,27 +210,25 @@ namespace levin
   {
     struct zone
     {
-      explicit zone(boost::asio::io_service& io_service, std::shared_ptr<shared_state> p2p, epee::byte_slice noise_in,  bool pad_txs)
+      explicit zone(boost::asio::io_service& io_service, std::shared_ptr<shared_state> p2p)
         : p2p(std::move(p2p)),
           next_epoch(io_service),
-          flush_txs(io_service),
+          flush_timer(io_service),
           strand(io_service),
           map(),
           connection_count(0),
           flush_callbacks(0),
-          pad_txs(pad_txs),
           fluffing(false)
       {
       }
 
       const std::shared_ptr<shared_state> p2p;
       boost::asio::steady_timer next_epoch;
-      boost::asio::steady_timer flush_txs;
+      boost::asio::steady_timer flush_timer;
       boost::asio::io_service::strand strand;
       net::dandelionpp::connection_map map;//!< Tracks outgoing uuid's for noise channels or Dandelion++ stems
       std::atomic<std::size_t> connection_count; //!< Only update in strand, can be read at any time
       std::uint32_t flush_callbacks;             //!< Number of active fluff flush callbacks queued
-      const bool pad_txs;                        //!< Pad txs to the next boundary for privacy
       bool fluffing;                             //!< Zone is in Dandelion++ fluff epoch
     };
   } // detail
@@ -251,8 +249,8 @@ namespace levin
 
         detail::zone& this_zone = *zone;
         ++this_zone.flush_callbacks;
-        this_zone.flush_txs.expires_at(flush_time);
-        this_zone.flush_txs.async_wait(this_zone.strand.wrap(fluff_flush{std::move(zone)}));
+        this_zone.flush_timer.expires_at(flush_time);
+        this_zone.flush_timer.async_wait(this_zone.strand.wrap(fluff_flush{std::move(zone)}));
       }
 
       void operator()(const boost::system::error_code error)
@@ -295,7 +293,7 @@ namespace levin
         for (auto& connection : shared_state)
         {
           std::sort(connection.first.begin(), connection.first.end()); // don't leak receive order
-          make_payload_send_txs(*zone_->p2p, std::move(connection.first), connection.second, zone_->pad_txs, true);
+          make_payload_send_txs(*zone_->p2p, std::move(connection.first), connection.second,  true);
         }
 
         if (next_flush != std::chrono::steady_clock::time_point::max())
@@ -352,7 +350,7 @@ namespace levin
 
         if (next_flush == std::chrono::steady_clock::time_point::max())
           MWARNING("Unable to send transaction(s), no available shared_state");
-        else if (!zone->flush_callbacks || next_flush < zone->flush_txs.expires_at())
+        else if (!zone->flush_callbacks || next_flush < zone->flush_timer.expires_at())
           fluff_flush::queue(std::move(zone), next_flush);
       }
     };
@@ -501,15 +499,14 @@ namespace levin
     };
   } // anonymous
 
-  notify::notify(boost::asio::io_service& service, std::shared_ptr<shared_state> p2p,  const bool pad_txs, i_core_events& core)
-    : zone_(std::make_shared<detail::zone>(service, std::move(p2p),   pad_txs))
+  notify::notify(boost::asio::io_service& service, std::shared_ptr<shared_state> p2p, i_core_events& core)
+    : zone_(std::make_shared<detail::zone>(service, std::move(p2p)))
     , core_(std::addressof(core))
   {
     if (!zone_->p2p)
       throw std::logic_error{"cryptonote::levin::notify cannot have nullptr p2p argument"};
 
     {
-      const auto now = std::chrono::steady_clock::now();
       const auto epoch_range =  dandelionpp_epoch_range;
 
       start_epoch{zone_, dandelionpp_min_epoch, epoch_range, CRYPTONOTE_DANDELIONPP_STEMS, core_}();
@@ -525,12 +522,12 @@ namespace levin
     if (!zone_)
       return {false, false};
 
-    return {!zone_->noise.empty(), CRYPTONOTE_NOISE_CHANNELS <= zone_->connection_count};
+    return {false, CRYPTONOTE_NOISE_CHANNELS <= zone_->connection_count};
   }
 
   void notify::new_out_connection()
   {
-    if (!zone_ || zone_->noise.empty() || CRYPTONOTE_NOISE_CHANNELS <= zone_->connection_count)
+    if (!zone_  || CRYPTONOTE_NOISE_CHANNELS <= zone_->connection_count)
       return;
 
     zone_->strand.dispatch(
@@ -556,7 +553,7 @@ namespace levin
   {
     if (!zone_)
       return;
-    zone_->flush_txs.cancel();
+    zone_->flush_timer.cancel();
   }
 
   bool notify::send_txs(std::vector<blobdata> txs, const boost::uuids::uuid& source, relay_method tx_relay)
