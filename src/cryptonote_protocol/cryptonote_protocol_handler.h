@@ -122,7 +122,9 @@ namespace cryptonote
     bool get_payload_sync_data(CORE_SYNC_DATA& hshd);
     bool on_callback(cryptonote_peer_context& context);
     t_core& get_core(){return m_core;}
-    virtual bool is_synchronized() const final { return !no_sync() && m_synchronized; }
+    virtual bool is_synchronized() const final {
+     return !no_sync() && m_synchronized;
+     }
     void log_connections();
     std::list<connection_info> get_connections();
     const block_queue &get_block_queue() const { return m_block_queue; }
@@ -170,7 +172,18 @@ namespace cryptonote
     size_t skip_unneeded_hashes(cryptonote_peer_context& context, bool check_block_queue) const;
     bool request_txpool_complement(cryptonote_peer_context &context);
     void hit_score(cryptonote_peer_context &context, int32_t score);
+    template<class MSG>
+      bool post_notify(typename MSG::request& arg, cryptonote_peer_context& context)
+      {
+        MDEBUG("[" << epee::net_utils::print_connection_context_short(context) << "] post " << typeid(MSG).name() << " -->");
 
+        epee::levin::message_writer out{256 * 1024}; // optimize for block responses
+        epee::serialization::store_t_to_binary(arg, out.buffer);
+        //handler_response_blocks_now(blob.size()); // XXX
+        return m_p2p->invoke_notify_to_peer(MSG::ID, std::move(out), context);
+      }
+
+private:
 
     t_core& m_core;
 
@@ -211,16 +224,7 @@ namespace cryptonote
 
     boost::mutex m_bad_peer_check_lock;
 
-    template<class MSG>
-      bool post_notify(typename MSG::request& arg, cryptonote_peer_context& context)
-      {
-        MDEBUG("[" << epee::net_utils::print_connection_context_short(context) << "] post " << typeid(MSG).name() << " -->");
 
-        epee::levin::message_writer out{256 * 1024}; // optimize for block responses
-        epee::serialization::store_t_to_binary(arg, out.buffer);
-        //handler_response_blocks_now(blob.size()); // XXX
-        return m_p2p->invoke_notify_to_peer(MSG::ID, std::move(out), context);
-      }
   };
 
 } // namespace

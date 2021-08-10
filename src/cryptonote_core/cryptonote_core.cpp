@@ -1405,7 +1405,7 @@ namespace cryptonote
       CHECK_AND_ASSERT_MES(txs.size() == b.tx_hashes.size() && !missed_txs.size(), false, "can't find some transactions in found block:" << get_block_hash(b) << " txs.size()=" << txs.size()
         << ", b.tx_hashes.size()=" << b.tx_hashes.size() << ", missed_txs.size()" << missed_txs.size());
 
-      block_to_blob(b, arg.b.block);
+      cryptonote::block_to_blob(b, arg.b.block);
       //pack transactions
       for(auto& tx:  txs)
         arg.b.txs.push_back({tx, crypto::null_hash});

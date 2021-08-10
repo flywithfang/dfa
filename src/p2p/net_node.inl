@@ -301,7 +301,7 @@ namespace nodetool
     m_require_ipv4 = !command_line::get_arg(vm, arg_p2p_ignore_ipv4);
 
     public_zone.m_notifier = cryptonote::levin::notify{
-      m_network.m_net_server.get_io_service(), public_zone.m_net_server.get_config_shared(), nullptr, epee::net_utils::zone::public_, pad_txs, m_payload_handler.get_core()
+      m_network.m_net_server.get_io_service(), public_zone.m_net_server.get_config_shared(), pad_txs, m_payload_handler.get_core()
     };
 
     if (command_line::has_arg(vm, arg_p2p_add_peer))
@@ -619,9 +619,8 @@ namespace nodetool
       MINFO("Thread monitor number of peers - done");
     })); // lambda
 
-    network_zone& public_zone =  m_network;
-    public_zone.m_net_server.add_idle_handler(boost::bind(&MyType::idle_worker, this), 1000);
-    public_zone.m_net_server.add_idle_handler(boost::bind(&t_payload_handler::on_idle, &m_payload_handler), 1000);
+    m_network.m_net_server.add_idle_handler(boost::bind(&MyType::idle_worker, this), 1000);
+    m_network.m_net_server.add_idle_handler(boost::bind(&t_payload_handler::on_idle, &m_payload_handler), 1000);
 
     //here you can set worker threads count
     int thrds_count = 2;
@@ -629,7 +628,7 @@ namespace nodetool
     attrs.set_stack_size(THREAD_STACK_SIZE);
     //go to loop
     MINFO("Run p2p net_service loop( " << thrds_count << " threads)... staack size "<<THREAD_STACK_SIZE);
-    if(!public_zone.m_net_server.run_server(thrds_count, true, attrs))
+    if(!m_network.m_net_server.run_server(thrds_count, true, attrs))
     {
       LOG_ERROR("Failed to run net tcp server!");
     }

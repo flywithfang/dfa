@@ -211,7 +211,9 @@ PRAGMA_WARNING_DISABLE_VS(4355)
   {
     TRY_ENTRY();
     MINFO("[" << print_connection_context_short(m_con_context) << "] fired_callback");
+
     m_wire_handler.handle_qued_callback();
+    
     CATCH_ENTRY_L0("connection<t_wire_handler>::call_back_starter()", void());
   }
   //---------------------------------------------------------------------------------

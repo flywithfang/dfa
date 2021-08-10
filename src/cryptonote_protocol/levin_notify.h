@@ -63,7 +63,7 @@ namespace levin
     struct zone; //!< Internal data needed for zone notifications
   } // detail
 
-  using connections = epee::levin::async_wire_shared_state<detail::p2p_context>;
+  using shared_state = epee::levin::async_wire_shared_state<detail::p2p_context>;
 
   //! Provides tx notification privacy
   class notify
@@ -85,7 +85,7 @@ namespace levin
     {}
 
     //! Construct an instance with available notification `zones`.
-    explicit notify(boost::asio::io_service& service, std::shared_ptr<connections> p2p, epee::byte_slice noise, epee::net_utils::zone zone, bool pad_txs, i_core_events& core);
+    explicit notify(boost::asio::io_service& service, std::shared_ptr<shared_state> p2p, epee::byte_slice noise,  bool pad_txs, i_core_events& core);
 
     notify(const notify&) = delete;
     notify(notify&&) = default;
