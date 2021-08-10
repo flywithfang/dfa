@@ -220,7 +220,7 @@ namespace cryptonote
   };
 
   //-----------------------------------------------------------------------------------------------
-  core::core(i_cryptonote_protocol* pprotocol):
+  core::core():
               m_mempool(m_blockchain),
               m_blockchain(m_mempool),
               m_miner(this),
@@ -235,15 +235,8 @@ namespace cryptonote
               m_update_available(false)
   {
     m_checkpoints_updating.clear();
-    set_cryptonote_protocol(pprotocol);
   }
-  void core::set_cryptonote_protocol(i_cryptonote_protocol* pprotocol)
-  {
-    if(pprotocol)
-      m_pprotocol = pprotocol;
-    else
-      m_pprotocol = &m_protocol_stub;
-  }
+
   //-----------------------------------------------------------------------------------
   void core::set_checkpoints(checkpoints&& chk_pts)
   {
@@ -682,8 +675,8 @@ namespace cryptonote
     m_blockchain.set_show_time_stats(show_time_stats);
     CHECK_AND_ASSERT_MES(r, false, "Failed to initialize blockchain storage");
 
-    block_sync_size = command_line::get_arg(vm, arg_block_sync_size);
-    if (block_sync_size > BLOCKS_SYNCHRONIZING_MAX_COUNT)
+    m_block_sync_size = command_line::get_arg(vm, arg_block_sync_size);
+    if (m_block_sync_size > BLOCKS_SYNCHRONIZING_MAX_COUNT)
       MERROR("Error --block-sync-size cannot be greater than " << BLOCKS_SYNCHRONIZING_MAX_COUNT);
 
   
@@ -1131,14 +1124,12 @@ namespace cryptonote
   //-----------------------------------------------------------------------------------------------
   size_t core::get_block_sync_size(uint64_t height) const
   {
-    static const uint64_t quick_height = m_nettype == TESTNET ? 801219 : m_nettype == MAINNET ? 1220516 : 0;
     size_t res = 0;
-    if (block_sync_size > 0)
-      res = block_sync_size;
-    else if (height >= quick_height)
-      res = BLOCKS_SYNCHRONIZING_DEFAULT_COUNT;
+    if (m_block_sync_size > 0)
+      res = m_block_sync_size;
     else
-      res = BLOCKS_SYNCHRONIZING_DEFAULT_COUNT_PRE_V4;
+      res = BLOCKS_SYNCHRONIZING_DEFAULT_COUNT;
+   
 
     static size_t max_block_size = 0;
     if (max_block_size == 0)
@@ -1389,36 +1380,10 @@ namespace cryptonote
 
 
     CHECK_AND_ASSERT_MES(!bvc.m_verifivation_failed, false, "mined block failed verification");
-    if(bvc.m_added_to_main_chain)
-    {
-      cryptonote_peer_context exclude_context = {};
-      NOTIFY_NEW_BLOCK::request arg = AUTO_VAL_INIT(arg);
-      arg.current_blockchain_height = m_blockchain.get_current_blockchain_height();
-      std::vector<crypto::hash> missed_txs;
-      std::vector<cryptonote::blobdata> txs;
-      m_blockchain.get_transactions_blobs(b.tx_hashes, txs, missed_txs);
-      if(missed_txs.size() &&  m_blockchain.get_block_id_by_height(get_block_height(b)) != get_block_hash(b))
-      {
-        LOG_PRINT_L1("Block found but, seems that reorganize just happened after that, do not relay this block");
-        return true;
-      }
-      CHECK_AND_ASSERT_MES(txs.size() == b.tx_hashes.size() && !missed_txs.size(), false, "can't find some transactions in found block:" << get_block_hash(b) << " txs.size()=" << txs.size()
-        << ", b.tx_hashes.size()=" << b.tx_hashes.size() << ", missed_txs.size()" << missed_txs.size());
-
-      cryptonote::block_to_blob(b, arg.b.block);
-      //pack transactions
-      for(auto& tx:  txs)
-        arg.b.txs.push_back({tx, crypto::null_hash});
-
-      m_pprotocol->relay_block(arg, exclude_context);
-    }
+    
     return true;
   }
-  //-----------------------------------------------------------------------------------------------
-  bool core::is_synchronized() const
-  {
-    return m_pprotocol != nullptr && m_pprotocol->is_synchronized();
-  }
+ 
   //-----------------------------------------------------------------------------------------------
   void core::on_synchronized()
   {
@@ -1512,6 +1477,13 @@ namespace cryptonote
     m_mempool.get_transactions(txs, include_sensitive_data);
     return true;
   }
+   std::vector<std::tuple<crypto::hash, cryptonote::blobdata, relay_method>> core::get_relayable_transactions()
+   {
+      std::vector<std::tuple<crypto::hash, cryptonote::blobdata, relay_method>> v;
+      m_mempool.get_relayable_transactions(v);
+      return v;
+   }
+
   //-----------------------------------------------------------------------------------------------
   bool core::get_pool_transaction_hashes(std::vector<crypto::hash>& txs, bool include_sensitive_data) const
   {

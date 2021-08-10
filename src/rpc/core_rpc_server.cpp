@@ -302,7 +302,7 @@ namespace cryptonote
   //------------------------------------------------------------------------------------------------------------------------------
   bool core_rpc_server::check_core_ready()
   {
-    if(!m_p2p.get_payload_object().is_synchronized())
+    if(!m_p2p.get_crypto_protocol().is_synchronized())
     {
       return false;
     }
@@ -372,7 +372,7 @@ namespace cryptonote
     m_core.get_blockchain_top(res.height, top_hash);
     ++res.height; // turn top block height into blockchain height
     res.top_block_hash = string_tools::pod_to_hex(top_hash);
-    res.target_height = m_p2p.get_payload_object().is_synchronized() ? 0 : m_core.get_target_blockchain_height();
+    res.target_height = m_p2p.get_crypto_protocol().is_synchronized() ? 0 : m_core.get_target_blockchain_height();
     store_difficulty(m_core.get_blockchain_storage().get_difficulty_for_next_block(), res.difficulty, res.wide_difficulty, res.difficulty_top64);
     res.target = m_core.get_blockchain_storage().get_difficulty_target();
     res.tx_count = m_core.get_blockchain_storage().get_total_transactions() - res.height; //without coinbase
@@ -420,7 +420,7 @@ namespace cryptonote
     res.update_available = restricted ? false : m_core.is_update_available();
     res.version = restricted ? "" : MONERO_VERSION_FULL;
     res.synchronized = check_core_ready();
-    res.busy_syncing = m_p2p.get_payload_object().is_busy_syncing();
+    res.busy_syncing = m_p2p.get_crypto_protocol().is_busy_syncing();
 
     res.status = CORE_RPC_STATUS_OK;
     return true;
@@ -1019,27 +1019,95 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
     res.status = CORE_RPC_STATUS_OK;
     return true;
   }
+   uint64_t core_rpc_server::get_block_reward(const block& blk)
+  {
+    uint64_t reward = 0;
+    for(const tx_out& out: blk.miner_tx.vout)
+    {
+      reward += out.amount;
+    }
+    return reward;
+  }
+   //------------------------------------------------------------------------------------------------------------------------------
+  bool core_rpc_server::on_submitblock(const COMMAND_RPC_SUBMITBLOCK::request& req, COMMAND_RPC_SUBMITBLOCK::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
+  {
+      try{
+      PERF_TIMER(submitblock);
+      RPCTracker tracker("submitblock", PERF_TIMER_NAME(submitblock));
+
+      CHECK_CORE_READY();
+      if(req.size()!=1)
+      {
+        error_resp.code = CORE_RPC_ERROR_CODE_WRONG_PARAM;
+        error_resp.message = "Wrong param";
+        return false;
+      }
+      blobdata blockblob;
+      if(!string_tools::parse_hexstr_to_binbuff(req[0], blockblob))
+      {
+        
+      }
+      
+      // Fixing of high orphan issue for most pools
+      // Thanks Boolberry!
+      const block b =parse_and_validate_block_from_blob(blockblob);
+
+      // Fix from Boolberry neglects to check block
+      // size, do that with the function below
+      if(!m_core.check_incoming_block_size(blockblob))
+      {
+        error_resp.code = CORE_RPC_ERROR_CODE_WRONG_BLOCKBLOB_SIZE;
+        error_resp.message = "Block bloc size is too big, rejecting block";
+        return false;
+      }
+
+      block_verification_context bvc;
+      if(!m_core.handle_block_found(b, bvc))
+      {
+        error_resp.code = CORE_RPC_ERROR_CODE_BLOCK_NOT_ACCEPTED;
+        error_resp.message = "Block not accepted";
+        return false;
+      }
+
+      if(bvc.m_added_to_main_chain)
+      {
+        cryptonote_peer_context exclude_context = {};
+        NOTIFY_NEW_BLOCK::request arg {};
+        arg.current_blockchain_height = m_core.get_current_blockchain_height();
+        std::vector<crypto::hash> missed_txs;
+        std::vector<cryptonote::blobdata> txs;
+        m_core.get_transactions(b.tx_hashes, txs, missed_txs);
+        if(missed_txs.size() &&  m_core.get_block_id_by_height(cryptonote::get_block_height(b)) != get_block_hash(b))
+        {
+          MWARNING("Block found but, seems that reorganize just happened after that, do not relay this block");
+          return true;
+        }
+        CHECK_AND_ASSERT_MES(txs.size() == b.tx_hashes.size() && !missed_txs.size(), false, "can't find some transactions in found block:" << get_block_hash(b) << " txs.size()=" << txs.size()<< ", b.tx_hashes.size()=" << b.tx_hashes.size() << ", missed_txs.size()" << missed_txs.size());
+
+        cryptonote::block_to_blob(b, arg.b.block);
+        //pack transactions
+        for(auto& tx:  txs)
+          arg.b.txs.push_back({tx, crypto::null_hash});
+
+        m_p2p.get_crypto_protocol().relay_block(arg, exclude_context);
+      }
+
+      res.status = CORE_RPC_STATUS_OK;
+      return true;
+    }
+    catch(std::exception & ex){
+       error_resp.code = CORE_RPC_ERROR_CODE_WRONG_BLOCKBLOB;
+        error_resp.message = "Wrong block blob";
+        return false;
+    }
+
+  }
+ 
   //------------------------------------------------------------------------------------------------------------------------------
-  bool core_rpc_server::on_send_raw_tx(const COMMAND_RPC_SEND_RAW_TX::request& req, COMMAND_RPC_SEND_RAW_TX::response& res, const connection_context *ctx)
+  bool core_rpc_server::on_submit_tx(const COMMAND_RPC_SEND_RAW_TX::request& req, COMMAND_RPC_SEND_RAW_TX::response& res, const connection_context *ctx)
   {
     RPC_TRACKER(send_raw_tx);
 
-   const bool restricted = m_restricted && ctx;
-
-    bool skip_validation = false;
-    if (!restricted)
-    {
-      boost::shared_lock<boost::shared_mutex> lock(m_bootstrap_daemon_mutex);
-      if (m_should_use_bootstrap_daemon)
-      {
-        skip_validation = !check_core_ready();
-      }
-      else
-      {
-        CHECK_CORE_READY();
-      }
-    }
-    else
     {
       CHECK_CORE_READY();
     }
@@ -1048,14 +1116,14 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
     std::string tx_blob;
     if(!string_tools::parse_hexstr_to_binbuff(req.tx_as_hex, tx_blob))
     {
-      LOG_PRINT_L0("[on_send_raw_tx]: Failed to parse tx from hexbuff: " << req.tx_as_hex);
+      LOG_PRINT_L0("[on_submit_tx]: Failed to parse tx from hexbuff: " << req.tx_as_hex);
       res.status = "Failed";
       return true;
     }
 
     res.sanity_check_failed = false;
 
-    if (!skip_validation)
+   // if (!skip_validation)
     {
       tx_verification_context tvc{};
       if(!m_core.handle_incoming_tx({tx_blob, crypto::null_hash}, tvc, (req.do_not_relay ? relay_method::none : relay_method::local), false) || tvc.m_verifivation_failed)
@@ -1081,18 +1149,18 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
         const std::string punctuation = reason.empty() ? "" : ": ";
         if (tvc.m_verifivation_failed)
         {
-          LOG_PRINT_L0("[on_send_raw_tx]: tx verification failed" << punctuation << reason);
+          LOG_PRINT_L0("[on_submit_tx]: tx verification failed" << punctuation << reason);
         }
         else
         {
-          LOG_PRINT_L0("[on_send_raw_tx]: Failed to process tx" << punctuation << reason);
+          LOG_PRINT_L0("[on_submit_tx]: Failed to process tx" << punctuation << reason);
         }
         return true;
       }
 
       if(tvc.m_relay == relay_method::none)
       {
-        LOG_PRINT_L0("[on_send_raw_tx]: tx accepted, but not relayed");
+        LOG_PRINT_L0("[on_submit_tx]: tx accepted, but not relayed");
         res.reason = "Not relayed";
         res.not_relayed = true;
         res.status = CORE_RPC_STATUS_OK;
@@ -1102,7 +1170,7 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
 
     NOTIFY_NEW_TRANSACTIONS::request r;
     r.txs.push_back(std::move(tx_blob));
-    m_core.get_protocol()->relay_transactions(r, boost::uuids::nil_uuid(), epee::net_utils::zone::invalid, relay_method::local);
+    m_p2p.get_crypto_protocol().relay_transactions(r, boost::uuids::nil_uuid(), epee::net_utils::zone::invalid, relay_method::local);
     //TODO: make sure that tx has reached other nodes here, probably wait to receive reflections from other nodes
     res.status = CORE_RPC_STATUS_OK;
     return true;
@@ -1548,65 +1616,7 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
     return true;
   }
  
-  //------------------------------------------------------------------------------------------------------------------------------
-  bool core_rpc_server::on_submitblock(const COMMAND_RPC_SUBMITBLOCK::request& req, COMMAND_RPC_SUBMITBLOCK::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
-  {
-    try{
-    PERF_TIMER(submitblock);
-    RPCTracker tracker("submitblock", PERF_TIMER_NAME(submitblock));
-
-    CHECK_CORE_READY();
-    if(req.size()!=1)
-    {
-      error_resp.code = CORE_RPC_ERROR_CODE_WRONG_PARAM;
-      error_resp.message = "Wrong param";
-      return false;
-    }
-    blobdata blockblob;
-    if(!string_tools::parse_hexstr_to_binbuff(req[0], blockblob))
-    {
-      
-    }
-    
-    // Fixing of high orphan issue for most pools
-    // Thanks Boolberry!
-    const block b =parse_and_validate_block_from_blob(blockblob);
-
-    // Fix from Boolberry neglects to check block
-    // size, do that with the function below
-    if(!m_core.check_incoming_block_size(blockblob))
-    {
-      error_resp.code = CORE_RPC_ERROR_CODE_WRONG_BLOCKBLOB_SIZE;
-      error_resp.message = "Block bloc size is too big, rejecting block";
-      return false;
-    }
-
-    block_verification_context bvc;
-    if(!m_core.handle_block_found(b, bvc))
-    {
-      error_resp.code = CORE_RPC_ERROR_CODE_BLOCK_NOT_ACCEPTED;
-      error_resp.message = "Block not accepted";
-      return false;
-    }
-    res.status = CORE_RPC_STATUS_OK;
-    return true;
-  }
-  catch(std::exception & ex){
-     error_resp.code = CORE_RPC_ERROR_CODE_WRONG_BLOCKBLOB;
-      error_resp.message = "Wrong block blob";
-      return false;
-  }
-  }
  
-  uint64_t core_rpc_server::get_block_reward(const block& blk)
-  {
-    uint64_t reward = 0;
-    for(const tx_out& out: blk.miner_tx.vout)
-    {
-      reward += out.amount;
-    }
-    return reward;
-  }
   //------------------------------------------------------------------------------------------------------------------------------
   bool core_rpc_server::fill_block_header_response(const block& blk, bool orphan_status, uint64_t height, const crypto::hash& hash, block_header_response& response, bool fill_pow_hash)
   {
@@ -1674,7 +1684,7 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
         return m_bootstrap_daemon->handle_result(false, {});
       }
 
-      if (!m_p2p.get_payload_object().no_sync())
+      if (!m_p2p.get_crypto_protocol().no_sync())
       {
         uint64_t top_height = m_core.get_current_blockchain_height();
         m_should_use_bootstrap_daemon = top_height + 10 < bootstrap_daemon_height;
@@ -1981,7 +1991,7 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
   {
     RPC_TRACKER(get_connections);
 
-    res.connections = m_p2p.get_payload_object().get_connections();
+    res.connections = m_p2p.get_crypto_protocol().get_connections();
 
     res.status = CORE_RPC_STATUS_OK;
 
@@ -2497,12 +2507,12 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
     crypto::hash top_hash;
     m_core.get_blockchain_top(res.height, top_hash);
     ++res.height; // turn top block height into blockchain height
-    res.target_height = m_p2p.get_payload_object().is_synchronized() ? 0 : m_core.get_target_blockchain_height();
-    res.next_needed_pruning_seed = m_p2p.get_payload_object().get_next_needed_pruning_stripe().second;
+    res.target_height = m_p2p.get_crypto_protocol().is_synchronized() ? 0 : m_core.get_target_blockchain_height();
+    res.next_needed_pruning_seed = m_p2p.get_crypto_protocol().get_next_needed_pruning_stripe().second;
 
-    for (const auto &c: m_p2p.get_payload_object().get_connections())
+    for (const auto &c: m_p2p.get_crypto_protocol().get_connections())
       res.peers.push_back({c});
-    const cryptonote::block_queue &block_queue = m_p2p.get_payload_object().get_block_queue();
+    const cryptonote::block_queue &block_queue = m_p2p.get_crypto_protocol().get_block_queue();
     block_queue.foreach([&](const cryptonote::block_queue::span &span) {
       const std::string span_connection_id = epee::string_tools::pod_to_hex(span.connection_id);
       uint32_t speed = (uint32_t)(100.0f * block_queue.get_speed(span.connection_id) + 0.5f);
@@ -2518,11 +2528,7 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
   bool core_rpc_server::on_get_txpool_backlog(const COMMAND_RPC_GET_TRANSACTION_POOL_BACKLOG::request& req, COMMAND_RPC_GET_TRANSACTION_POOL_BACKLOG::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
   {
     RPC_TRACKER(get_txpool_backlog);
-    bool r;
-    if (use_bootstrap_daemon_if_necessary<COMMAND_RPC_GET_TRANSACTION_POOL_BACKLOG>(invoke_http_mode::JON_RPC, "get_txpool_backlog", req, res, r))
-      return r;
-    size_t n_txes = m_core.get_pool_transactions_count();
-    CHECK_PAYMENT_MIN1(req, res, COST_PER_TX_POOL_STATS * n_txes, false);
+  
 
     if (!m_core.get_txpool_backlog(res.backlog))
     {

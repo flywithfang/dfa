@@ -294,7 +294,7 @@ public:
     virtual ~node_server(){}  
 
     static void init_options(boost::program_options::options_description& desc);
-    t_payload_handler& get_payload_object();
+    t_payload_handler& get_crypto_protocol();
 
     bool run();
     bool init(const boost::program_options::variables_map& vm);

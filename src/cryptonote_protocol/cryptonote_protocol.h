@@ -43,26 +43,9 @@ namespace cryptonote
     virtual bool is_synchronized() const = 0;
     virtual bool relay_block(NOTIFY_NEW_BLOCK::request& arg, cryptonote_peer_context& exclude_context)=0;
     virtual bool relay_transactions(NOTIFY_NEW_TRANSACTIONS::request& arg, const boost::uuids::uuid& source, epee::net_utils::zone zone, relay_method tx_relay)=0;
-    //virtual bool request_objects(NOTIFY_REQUEST_GET_OBJECTS::request& arg, cryptonote_peer_context& context)=0;
+  
+    virtual uint64_t get_current_blockchain_height() const = 0;
+    virtual void on_transactions_relayed(epee::span<const cryptonote::blobdata> tx_blobs, relay_method tx_relay) = 0;
   };
 
-  /************************************************************************/
-  /*                                                                      */
-  /************************************************************************/
-  struct cryptonote_protocol_stub: public i_cryptonote_protocol
-  {
-    virtual bool is_synchronized() const final
-    {
-      return false;
-    }
-    virtual bool relay_block(NOTIFY_NEW_BLOCK::request& arg, cryptonote_peer_context& exclude_context)
-    {
-      return false;
-    }
-    virtual bool relay_transactions(NOTIFY_NEW_TRANSACTIONS::request& arg, const boost::uuids::uuid& source, epee::net_utils::zone zone, relay_method tx_relay)
-    {
-      return false;
-    }
-
-  };
 }

@@ -111,7 +111,6 @@ namespace hw {
             bool  open_tx(crypto::secret_key &tx_key) override;
             void get_transaction_prefix_hash(const cryptonote::transaction_prefix& tx, crypto::hash& h) override;
 
-            bool  encrypt_payment_id(crypto::hash8 &payment_id, const crypto::public_key &public_key, const crypto::secret_key &secret_key) override;
 
 
             virtual bool  generate_otk(  const crypto::secret_key &tx_key,

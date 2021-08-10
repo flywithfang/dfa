@@ -42,7 +42,7 @@
 #include "storages/levin_abstract_invoke2.h"
 #include "warnings.h"
 #include "cryptonote_protocol_defs.h"
-#include "cryptonote_protocol_handler_common.h"
+#include "cryptonote_protocol.h"
 #include "block_queue.h"
 #include "common/perf_timer.h"
 #include "cryptonote_basic/cryptonote_peer_context.h"
@@ -55,7 +55,6 @@ DISABLE_VS_WARNINGS(4355)
 
 #define LOCALHOST_INT 2130706433
 #define CURRENCY_PROTOCOL_MAX_OBJECT_REQUEST_COUNT 100
-static_assert(CURRENCY_PROTOCOL_MAX_OBJECT_REQUEST_COUNT >= BLOCKS_SYNCHRONIZING_DEFAULT_COUNT_PRE_V4, "Invalid CURRENCY_PROTOCOL_MAX_OBJECT_REQUEST_COUNT");
 
 namespace cryptonote
 {
@@ -122,9 +121,8 @@ namespace cryptonote
     bool get_payload_sync_data(CORE_SYNC_DATA& hshd);
     bool on_callback(cryptonote_peer_context& context);
     t_core& get_core(){return m_core;}
-    virtual bool is_synchronized() const final {
-     return !no_sync() && m_synchronized;
-     }
+   
+
     void log_connections();
     std::list<connection_info> get_connections();
     const block_queue &get_block_queue() const { return m_block_queue; }
@@ -138,6 +136,17 @@ namespace cryptonote
     bool needs_new_sync_connections() const;
     bool is_busy_syncing();
 
+  
+    public:
+    //----------------- i_bc_protocol_layout ---------------------------------------
+    virtual bool relay_block(NOTIFY_NEW_BLOCK::request& arg, cryptonote_peer_context& exclude_context);
+    virtual bool relay_transactions(NOTIFY_NEW_TRANSACTIONS::request& arg, const boost::uuids::uuid& source, epee::net_utils::zone zone, relay_method tx_relay);
+    virtual uint64_t get_current_blockchain_height()const;
+    virtual void on_transactions_relayed(epee::span<const cryptonote::blobdata> tx_blobs, relay_method tx_relay) ;
+     virtual bool is_synchronized() const {
+     return !no_sync() && m_synchronized;
+     }
+   
   private:
     //----------------- commands handlers ----------------------------------------------
     int handle_notify_new_block(int command, NOTIFY_NEW_BLOCK::request& arg, cryptonote_peer_context& context);
@@ -149,10 +158,7 @@ namespace cryptonote
     int handle_notify_new_fluffy_block(int command, NOTIFY_NEW_FLUFFY_BLOCK::request& arg, cryptonote_peer_context& context);
     int handle_request_fluffy_missing_tx(int command, NOTIFY_REQUEST_FLUFFY_MISSING_TX::request& arg, cryptonote_peer_context& context);
     int handle_notify_get_txpool_complement(int command, NOTIFY_GET_TXPOOL_COMPLEMENT::request& arg, cryptonote_peer_context& context);
-		
-    //----------------- i_bc_protocol_layout ---------------------------------------
-    virtual bool relay_block(NOTIFY_NEW_BLOCK::request& arg, cryptonote_peer_context& exclude_context);
-    virtual bool relay_transactions(NOTIFY_NEW_TRANSACTIONS::request& arg, const boost::uuids::uuid& source, epee::net_utils::zone zone, relay_method tx_relay);
+
     //----------------------------------------------------------------------------------
     //bool get_payload_sync_data(HANDSHAKE_DATA::request& hshd, cryptonote_peer_context& context);
     bool should_drop_connection(cryptonote_peer_context& context, uint32_t next_stripe);
@@ -172,6 +178,14 @@ namespace cryptonote
     size_t skip_unneeded_hashes(cryptonote_peer_context& context, bool check_block_queue) const;
     bool request_txpool_complement(cryptonote_peer_context &context);
     void hit_score(cryptonote_peer_context &context, int32_t score);
+
+     /**
+      * @brief attempts to relay any transactions in the mempool which need it
+      *
+      * @return true
+      */
+     bool relay_txpool_transactions();
+
     template<class MSG>
       bool post_notify(typename MSG::request& arg, cryptonote_peer_context& context)
       {

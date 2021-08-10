@@ -38,7 +38,7 @@
 
 #include "cryptonote_basic/fwd.h"
 #include "cryptonote_core/i_core_events.h"
-#include "cryptonote_protocol/cryptonote_protocol_handler_common.h"
+#include "cryptonote_protocol/cryptonote_protocol.h"
 #include "cryptonote_protocol/enums.h"
 #include "storages/portable_storage_template_helper.h"
 #include "common/download.h"
@@ -84,7 +84,7 @@ namespace cryptonote
     * limited to, communication among the Blockchain, the transaction pool,
     * any miners, and the network.
     */
-   class core final: public i_miner_handler, public i_core_events
+   class core final: public i_miner_handler
    {
    public:
 
@@ -95,7 +95,7 @@ namespace cryptonote
        *
        * @param pprotocol pre-constructed protocol object to store and use
        */
-     core(i_cryptonote_protocol* pprotocol);
+     core();
 
     /**
      * @copydoc Blockchain::handle_get_objects
@@ -189,12 +189,6 @@ namespace cryptonote
       */
      bool check_incoming_block_size(const blobdata& block_blob) const;
 
-     /**
-      * @brief get the cryptonote protocol instance
-      *
-      * @return the instance
-      */
-     i_cryptonote_protocol* get_protocol(){return m_pprotocol;}
 
      //-------------------- i_miner_handler -----------------------
 
@@ -408,13 +402,6 @@ namespace cryptonote
      size_t get_alternative_blocks_count() const;
 
      /**
-      * @brief set the pointer to the cryptonote protocol object to use
-      *
-      * @param pprotocol the pointer to set ours as
-      */
-     void set_cryptonote_protocol(i_cryptonote_protocol* pprotocol);
-
-     /**
       * @copydoc Blockchain::set_checkpoints
       *
       * @note see Blockchain::set_checkpoints()
@@ -464,6 +451,7 @@ namespace cryptonote
       */
      bool get_pool_transactions(std::vector<transaction>& txs, bool include_sensitive_txes = false) const;
 
+     std::vector<std::tuple<crypto::hash, cryptonote::blobdata, relay_method>> get_relayable_transactions();
      /**
       * @copydoc tx_memory_pool::get_txpool_backlog
       * @param include_sensitive_txes include private transactions
@@ -624,13 +612,6 @@ namespace cryptonote
       * @note see tx_memory_pool::print_pool
       */
      std::string print_pool(bool short_format) const;
-
-     /**
-      * @brief gets the core synchronization status
-      *
-      * @return core synchronization status
-      */
-     virtual bool is_synchronized() const final;
 
      /**
       * @copydoc miner::on_synchronized
@@ -1000,12 +981,7 @@ namespace cryptonote
       */
      bool check_tx_inputs_keyimages_domain(const transaction& tx) const;
 
-     /**
-      * @brief attempts to relay any transactions in the mempool which need it
-      *
-      * @return true
-      */
-     bool relay_txpool_transactions();
+    
 
      /**
       * @brief checks DNS versions
@@ -1035,7 +1011,6 @@ namespace cryptonote
      tx_memory_pool m_mempool; //!< transaction pool instance
      Blockchain m_blockchain; //!< Blockchain instance
 
-     i_cryptonote_protocol* m_pprotocol; //!< cryptonote protocol instance
 
      epee::critical_section m_incoming_tx_lock; //!< incoming transaction lock
 
@@ -1044,7 +1019,6 @@ namespace cryptonote
 
      std::string m_config_folder; //!< folder to look in for configs and other files
 
-     cryptonote_protocol_stub m_protocol_stub; //!< cryptonote protocol stub instance
 
     epee::math_helper::once_a_time_seconds<90, false> m_block_rate_interval; //!< interval for checking block rate
     
@@ -1071,7 +1045,7 @@ namespace cryptonote
      std::atomic_flag m_checkpoints_updating; //!< set if checkpoints are currently updating to avoid multiple threads attempting to update at once
      bool m_disable_dns_checkpoints;
 
-     size_t block_sync_size;
+     size_t m_block_sync_size;
 
      time_t start_time;
 

@@ -32,6 +32,5 @@ namespace cryptonote
 {
   class core;
   struct cryptonote_peer_context;
-  struct i_core_events;
 }
 

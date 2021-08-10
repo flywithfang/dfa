@@ -300,8 +300,7 @@ namespace nodetool
     m_require_ipv4 = !command_line::get_arg(vm, arg_p2p_ignore_ipv4);
 
     public_zone.m_notifier = cryptonote::levin::notify{
-      m_network.m_net_server.get_io_service(), public_zone.m_net_server.get_config_shared(), m_payload_handler.get_core()
-    };
+      m_network.m_net_server.get_io_service(), public_zone.m_net_server.get_config_shared(), m_payload_handler};
 
     if (command_line::has_arg(vm, arg_p2p_add_peer))
     {
@@ -556,11 +555,11 @@ namespace nodetool
     }
 
     m_listening_port = m_network.m_net_server.get_binded_port();
-    MLOG_GREEN(el::Level::Info, "Net service bound (IPv4) to " << public_zone.m_bind_ip << ":" << m_listening_port);
+    MLOG_GREEN(el::Level::Info, "P2P service bound (IPv4) to " << public_zone.m_bind_ip << ":" << m_listening_port);
     if (m_use_ipv6)
     {
       m_listening_port_ipv6 = m_network.m_net_server.get_binded_port_ipv6();
-      MLOG_GREEN(el::Level::Info, "Net service bound (IPv6) to " << public_zone.m_bind_ipv6_address << ":" << m_listening_port_ipv6);
+      MLOG_GREEN(el::Level::Info, "P2P service bound (IPv6) to " << public_zone.m_bind_ipv6_address << ":" << m_listening_port_ipv6);
     }
     if(m_external_port)
       MDEBUG("External port defined as " << m_external_port);
@@ -579,7 +578,7 @@ namespace nodetool
   }
   //-----------------------------------------------------------------------------------
   template<class t_payload_handler>
-  t_payload_handler& node_server<t_payload_handler>::get_payload_object()
+  t_payload_handler& node_server<t_payload_handler>::get_crypto_protocol()
   {
     return m_payload_handler;
   }

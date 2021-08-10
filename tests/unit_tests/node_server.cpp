@@ -695,12 +695,11 @@ TEST(cryptonote_protocol_handler, race_condition)
   connection_t::set_rate_down_limit(std::numeric_limits<int64_t>::max());
 
   {
-    daemon.main.core = core_ptr(new core_t(nullptr));
+    daemon.main.core = core_ptr(new core_t());
     daemon.main.core->init(daemon.main.options, nullptr, nullptr);
     daemon.main.net_node.core_protocol = daemon.main.core_protocol = core_protocol_ptr(new core_protocol_t(
       *daemon.main.core, &daemon.main.net_node, {}
     ));
-    daemon.main.core->set_cryptonote_protocol(daemon.main.core_protocol.get());
     daemon.main.core_protocol->init(daemon.main.options);
     daemon.main.net_node.shared_state = daemon.main.shared_state = std::make_shared<shared_state_t>();
     daemon.main.shared_state->set_handler(&daemon.main.net_node);
@@ -768,12 +767,11 @@ TEST(cryptonote_protocol_handler, race_condition)
   }
 
   {
-    daemon.main.core = core_ptr(new core_t(nullptr));
+    daemon.main.core = core_ptr(new core_t());
     daemon.main.core->init(daemon.main.options, nullptr, nullptr);
     daemon.main.net_node.core_protocol = daemon.main.core_protocol = core_protocol_ptr(new core_protocol_t(
       *daemon.main.core, &daemon.main.net_node, {}
     ));
-    daemon.main.core->set_cryptonote_protocol(daemon.main.core_protocol.get());
     daemon.main.core->set_checkpoints({});
     daemon.main.core_protocol->init(daemon.main.options);
     daemon.main.net_node.shared_state = daemon.main.shared_state = std::make_shared<shared_state_t>();
@@ -783,7 +781,6 @@ TEST(cryptonote_protocol_handler, race_condition)
     daemon.alt.net_node.core_protocol = daemon.alt.core_protocol = core_protocol_ptr(new core_protocol_t(
       *daemon.alt.core, &daemon.alt.net_node, {}
     ));
-    daemon.alt.core->set_cryptonote_protocol(daemon.alt.core_protocol.get());
     daemon.alt.core->set_checkpoints({});
     daemon.alt.core_protocol->init(daemon.alt.options);
     daemon.alt.net_node.shared_state = daemon.alt.shared_state = std::make_shared<shared_state_t>();

@@ -63,7 +63,7 @@ private:
   std::unique_ptr<cryptonote::core_rpc_server> m_rpc;
 
 public:
-  t_internals(boost::program_options::variables_map const & vm): m_core{nullptr}, m_protocol{ m_core,nullptr, command_line::get_arg(vm, cryptonote::arg_offline)}, m_p2p{m_protocol}
+  t_internals(boost::program_options::variables_map const & vm): m_core{},m_protocol{ m_core,nullptr, command_line::get_arg(vm, cryptonote::arg_offline)}, m_p2p{m_protocol}
   {
     MGINFO("Initializing cryptonote protocol...");
     if (!m_protocol.init(vm))
@@ -74,26 +74,29 @@ public:
 
     // Handle circular dependencies
     m_protocol.set_p2p_endpoint(&m_p2p);
-    m_core.set_cryptonote_protocol(&m_protocol);
-
 
     if (!m_core.init(vm))
     {
       throw std::runtime_error("Failed to initialize core.");
     }
 
-  {
-   const bool restricted = command_line::get_arg(vm, cryptonote::core_rpc_server::arg_restricted_rpc);
-    m_rpc_port = command_line::get_arg(vm, cryptonote::core_rpc_server::arg_rpc_bind_port);
-    m_rpc.reset(new  cryptonote::core_rpc_server{m_core, m_p2p});
-     MGINFO("Initializing  RPC server...");
-
-    if (!m_rpc->init(vm, restricted, m_rpc_port))
+    if (!m_p2p.init(vm))
     {
-      throw std::runtime_error("Failed to initialize RPC server.");
+      throw std::runtime_error("Failed to initialize p2p node.");
     }
-    MGINFO( " RPC server initialized OK on port: " << m_rpc->get_binded_port());
-  }
+
+    {
+     const bool restricted = command_line::get_arg(vm, cryptonote::core_rpc_server::arg_restricted_rpc);
+      m_rpc_port = command_line::get_arg(vm, cryptonote::core_rpc_server::arg_rpc_bind_port);
+      m_rpc.reset(new  cryptonote::core_rpc_server{m_core, m_p2p});
+       MGINFO("Initializing  RPC server...");
+
+      if (!m_rpc->init(vm, restricted, m_rpc_port))
+      {
+        throw std::runtime_error("Failed to initialize RPC server.");
+      }
+      MGINFO( " RPC server initialized OK on port: " << m_rpc->get_binded_port());
+    }
   }
 
  static void init_options(boost::program_options::options_description & option_spec)
@@ -185,7 +188,6 @@ void stop_p2p()
      MGINFO("Deinitializing core...");
     try {
       m_core.deinit();
-      m_core.set_cryptonote_protocol(nullptr);
     } catch (...) {
       MERROR("Failed to deinitialize core...");
     }

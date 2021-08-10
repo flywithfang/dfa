@@ -54,7 +54,7 @@
       m_starter_message_showed = true;
     }
 
-    relay_txpool_transactions(); // txpool handles periodic DB checking
+   
     m_block_rate_interval.do_call(boost::bind(&core::check_block_rate, this));
     m_check_updates_interval.do_call(boost::bind(&core::check_updates, this));
     m_check_disk_space_interval.do_call(boost::bind(&core::check_disk_space, this));
@@ -65,52 +65,7 @@
     return true;
   }
 
-  //-----------------------------------------------------------------------------------------------
-  bool core::relay_txpool_transactions()
-  {
-    // we attempt to relay txes that should be relayed, but were not
-    std::vector<std::tuple<crypto::hash, cryptonote::blobdata, relay_method>> txs;
-    if (m_mempool.get_relayable_transactions(txs) && !txs.empty())
-    {
-      NOTIFY_NEW_TRANSACTIONS::request public_req{};
-      NOTIFY_NEW_TRANSACTIONS::request private_req{};
-      NOTIFY_NEW_TRANSACTIONS::request stem_req{};
-      for (auto& tx : txs)
-      {
-        switch (std::get<2>(tx))
-        {
-          default:
-          case relay_method::none:
-            break;
-          case relay_method::local:
-            private_req.txs.push_back(std::move(std::get<1>(tx)));
-            break;
-          case relay_method::forward:
-            stem_req.txs.push_back(std::move(std::get<1>(tx)));
-            break;
-          case relay_method::block:
-          case relay_method::fluff:
-          case relay_method::stem:
-            public_req.txs.push_back(std::move(std::get<1>(tx)));
-            break;
-        }
-      }
-
-      /* All txes are sent on randomized timers per connection in
-         `src/cryptonote_protocol/levin_notify.cpp.` They are either sent with
-         "white noise" delays or via  diffusion (Dandelion++ fluff). So
-         re-relaying public and private _should_ be acceptable here. */
-      const boost::uuids::uuid source = boost::uuids::nil_uuid();
-      if (!public_req.txs.empty())
-        get_protocol()->relay_transactions(public_req, source, epee::net_utils::zone::public_, relay_method::fluff);
-      if (!private_req.txs.empty())
-        get_protocol()->relay_transactions(private_req, source, epee::net_utils::zone::invalid, relay_method::local);
-      if (!stem_req.txs.empty())
-        get_protocol()->relay_transactions(stem_req, source, epee::net_utils::zone::public_, relay_method::stem);
-    }
-    return true;
-  }
-
+ 
 
   //-----------------------------------------------------------------------------------------------
   bool core::check_updates()

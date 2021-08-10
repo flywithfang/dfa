@@ -5,10 +5,60 @@
   template<class t_core>
   bool t_cryptonote_protocol_handler<t_core>::on_idle()
   {
+     relay_txpool_transactions(); // txpool handles periodic DB checking
+
     m_idle_peer_kicker.do_call(boost::bind(&t_cryptonote_protocol_handler<t_core>::kick_idle_peers, this));
     m_standby_checker.do_call(boost::bind(&t_cryptonote_protocol_handler<t_core>::check_standby_peers, this));
     m_sync_search_checker.do_call(boost::bind(&t_cryptonote_protocol_handler<t_core>::update_sync_search, this));
     return m_core.on_idle();
+  }
+
+
+  //-----------------------------------------------------------------------------------------------
+   template<class t_core>
+  bool t_cryptonote_protocol_handler<t_core>::relay_txpool_transactions()
+  {
+    // we attempt to relay txes that should be relayed, but were not
+   const auto txs=m_core.get_relayable_transactions();
+    if (!txs.empty())
+    {
+      NOTIFY_NEW_TRANSACTIONS::request public_req{};
+      NOTIFY_NEW_TRANSACTIONS::request private_req{};
+      NOTIFY_NEW_TRANSACTIONS::request stem_req{};
+      for (auto& tx : txs)
+      {
+        switch (std::get<2>(tx))
+        {
+          default:
+          case relay_method::none:
+            break;
+          case relay_method::local:
+            private_req.txs.push_back(std::move(std::get<1>(tx)));
+            break;
+          case relay_method::forward:
+            stem_req.txs.push_back(std::move(std::get<1>(tx)));
+            break;
+          case relay_method::block:
+          case relay_method::fluff:
+          case relay_method::stem:
+            public_req.txs.push_back(std::move(std::get<1>(tx)));
+            break;
+        }
+      }
+
+      /* All txes are sent on randomized timers per connection in
+         `src/cryptonote_protocol/levin_notify.cpp.` They are either sent with
+         "white noise" delays or via  diffusion (Dandelion++ fluff). So
+         re-relaying public and private _should_ be acceptable here. */
+      const boost::uuids::uuid source = boost::uuids::nil_uuid();
+      if (!public_req.txs.empty())
+        relay_transactions(public_req, source, epee::net_utils::zone::public_, relay_method::fluff);
+      if (!private_req.txs.empty())
+        relay_transactions(private_req, source, epee::net_utils::zone::invalid, relay_method::local);
+      if (!stem_req.txs.empty())
+        relay_transactions(stem_req, source, epee::net_utils::zone::public_, relay_method::stem);
+    }
+    return true;
   }
 
 

@@ -201,14 +201,7 @@ namespace hw {
 
         virtual void get_transaction_prefix_hash(const cryptonote::transaction_prefix& tx, crypto::hash& h) = 0;
         
-        virtual bool  encrypt_payment_id(crypto::hash8 &payment_id, const crypto::public_key &public_key, const crypto::secret_key &secret_key) = 0;
-        bool  decrypt_payment_id(crypto::hash8 &payment_id, const crypto::public_key &public_key, const crypto::secret_key &secret_key)
-        {
-            // Encryption and decryption are the same operation (xor with a key)
-            return encrypt_payment_id(payment_id, public_key, secret_key);
-        }
-
-    
+      
         virtual bool  generate_otk(const crypto::secret_key &tx_key,const cryptonote::tx_destination_entry &dst_entr,const size_t output_index,rct::key & shared_sec,crypto::public_key &otk) = 0;
 
         virtual bool  mlsag_prehash(const std::string &blob, size_t inputs_size, size_t outputs_size, const rct::keyV &hashes, const rct::ctkeyV &outPk, rct::key &prehash) = 0;

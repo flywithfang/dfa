@@ -39,6 +39,7 @@
 #include "cryptonote_protocol/fwd.h"
 #include "net/enums.h"
 #include "span.h"
+#include "cryptonote_protocol.h"
 
 namespace epee
 {
@@ -69,7 +70,7 @@ namespace levin
   class notify
   {
     std::shared_ptr<detail::zone> zone_;
-    i_core_events* core_;
+    i_cryptonote_protocol* m_crypto_protocol;
 
   public:
     struct status
@@ -81,11 +82,11 @@ namespace levin
     //! Construct an instance that cannot notify.
     notify() noexcept
       : zone_(nullptr)
-      , core_(nullptr)
+      , m_crypto_protocol(nullptr)
     {}
 
     //! Construct an instance with available notification `zones`.
-    explicit notify(boost::asio::io_service& service, std::shared_ptr<shared_state> p2p,i_core_events& core);
+    explicit notify(boost::asio::io_service& service, std::shared_ptr<shared_state> p2p,i_cryptonote_protocol& core);
 
     notify(const notify&) = delete;
     notify(notify&&) = default;

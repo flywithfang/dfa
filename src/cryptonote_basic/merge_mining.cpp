@@ -44,21 +44,7 @@ namespace cryptonote
 {
 
 //---------------------------------------------------------------
-uint32_t get_aux_slot(const crypto::hash &id, uint32_t nonce, uint32_t n_aux_chains)
-{
-  CHECK_AND_ASSERT_THROW_MES(n_aux_chains > 0, "n_aux_chains is 0");
 
-  uint8_t buf[HASH_SIZE + sizeof(uint32_t) + 1];
-  memcpy(buf, &id, HASH_SIZE);
-  uint32_t v = SWAP32LE(nonce);
-  memcpy(buf + HASH_SIZE, &v, sizeof(uint32_t));
-  buf[HASH_SIZE + sizeof(uint32_t)] = config::HASH_KEY_MM_SLOT;
-
-  crypto::hash res;
-  tools::sha256sum(buf, sizeof(buf), res);
-  v = *((const uint32_t*)&res);
-  return SWAP32LE(v) % n_aux_chains;
-}
 //---------------------------------------------------------------
 uint32_t get_path_from_aux_slot(uint32_t slot, uint32_t n_aux_chains)
 {

@@ -2467,6 +2467,17 @@ skip:
        due to the internal design. */
     return m_p2p->send_txs(std::move(arg.txs),  source, tx_relay) ;
   }
+  template<class t_core>
+  uint64_t t_cryptonote_protocol_handler<t_core>::get_current_blockchain_height()const
+  {
+    return m_core.get_current_blockchain_height();
+  }
+  template<class t_core>
+   void t_cryptonote_protocol_handler<t_core>::on_transactions_relayed(epee::span<const cryptonote::blobdata> tx_blobs, relay_method tx_relay) 
+   {
+      m_core.on_transactions_relayed(tx_blobs,tx_relay);
+   }
+
   //------------------------------------------------------------------------------------------------------------------------
   template<class t_core>
   bool t_cryptonote_protocol_handler<t_core>::request_txpool_complement(cryptonote_peer_context &context)
