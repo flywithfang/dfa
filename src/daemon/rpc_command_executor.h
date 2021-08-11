@@ -106,14 +106,6 @@ public:
 
   bool print_transaction_pool_stats();
 
-  bool start_mining(cryptonote::account_public_address address, uint64_t num_threads, cryptonote::network_type nettype, bool do_background_mining = false, bool ignore_battery = false);
-
-  bool stop_mining();
-
-  bool mining_status();
-
-  bool stop_daemon();
-
   bool print_status();
 
   bool get_limit();
@@ -164,13 +156,8 @@ public:
 
   bool version();
 
-  bool set_bootstrap_daemon(
-    const std::string &address,
-    const std::string &username,
-    const std::string &password,
-    const std::string &proxy);
 
-  bool rpc_payments();
+
 
   bool flush_cache(bool bad_txs, bool invalid_blocks);
 };

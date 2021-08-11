@@ -229,7 +229,7 @@ namespace nodetool
       return false;
 
     if(!m_allow_local_ip && address.is_local())
-      return false;
+      throw std::runtime_error("local addr not allowed");
 
     return true;
   }
@@ -303,8 +303,7 @@ namespace nodetool
     CATCH_ENTRY_L0("peerlist_manager::set_peer_just_seen()", false);
   }
   //--------------------------------------------------------------------------------------------------
-  inline
-  bool peerlist_manager::append_with_peer_white(const peerlist_entry& ple, bool trust_last_seen)
+  inline  bool peerlist_manager::append_with_peer_white(const peerlist_entry& ple, bool trust_last_seen)
   {
     TRY_ENTRY();
     if(!is_host_allowed(ple.adr))

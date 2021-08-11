@@ -350,135 +350,9 @@ bool t_command_parser::print_transaction_pool_stats(const std::vector<std::strin
   return m_executor.print_transaction_pool_stats();
 }
 
-bool t_command_parser::start_mining(const std::vector<std::string>& args)
-{
-  if(!args.size())
-  {
-    std::cout << "Invalid syntax: At least one parameter expected. For more details, use the help command." << std::endl;
-    return true;
-  }
 
-  cryptonote::address_parse_info info;
-  cryptonote::network_type nettype = cryptonote::MAINNET;
-  if(!cryptonote::get_account_address_from_str(info, cryptonote::MAINNET, args.front()))
-  {
-    if(!cryptonote::get_account_address_from_str(info, cryptonote::TESTNET, args.front()))
-    {
-      if(!cryptonote::get_account_address_from_str(info, cryptonote::STAGENET, args.front()))
-      {
-        bool dnssec_valid;
-        std::string address_str = tools::dns_utils::get_account_address_as_str_from_url(args.front(), dnssec_valid,
-            [](const std::string &url, const std::vector<std::string> &addresses, bool dnssec_valid){return addresses[0];});
-        if(!cryptonote::get_account_address_from_str(info, cryptonote::MAINNET, address_str))
-        {
-          if(!cryptonote::get_account_address_from_str(info, cryptonote::TESTNET, address_str))
-          {
-            if(!cryptonote::get_account_address_from_str(info, cryptonote::STAGENET, address_str))
-            {
-              std::cout << "Invalid syntax: Target account address has wrong format. For more details, use the help command." << std::endl;
-              return true;
-            }
-            else
-            {
-              nettype = cryptonote::STAGENET;
-            }
-          }
-          else
-          {
-            nettype = cryptonote::TESTNET;
-          }
-        }
-      }
-      else
-      {
-        nettype = cryptonote::STAGENET;
-      }
-    }
-    else
-    {
-      nettype = cryptonote::TESTNET;
-    }
-  }
- 
-  if(nettype != cryptonote::MAINNET)
-    std::cout << "Mining to a " << (nettype == cryptonote::TESTNET ? "testnet" : "stagenet") << " address, make sure this is intentional!" << std::endl;
-  uint64_t threads_count = 1;
-  bool do_background_mining = false;  
-  bool ignore_battery = false;  
-  if(args.size() > 4)
-  {
-    std::cout << "Invalid syntax: Too many parameters. For more details, use the help command." << std::endl;
-    return true;
-  }
 
-  if(args.size() == 4)
-  {
-    if(args[3] == "true" || command_line::is_yes(args[3]) || args[3] == "1")
-    {
-      ignore_battery = true;
-    }
-    else if(args[3] != "false" && !command_line::is_no(args[3]) && args[3] != "0")
-    {
-      std::cout << "Invalid syntax: Invalid combination of parameters. For more details, use the help command." << std::endl;
-      return true;
-    }
-  }
 
-  if(args.size() >= 3)
-  {
-    if(args[2] == "true" || command_line::is_yes(args[2]) || args[2] == "1")
-    {
-      do_background_mining = true;
-    }
-    else if(args[2] != "false" && !command_line::is_no(args[2]) && args[2] != "0")
-    {
-      std::cout << "Invalid syntax: Invalid combination of parameters. For more details, use the help command." << std::endl;
-      return true;
-    }
-  }
-
-  if(args.size() >= 2)
-  {
-    if (args[1] == "auto" || args[1] == "autodetect")
-    {
-      threads_count = 0;
-    }
-    else
-    {
-      bool ok = epee::string_tools::get_xtype_from_string(threads_count, args[1]);
-      threads_count = (ok && 0 < threads_count) ? threads_count : 1;
-    }
-  }
-
-  m_core.get_miner().start(info.address,threads_count);
-
-  return true;
-}
-
-bool t_command_parser::stop_mining(const std::vector<std::string>& args)
-{
-  if (!args.empty()) {
-    std::cout << "Invalid syntax: No parameters expected. For more details, use the help command." << std::endl;
-    return true;
-  }
-    m_core.get_miner().stop();
-    return true;
-}
-
-bool t_command_parser::mining_status(const std::vector<std::string>& args)
-{
-  return m_executor.mining_status();
-}
-
-bool t_command_parser::stop_daemon(const std::vector<std::string>& args)
-{
-  if (!args.empty()) {
-    std::cout << "Invalid syntax: No parameters expected. For more details, use the help command." << std::endl;
-    return true;
-  }
-
-  return m_executor.stop_daemon();
-}
 
 bool t_command_parser::print_status(const std::vector<std::string>& args)
 {
@@ -924,16 +798,6 @@ bool t_command_parser::pop_blocks(const std::vector<std::string>& args)
   return true;
 }
 
-bool t_command_parser::rpc_payments(const std::vector<std::string>& args)
-{
-  if (args.size() != 0) {
-    std::cout << "Invalid syntax: No parameters expected. For more details, use the help command." << std::endl;
-    return true;
-  }
-
-  return m_executor.rpc_payments();
-}
-
 bool t_command_parser::version(const std::vector<std::string>& args)
 {
   return m_executor.version();
@@ -966,70 +830,6 @@ bool t_command_parser::check_blockchain_pruning(const std::vector<std::string>& 
   return m_executor.check_blockchain_pruning();
 }
 
-bool t_command_parser::set_bootstrap_daemon(const std::vector<std::string>& args)
-{
-  struct parsed_t
-  {
-    std::string address;
-    std::string user;
-    std::string password;
-    std::string proxy;
-  };
-
-  boost::optional<parsed_t> parsed = [&args]() -> boost::optional<parsed_t> {
-    const size_t args_count = args.size();
-    if (args_count == 0)
-    {
-      return {};
-    }
-    if (args[0] == "auto")
-    {
-      if (args_count == 1)
-      {
-        return {{args[0], "", "", ""}};
-      }
-      if (args_count == 2)
-      {
-        return {{args[0], "", "", args[1]}};
-      }
-    }
-    else if (args[0] == "none")
-    {
-      if (args_count == 1)
-      {
-        return {{"", "", "", ""}};
-      }
-    }
-    else
-    {
-      if (args_count == 1)
-      {
-        return {{args[0], "", "", ""}};
-      }
-      if (args_count == 2)
-      {
-        return {{args[0], "", "", args[1]}};
-      }
-      if (args_count == 3)
-      {
-        return {{args[0], args[1], args[2], ""}};
-      }
-      if (args_count == 4)
-      {
-        return {{args[0], args[1], args[2], args[3]}};
-      }
-    }
-    return {};
-  }();
-
-  if (!parsed)
-  {
-    std::cout << "Invalid syntax: Wrong number of parameters. For more details, use the help command." << std::endl;
-    return true;
-  }
-
-  return m_executor.set_bootstrap_daemon(parsed->address, parsed->user, parsed->password, parsed->proxy);
-}
 
 bool t_command_parser::flush_cache(const std::vector<std::string>& args)
 {

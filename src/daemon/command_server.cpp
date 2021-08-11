@@ -114,22 +114,7 @@ t_command_server::t_command_server(
     , "is_key_image_spent <key_image>"
     , "Print whether a given key image is in the spent key images set."
     );
-  m_command_lookup.set_handler(
-      "start_mining"
-    , std::bind(&t_command_parser::start_mining, &m_parser, p::_1)
-    , "start_mining <addr> [<threads>|auto] [do_background_mining] [ignore_battery]"
-    , "Start mining for specified address. Defaults to 1 thread and no background mining. Use \"auto\" to autodetect optimal number of threads."
-    );
-  m_command_lookup.set_handler(
-      "stop_mining"
-    , std::bind(&t_command_parser::stop_mining, &m_parser, p::_1)
-    , "Stop mining."
-    );
-  m_command_lookup.set_handler(
-      "mining_status"
-    , std::bind(&t_command_parser::mining_status, &m_parser, p::_1)
-    , "Show current mining status."
-    );
+ 
   m_command_lookup.set_handler(
       "print_pool"
     , std::bind(&t_command_parser::print_transaction_pool_long, &m_parser, p::_1)
@@ -167,16 +152,8 @@ t_command_server::t_command_server(
     , std::bind(&t_command_parser::show_status, &m_parser, p::_1)
     , "Show the current status."
     );
-  m_command_lookup.set_handler(
-      "stop_daemon"
-    , std::bind(&t_command_parser::stop_daemon, &m_parser, p::_1)
-    , "Stop the daemon."
-    );
-  m_command_lookup.set_handler(
-      "exit"
-    , std::bind(&t_command_parser::stop_daemon, &m_parser, p::_1)
-    , "Stop the daemon."
-    );
+
+
   m_command_lookup.set_handler(
       "print_status"
     , std::bind(&t_command_parser::print_status, &m_parser, p::_1)
@@ -294,11 +271,7 @@ t_command_server::t_command_server(
     , "pop_blocks <nblocks>"
     , "Remove blocks from end of blockchain"
     );
-    m_command_lookup.set_handler(
-      "rpc_payments"
-    , std::bind(&t_command_parser::rpc_payments, &m_parser, p::_1)
-    , "Print information about RPC payments."
-    );
+   
     m_command_lookup.set_handler(
       "version"
     , std::bind(&t_command_parser::version, &m_parser, p::_1)
@@ -315,13 +288,7 @@ t_command_server::t_command_server(
     , std::bind(&t_command_parser::check_blockchain_pruning, &m_parser, p::_1)
     , "Check the blockchain pruning."
     );
-    m_command_lookup.set_handler(
-      "set_bootstrap_daemon"
-    , std::bind(&t_command_parser::set_bootstrap_daemon, &m_parser, p::_1)
-    , "set_bootstrap_daemon (auto | none | host[:port] [username] [password]) [proxy_ip:proxy_port]"
-    , "URL of a 'bootstrap' remote daemon that the connected wallets can use while this daemon is still not fully synced.\n"
-      "Use 'auto' to enable automatic public nodes discovering and bootstrap daemon switching"
-    );
+
     m_command_lookup.set_handler(
       "flush_cache"
     , std::bind(&t_command_parser::flush_cache, &m_parser, p::_1)

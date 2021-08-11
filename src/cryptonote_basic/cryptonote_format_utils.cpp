@@ -861,16 +861,12 @@ public:
       decimal_point = default_decimal_point;
     switch (decimal_point)
     {
-      case 12:
-        return "monero";
-      case 9:
-        return "millinero";
-      case 6:
-        return "micronero";
-      case 3:
-        return "nanonero";
+      case 8:
+        return "dfa";
+      case 5:
+        return "mdf";
       case 0:
-        return "piconero";
+        return "pdf";
       default:
         ASSERT_MES_AND_THROW("Invalid decimal point specification: " << decimal_point);
     }

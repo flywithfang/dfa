@@ -307,14 +307,17 @@ namespace nodetool
       std::vector<std::string> perrs = command_line::get_arg(vm, arg_p2p_add_peer);
       for(const std::string& pr_str: perrs)
       {
-        nodetool::peerlist_entry pe = AUTO_VAL_INIT(pe);
+        MINFO("peer "<<pr_str);
+        nodetool::peerlist_entry pe {};
         pe.id = crypto::rand<uint64_t>();
         const uint16_t default_port = cryptonote::get_config(m_nettype).P2P_DEFAULT_PORT;
         expect<epee::net_utils::network_address> adr = net::get_network_address(pr_str, default_port);
         if (adr)
         {
           pe.adr = std::move(*adr);
+          MINFO("add peer "<<pe);
           m_command_line_peers.push_back(std::move(pe));
+        
           continue;
         }
         CHECK_AND_ASSERT_MES(
@@ -324,10 +327,11 @@ namespace nodetool
         std::vector<epee::net_utils::network_address> resolved_addrs;
         bool r = append_net_address(resolved_addrs, pr_str, default_port);
         CHECK_AND_ASSERT_MES(r, false, "Failed to parse or resolve address from string: " << pr_str);
-        for (const epee::net_utils::network_address& addr : resolved_addrs)
+        for (const auto & addr : resolved_addrs)
         {
           pe.id = crypto::rand<uint64_t>();
           pe.adr = addr;
+          MINFO("add resolved peer "<<pe);
           m_command_line_peers.push_back(pe);
         }
       }

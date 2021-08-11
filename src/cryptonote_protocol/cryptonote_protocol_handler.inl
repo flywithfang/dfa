@@ -298,7 +298,6 @@ namespace cryptonote
       LOG_DEBUG_CC(context, "Received new block while syncing, ignored");
       return 1;
     }
-    m_core.pause_mine();
     std::vector<block_complete_entry> blocks;
     blocks.push_back(arg.b);
     std::vector<block> pblocks;
@@ -306,7 +305,6 @@ namespace cryptonote
     {
       LOG_PRINT_CCONTEXT_L1("Block verification failed: prepare_handle_incoming_blocks failed, dropping connection");
       drop_connection(context, false, false);
-      m_core.resume_mine();
       return 1;
     }
 
@@ -320,7 +318,6 @@ namespace cryptonote
         LOG_PRINT_CCONTEXT_L1("Block verification failed: transaction verification failed, dropping connection");
         drop_connection(context, false, false);
         m_core.cleanup_handle_incoming_blocks();
-        m_core.resume_mine();
         return 1;
       }
     }
@@ -335,10 +332,8 @@ namespace cryptonote
     if (!m_core.cleanup_handle_incoming_blocks(true))
     {
       MERROR("Failure in cleanup_handle_incoming_blocks");
-      m_core.resume_mine();
       return 1;
     }
-    m_core.resume_mine();
     if(bvc.m_verifivation_failed)
     {
       MERROR("Block verification failed, dropping connection");
@@ -381,8 +376,6 @@ namespace cryptonote
       return 1;
     }
     
-    m_core.pause_mine();
-      
     try{
     const auto & new_block =parse_and_validate_block_from_blob(arg.b.block);
     
@@ -402,7 +395,6 @@ namespace cryptonote
           );
           
           drop_connection(context, false, false);
-          m_core.resume_mine();
           return 1;
         }
       }      
@@ -437,7 +429,6 @@ namespace cryptonote
               );
               
               drop_connection(context, false, false);
-              m_core.resume_mine();
               return 1;
             }
           }
@@ -451,7 +442,6 @@ namespace cryptonote
             );
                         
             drop_connection(context, false, false);
-            m_core.resume_mine();
             return 1;
           }
           
@@ -475,7 +465,6 @@ namespace cryptonote
               );
               
               drop_connection(context, false, false);
-              m_core.resume_mine();
               return 1;
             }
             
@@ -492,7 +481,6 @@ namespace cryptonote
             {
               LOG_PRINT_CCONTEXT_L1("Block verification failed: transaction verification failed, dropping connection");
               drop_connection(context, false, false);
-              m_core.resume_mine();
               return 1;
             }
             
@@ -514,7 +502,6 @@ namespace cryptonote
           );
             
           drop_connection(context, false, false);
-          m_core.resume_mine();
           return 1;
         }
       }
@@ -534,7 +521,6 @@ namespace cryptonote
         );
         
         drop_connection(context, false, false);
-        m_core.resume_mine();
         return 1;
       }
 
@@ -561,7 +547,6 @@ namespace cryptonote
             else
             {
               MERROR("1 tx requested, none not found, but " << txes.size() << " returned");
-              m_core.resume_mine();
               return 1;
             }
           }
@@ -587,7 +572,6 @@ namespace cryptonote
         missing_tx_req.current_blockchain_height = arg.current_blockchain_height;
         missing_tx_req.missing_tx_indices = std::move(need_tx_indices);
         
-        m_core.resume_mine();
         MLOG_P2P_MESSAGE("-->>NOTIFY_REQUEST_FLUFFY_MISSING_TX: missing_tx_indices.size()=" << missing_tx_req.missing_tx_indices.size() );
         post_notify<NOTIFY_REQUEST_FLUFFY_MISSING_TX>(missing_tx_req, context);
       }
@@ -605,7 +589,6 @@ namespace cryptonote
         if (!m_core.prepare_handle_incoming_blocks(blocks, pblocks))
         {
           MERROR("Failure in prepare_handle_incoming_blocks");
-          m_core.resume_mine();
           return 1;
         }
           
@@ -614,10 +597,8 @@ namespace cryptonote
         if (!m_core.cleanup_handle_incoming_blocks(true))
         {
           MERROR("Failure in cleanup_handle_incoming_blocks");
-          m_core.resume_mine();
           return 1;
         }
-        m_core.resume_mine();
         
         if( bvc.m_verifivation_failed )
         {
@@ -659,7 +640,6 @@ namespace cryptonote
         << ", dropping connection"
       );
         
-      m_core.resume_mine();
       drop_connection(context, false, false);
         
       return 1;     
@@ -1213,12 +1193,10 @@ namespace cryptonote
       MDEBUG(context << " lock m_sync_lock, adding blocks to chain...");
       MLOG_PEER_STATE("adding blocks");
 {
-        m_core.pause_mine();
         m_add_timer.resume();
         bool starting = true;
         epee::misc_utils::auto_scope_leave_caller scope_exit_handler = epee::misc_utils::create_scope_leave_handler([this, &starting]() {
           m_add_timer.pause();
-          m_core.resume_mine();
           if (!starting)
             m_last_add_end_time = tools::get_tick_count();
         });
@@ -2205,7 +2183,6 @@ skip:
               100.0f * m_sync_bad_spans_downloaded / m_sync_spans_downloaded << "% bad spans");
         }
       }
-      m_core.on_synchronized();
     }
     m_core.safesyncmode(true);
     m_p2p->clear_used_stripe_peers();

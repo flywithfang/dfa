@@ -458,7 +458,7 @@
     m_network.m_peerlist.append_with_peer_white(pe_local);
     //update last seen and push it to peerlist manager
 
-    anchor_peerlist_entry ape = AUTO_VAL_INIT(ape);
+    anchor_peerlist_entry ape {};
     ape.adr = na;
     ape.id = pi;
     ape.first_seen = first_seen_stamp ? first_seen_stamp : time(nullptr);

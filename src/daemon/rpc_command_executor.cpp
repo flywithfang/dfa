@@ -466,10 +466,6 @@ bool t_rpc_command_executor::show_status() {
   return true;
 }
 
-bool t_rpc_command_executor::mining_status() {
-
-  return true;
-}
 
 bool t_rpc_command_executor::print_connections() {
   cryptonote::COMMAND_RPC_GET_CONNECTIONS::request req;
@@ -1197,58 +1193,6 @@ bool t_rpc_command_executor::print_transaction_pool_stats() {
     }
   }
   tools::msg_writer();
-
-  return true;
-}
-
-bool t_rpc_command_executor::start_mining(cryptonote::account_public_address address, uint64_t num_threads, cryptonote::network_type nettype, bool do_background_mining, bool ignore_battery) {
-
-  return true;
-}
-
-bool t_rpc_command_executor::stop_mining() {
-  
-  return true;
-}
-
-bool t_rpc_command_executor::stop_daemon()
-{
-  cryptonote::COMMAND_RPC_STOP_DAEMON::request req;
-  cryptonote::COMMAND_RPC_STOP_DAEMON::response res;
-
-//# ifdef WIN32
-//    // Stop via service API
-//    // TODO - this is only temporary!  Get rid of hard-coded constants!
-//    bool ok = windows::stop_service("BitMonero Daemon");
-//    ok = windows::uninstall_service("BitMonero Daemon");
-//    //bool ok = windows::stop_service(SERVICE_NAME);
-//    //ok = windows::uninstall_service(SERVICE_NAME);
-//    if (ok)
-//    {
-//      return true;
-//    }
-//# endif
-
-  // Stop via RPC
-  std::string fail_message = "Daemon did not stop";
-
-  if (m_is_rpc)
-  {
-    if(!m_rpc_client->rpc_request(req, res, "/stop_daemon", fail_message.c_str()))
-    {
-      return true;
-    }
-  }
-  else
-  {
-    if (!m_rpc_server->on_stop_daemon(req, res) || res.status != CORE_RPC_STATUS_OK)
-    {
-      tools::fail_msg_writer() << make_error(fail_message, res.status);
-      return true;
-    }
-  }
-
-  tools::success_msg_writer() << "Stop signal sent";
 
   return true;
 }
@@ -2184,43 +2128,6 @@ bool t_rpc_command_executor::check_blockchain_pruning()
     return true;
 }
 
-bool t_rpc_command_executor::set_bootstrap_daemon(
-  const std::string &address,
-  const std::string &username,
-  const std::string &password,
-  const std::string &proxy)
-{
-    cryptonote::COMMAND_RPC_SET_BOOTSTRAP_DAEMON::request req;
-    cryptonote::COMMAND_RPC_SET_BOOTSTRAP_DAEMON::response res;
-    const std::string fail_message = "Unsuccessful";
-
-    req.address = address;
-    req.username = username;
-    req.password = password;
-    req.proxy = proxy;
-
-    if (m_is_rpc)
-    {
-        if (!m_rpc_client->rpc_request(req, res, "/set_bootstrap_daemon", fail_message))
-        {
-            return true;
-        }
-    }
-    else
-    {
-        if (!m_rpc_server->on_set_bootstrap_daemon(req, res) || res.status != CORE_RPC_STATUS_OK)
-        {
-            tools::fail_msg_writer() << make_error(fail_message, res.status);
-            return true;
-        }
-    }
-
-    tools::success_msg_writer()
-      << "Successfully set bootstrap daemon address to "
-      << (!req.address.empty() ? req.address : "none");
-
-    return true;
-}
 
 bool t_rpc_command_executor::flush_cache(bool bad_txs, bool bad_blocks)
 {
@@ -2251,46 +2158,6 @@ bool t_rpc_command_executor::flush_cache(bool bad_txs, bool bad_blocks)
     return true;
 }
 
-bool t_rpc_command_executor::rpc_payments()
-{
-    cryptonote::COMMAND_RPC_ACCESS_DATA::request req;
-    cryptonote::COMMAND_RPC_ACCESS_DATA::response res;
-    std::string fail_message = "Unsuccessful";
-    epee::json_rpc::error error_resp;
-
-    if (m_is_rpc)
-    {
-        if (!m_rpc_client->json_rpc_request(req, res, "rpc_access_data", fail_message.c_str()))
-        {
-            return true;
-        }
-    }
-    else
-    {
-        if (!m_rpc_server->on_rpc_access_data(req, res, error_resp) || res.status != CORE_RPC_STATUS_OK)
-        {
-            tools::fail_msg_writer() << make_error(fail_message, res.status);
-            return true;
-        }
-    }
-
-    const uint64_t now = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-    uint64_t balance = 0;
-    tools::msg_writer() << boost::format("%64s %16u %16u %8u %8u %8u %8u %s")
-        % "Client ID" % "Balance" % "Total mined" % "Good" % "Stale" % "Bad" % "Dupes" % "Last update";
-    for (const auto &entry: res.entries)
-    {
-      tools::msg_writer() << boost::format("%64s %16u %16u %8u %8u %8u %8u %s")
-          % entry.client % entry.balance % entry.credits_total
-          % entry.nonces_good % entry.nonces_stale % entry.nonces_bad % entry.nonces_dupe
-          % (entry.last_update_time == 0 ? "never" : get_human_time_ago(entry.last_update_time, now).c_str());
-      balance += entry.balance;
-    }
-    tools::msg_writer() << res.entries.size() << " clients with a total of " << balance << " credits";
-    tools::msg_writer() << "Aggregated client hash rate: " << get_mining_speed(res.hashrate);
-
-    return true;
-}
 
 bool t_rpc_command_executor::version()
 {

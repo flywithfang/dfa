@@ -163,24 +163,10 @@ namespace cryptonote
     )
     : m_core(cr)
     , m_p2p(p2p)
-    , m_was_bootstrap_ever_used(false)
     , disable_rpc_ban(false)
-    , m_rpc_payment_allow_free_loopback(false)
   {}
   //------------------------------------------------------------------------------------------------------------------------------
-  bool core_rpc_server::set_bootstrap_daemon(
-    const std::string &address,
-    const std::string &username_password,
-    const std::string &proxy)
-  {
-    boost::optional<epee::net_utils::http::login> credentials;
-    const auto loc = username_password.find(':');
-    if (loc != std::string::npos)
-    {
-      credentials = epee::net_utils::http::login(username_password.substr(0, loc), username_password.substr(loc + 1));
-    }
-    return set_bootstrap_daemon(address, credentials, proxy);
-  }
+
   //------------------------------------------------------------------------------------------------------------------------------
   std::map<std::string, bool> core_rpc_server::get_public_nodes(uint32_t credits_per_hash_threshold/* = 0*/)
   {
@@ -209,37 +195,7 @@ namespace cryptonote
 
     return result;
   }
-  //------------------------------------------------------------------------------------------------------------------------------
-  bool core_rpc_server::set_bootstrap_daemon(
-    const std::string &address,
-    const boost::optional<epee::net_utils::http::login> &credentials,
-    const std::string &proxy)
-  {
-    boost::unique_lock<boost::shared_mutex> lock(m_bootstrap_daemon_mutex);
 
-    constexpr const uint32_t credits_per_hash_threshold = 0;
-    constexpr const bool rpc_payment_enabled = credits_per_hash_threshold != 0;
-
-    if (address.empty())
-    {
-      m_bootstrap_daemon.reset(nullptr);
-    }
-    else if (address == "auto")
-    {
-      auto get_nodes = [this]() {
-        return get_public_nodes(credits_per_hash_threshold);
-      };
-      m_bootstrap_daemon.reset(new bootstrap_daemon(std::move(get_nodes), rpc_payment_enabled, proxy));
-    }
-    else
-    {
-      m_bootstrap_daemon.reset(new bootstrap_daemon(address, credentials, rpc_payment_enabled, proxy));
-    }
-
-    m_should_use_bootstrap_daemon = m_bootstrap_daemon.get() != nullptr;
-
-    return true;
-  }
   core_rpc_server::~core_rpc_server()
   {
   }
@@ -332,9 +288,7 @@ namespace cryptonote
   bool core_rpc_server::on_get_height(const COMMAND_RPC_GET_HEIGHT::request& req, COMMAND_RPC_GET_HEIGHT::response& res, const connection_context *ctx)
   {
     RPC_TRACKER(get_height);
-    bool r;
-    if (use_bootstrap_daemon_if_necessary<COMMAND_RPC_GET_HEIGHT>(invoke_http_mode::JON, "/getheight", req, res, r))
-      return r;
+ 
 
     crypto::hash hash;
     m_core.get_blockchain_top(res.height, hash);
@@ -347,24 +301,6 @@ namespace cryptonote
   bool core_rpc_server::on_get_info(const COMMAND_RPC_GET_INFO::request& req, COMMAND_RPC_GET_INFO::response& res, const connection_context *ctx)
   {
     RPC_TRACKER(get_info);
-    bool r;
-    if (use_bootstrap_daemon_if_necessary<COMMAND_RPC_GET_INFO>(invoke_http_mode::JON, "/getinfo", req, res, r))
-    {
-      {
-        boost::shared_lock<boost::shared_mutex> lock(m_bootstrap_daemon_mutex);
-        if (m_bootstrap_daemon.get() != nullptr)
-        {
-          res.bootstrap_daemon_address = m_bootstrap_daemon->address();
-        }
-      }
-      crypto::hash top_hash;
-      m_core.get_blockchain_top(res.height_without_bootstrap, top_hash);
-      ++res.height_without_bootstrap; // turn top block height into blockchain height
-      res.was_bootstrap_ever_used = true;
-      return r;
-    }
-
-    CHECK_PAYMENT_MIN1(req, res, COST_PER_GET_INFO, false);
 
     const bool restricted = m_restricted && ctx;
 
@@ -400,20 +336,7 @@ namespace cryptonote
     res.free_space = restricted ? std::numeric_limits<uint64_t>::max() : m_core.get_free_space();
     res.offline = m_core.offline();
     res.height_without_bootstrap = restricted ? 0 : res.height;
-    if (restricted)
-    {
-      res.bootstrap_daemon_address = "";
-      res.was_bootstrap_ever_used = false;
-    }
-    else
-    {
-      boost::shared_lock<boost::shared_mutex> lock(m_bootstrap_daemon_mutex);
-      if (m_bootstrap_daemon.get() != nullptr)
-      {
-        res.bootstrap_daemon_address = m_bootstrap_daemon->address();
-      }
-      res.was_bootstrap_ever_used = m_was_bootstrap_ever_used;
-    }
+  
     res.database_size = m_core.get_blockchain_storage().get_db().get_database_size();
     if (restricted)
       res.database_size = round_up(res.database_size, 5ull* 1024 * 1024 * 1024);
@@ -532,9 +455,7 @@ namespace cryptonote
 bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_HASHES::request& req, COMMAND_RPC_GET_ALT_BLOCKS_HASHES::response& res, const connection_context *ctx)
     {
       RPC_TRACKER(get_alt_blocks_hashes);
-      bool r;
-      if (use_bootstrap_daemon_if_necessary<COMMAND_RPC_GET_ALT_BLOCKS_HASHES>(invoke_http_mode::JON, "/get_alt_blocks_hashes", req, res, r))
-        return r;
+   
 
       std::vector<block> blks;
 
@@ -559,9 +480,7 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
   bool core_rpc_server::on_get_blocks_by_height(const COMMAND_RPC_GET_BLOCKS_BY_HEIGHT::request& req, COMMAND_RPC_GET_BLOCKS_BY_HEIGHT::response& res, const connection_context *ctx)
   {
     RPC_TRACKER(get_blocks_by_height);
-    bool r;
-    if (use_bootstrap_daemon_if_necessary<COMMAND_RPC_GET_BLOCKS_BY_HEIGHT>(invoke_http_mode::BIN, "/getblocks_by_height.bin", req, res, r))
-      return r;
+  
 
     const bool restricted = m_restricted && ctx;
     if (restricted && req.heights.size() > RESTRICTED_BLOCK_COUNT)
@@ -644,9 +563,7 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
   bool core_rpc_server::on_get_outs(const COMMAND_RPC_GET_OUTPUTS::request& req, COMMAND_RPC_GET_OUTPUTS::response& res, const connection_context *ctx)
   {
     RPC_TRACKER(get_outs);
-    bool r;
-    if (use_bootstrap_daemon_if_necessary<COMMAND_RPC_GET_OUTPUTS>(invoke_http_mode::JON, "/get_outs", req, res, r))
-      return r;
+   
 
     CHECK_PAYMENT_MIN1(req, res, req.outputs.size() * COST_PER_OUT, false);
 
@@ -691,9 +608,7 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
   bool core_rpc_server::on_get_indexes(const COMMAND_RPC_GET_TX_GLOBAL_OUTPUTS_INDEXES::request& req, COMMAND_RPC_GET_TX_GLOBAL_OUTPUTS_INDEXES::response& res, const connection_context *ctx)
   {
     RPC_TRACKER(get_indexes);
-    bool ok;
-    if (use_bootstrap_daemon_if_necessary<COMMAND_RPC_GET_TX_GLOBAL_OUTPUTS_INDEXES>(invoke_http_mode::BIN, "/get_o_indexes.bin", req, res, ok))
-      return ok;
+
 
     CHECK_PAYMENT_MIN1(req, res, COST_PER_OUTPUT_INDEXES, false);
 
@@ -1299,11 +1214,6 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
   bool core_rpc_server::on_get_transaction_pool(const COMMAND_RPC_GET_TRANSACTION_POOL::request& req, COMMAND_RPC_GET_TRANSACTION_POOL::response& res, const connection_context *ctx)
   {
     RPC_TRACKER(get_transaction_pool);
-    bool r;
-    if (use_bootstrap_daemon_if_necessary<COMMAND_RPC_GET_TRANSACTION_POOL>(invoke_http_mode::JON, "/get_transaction_pool", req, res, r))
-      return r;
-
-    CHECK_PAYMENT(req, res, 1);
 
     const bool restricted = m_restricted && ctx;
     const bool request_has_rpc_origin = ctx != NULL;
@@ -1343,9 +1253,7 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
   bool core_rpc_server::on_get_transaction_pool_hashes(const COMMAND_RPC_GET_TRANSACTION_POOL_HASHES::request& req, COMMAND_RPC_GET_TRANSACTION_POOL_HASHES::response& res, const connection_context *ctx)
   {
     RPC_TRACKER(get_transaction_pool_hashes);
-    bool r;
-    if (use_bootstrap_daemon_if_necessary<COMMAND_RPC_GET_TRANSACTION_POOL_HASHES>(invoke_http_mode::JON, "/get_transaction_pool_hashes", req, res, r))
-      return r;
+   
 
 
     const bool restricted = m_restricted && ctx;
@@ -1369,9 +1277,7 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
   bool core_rpc_server::on_get_transaction_pool_stats(const COMMAND_RPC_GET_TRANSACTION_POOL_STATS::request& req, COMMAND_RPC_GET_TRANSACTION_POOL_STATS::response& res, const connection_context *ctx)
   {
     RPC_TRACKER(get_transaction_pool_stats);
-    bool r;
-    if (use_bootstrap_daemon_if_necessary<COMMAND_RPC_GET_TRANSACTION_POOL_STATS>(invoke_http_mode::JON, "/get_transaction_pool_stats", req, res, r))
-      return r;
+ 
 
     CHECK_PAYMENT_MIN1(req, res, COST_PER_TX_POOL_STATS, false);
 
@@ -1382,50 +1288,13 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
     res.status = CORE_RPC_STATUS_OK;
     return true;
   }
-  //------------------------------------------------------------------------------------------------------------------------------
-  bool core_rpc_server::on_set_bootstrap_daemon(const COMMAND_RPC_SET_BOOTSTRAP_DAEMON::request& req, COMMAND_RPC_SET_BOOTSTRAP_DAEMON::response& res, const connection_context *ctx)
-  {
-    PERF_TIMER(on_set_bootstrap_daemon);
-
-    boost::optional<epee::net_utils::http::login> credentials;
-    if (!req.username.empty() || !req.password.empty())
-    {
-      credentials = epee::net_utils::http::login(req.username, req.password);
-    }
-
-    if (set_bootstrap_daemon(req.address, credentials, req.proxy))
-    {
-      res.status = CORE_RPC_STATUS_OK;
-    }
-    else
-    {
-      res.status = "Failed to set bootstrap daemon";
-    }
-
-    return true;
-  }
-  //------------------------------------------------------------------------------------------------------------------------------
-  bool core_rpc_server::on_stop_daemon(const COMMAND_RPC_STOP_DAEMON::request& req, COMMAND_RPC_STOP_DAEMON::response& res, const connection_context *ctx)
-  {
-    RPC_TRACKER(stop_daemon);
-    // FIXME: replace back to original m_p2p.send_stop_signal() after
-    // investigating why that isn't working quite right.
-    m_p2p.send_stop_signal();
-    res.status = CORE_RPC_STATUS_OK;
-    return true;
-  }
+  
+  
   //------------------------------------------------------------------------------------------------------------------------------
   bool core_rpc_server::on_getblockcount(const COMMAND_RPC_GETBLOCKCOUNT::request& req, COMMAND_RPC_GETBLOCKCOUNT::response& res, const connection_context *ctx)
   {
     RPC_TRACKER(getblockcount);
-    {
-      boost::shared_lock<boost::shared_mutex> lock(m_bootstrap_daemon_mutex);
-      if (m_should_use_bootstrap_daemon)
-      {
-        res.status = "This command is unsupported for bootstrap daemon";
-        return true;
-      }
-    }
+   
     res.count = m_core.get_current_blockchain_height();
     res.status = CORE_RPC_STATUS_OK;
     return true;
@@ -1434,14 +1303,7 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
   bool core_rpc_server::on_getblockhash(const COMMAND_RPC_GETBLOCKHASH::request& req, COMMAND_RPC_GETBLOCKHASH::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
   {
     RPC_TRACKER(getblockhash);
-    {
-      boost::shared_lock<boost::shared_mutex> lock(m_bootstrap_daemon_mutex);
-      if (m_should_use_bootstrap_daemon)
-      {
-        res = "This command is unsupported for bootstrap daemon";
-        return true;
-      }
-    }
+   
     if(req.size() != 1)
     {
       error_resp.code = CORE_RPC_ERROR_CODE_WRONG_PARAM;
@@ -1530,9 +1392,7 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
   bool core_rpc_server::on_getblocktemplate(const COMMAND_RPC_GETBLOCKTEMPLATE::request& req, COMMAND_RPC_GETBLOCKTEMPLATE::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
   {
     RPC_TRACKER(getblocktemplate);
-    bool r;
-    if (use_bootstrap_daemon_if_necessary<COMMAND_RPC_GETBLOCKTEMPLATE>(invoke_http_mode::JON_RPC, "getblocktemplate", req, res, r))
-      return r;
+   
 
     if(!check_core_ready())
     {
@@ -1642,98 +1502,12 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
     response.miner_tx_hash = string_tools::pod_to_hex(cryptonote::get_transaction_hash(blk.miner_tx));
     return true;
   }
-  //------------------------------------------------------------------------------------------------------------------------------
-  template <typename COMMAND_TYPE>
-  bool core_rpc_server::use_bootstrap_daemon_if_necessary(const invoke_http_mode &mode, const std::string &command_name, const typename COMMAND_TYPE::request& req, typename COMMAND_TYPE::response& res, bool &r)
-  {
-    res.untrusted = false;
 
-    boost::upgrade_lock<boost::shared_mutex> upgrade_lock(m_bootstrap_daemon_mutex);
-
-    if (m_bootstrap_daemon.get() == nullptr)
-    {
-      return false;
-    }
-
-    if (!m_should_use_bootstrap_daemon)
-    {
-      MINFO("The local daemon is fully synced. Not switching back to the bootstrap daemon");
-      return false;
-    }
-
-    auto current_time = std::chrono::system_clock::now();
-    if (current_time - m_bootstrap_height_check_time > std::chrono::seconds(30))  // update every 30s
-    {
-      {
-        boost::upgrade_to_unique_lock<boost::shared_mutex> lock(upgrade_lock);
-        m_bootstrap_height_check_time = current_time;
-      }
-
-      boost::optional<std::pair<uint64_t, uint64_t>> bootstrap_daemon_height_info = m_bootstrap_daemon->get_height();
-      if (!bootstrap_daemon_height_info)
-      {
-        MERROR("Failed to fetch bootstrap daemon height");
-        return false;
-      }
-
-      const uint64_t bootstrap_daemon_height = bootstrap_daemon_height_info->first;
-      const uint64_t bootstrap_daemon_target_height = bootstrap_daemon_height_info->second;
-      if (bootstrap_daemon_height < bootstrap_daemon_target_height)
-      {
-        MINFO("Bootstrap daemon is out of sync");
-        return m_bootstrap_daemon->handle_result(false, {});
-      }
-
-      if (!m_p2p.get_crypto_protocol().no_sync())
-      {
-        uint64_t top_height = m_core.get_current_blockchain_height();
-        m_should_use_bootstrap_daemon = top_height + 10 < bootstrap_daemon_height;
-        MINFO((m_should_use_bootstrap_daemon ? "Using" : "Not using") << " the bootstrap daemon (our height: " << top_height << ", bootstrap daemon's height: " << bootstrap_daemon_height << ")");
-
-        if (!m_should_use_bootstrap_daemon)
-          return false;
-      }
-    }
-
-    if (mode == invoke_http_mode::JON)
-    {
-      r = m_bootstrap_daemon->invoke_http_json(command_name, req, res);
-    }
-    else if (mode == invoke_http_mode::BIN)
-    {
-      r = m_bootstrap_daemon->invoke_http_bin(command_name, req, res);
-    }
-    else if (mode == invoke_http_mode::JON_RPC)
-    {
-      r = m_bootstrap_daemon->invoke_http_json_rpc(command_name, req, res);
-    }
-    else
-    {
-      MERROR("Unknown invoke_http_mode: " << mode);
-      return false;
-    }
-
-    {
-      boost::upgrade_to_unique_lock<boost::shared_mutex> lock(upgrade_lock);
-      m_was_bootstrap_ever_used = true;
-    }
-
-    if (r && res.status != CORE_RPC_STATUS_PAYMENT_REQUIRED && res.status != CORE_RPC_STATUS_OK)
-    {
-      MINFO("Failing RPC " << command_name << " due to peer return status " << res.status);
-      r = false;
-    }
-    res.untrusted = true;
-    return r;
-  }
   //------------------------------------------------------------------------------------------------------------------------------
   bool core_rpc_server::on_get_last_block_header(const COMMAND_RPC_GET_LAST_BLOCK_HEADER::request& req, COMMAND_RPC_GET_LAST_BLOCK_HEADER::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
   {
     RPC_TRACKER(get_last_block_header);
-    bool r;
-    if (use_bootstrap_daemon_if_necessary<COMMAND_RPC_GET_LAST_BLOCK_HEADER>(invoke_http_mode::JON_RPC, "getlastblockheader", req, res, r))
-      return r;
-
+   
     CHECK_CORE_READY();
     uint64_t last_block_height;
     crypto::hash last_block_hash;
@@ -1761,9 +1535,7 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
   bool core_rpc_server::on_get_block_header_by_hash(const COMMAND_RPC_GET_BLOCK_HEADER_BY_HASH::request& req, COMMAND_RPC_GET_BLOCK_HEADER_BY_HASH::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
   {
     RPC_TRACKER(get_block_header_by_hash);
-    bool r;
-    if (use_bootstrap_daemon_if_necessary<COMMAND_RPC_GET_BLOCK_HEADER_BY_HASH>(invoke_http_mode::JON_RPC, "getblockheaderbyhash", req, res, r))
-      return r;
+  
 
     CHECK_PAYMENT_MIN1(req, res, COST_PER_BLOCK_HEADER, false);
 
@@ -1830,9 +1602,7 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
   bool core_rpc_server::on_get_block_headers_range(const COMMAND_RPC_GET_BLOCK_HEADERS_RANGE::request& req, COMMAND_RPC_GET_BLOCK_HEADERS_RANGE::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
   {
     RPC_TRACKER(get_block_headers_range);
-    bool r;
-    if (use_bootstrap_daemon_if_necessary<COMMAND_RPC_GET_BLOCK_HEADERS_RANGE>(invoke_http_mode::JON_RPC, "getblockheadersrange", req, res, r))
-      return r;
+   
 
     const uint64_t bc_height = m_core.get_current_blockchain_height();
     if (req.start_height >= bc_height || req.end_height >= bc_height || req.start_height > req.end_height)
@@ -1890,9 +1660,7 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
   bool core_rpc_server::on_get_block_header_by_height(const COMMAND_RPC_GET_BLOCK_HEADER_BY_HEIGHT::request& req, COMMAND_RPC_GET_BLOCK_HEADER_BY_HEIGHT::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
   {
     RPC_TRACKER(get_block_header_by_height);
-    bool r;
-    if (use_bootstrap_daemon_if_necessary<COMMAND_RPC_GET_BLOCK_HEADER_BY_HEIGHT>(invoke_http_mode::JON_RPC, "getblockheaderbyheight", req, res, r))
-      return r;
+  
 
     if(m_core.get_current_blockchain_height() <= req.height)
     {
@@ -1925,11 +1693,8 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
   bool core_rpc_server::on_get_block(const COMMAND_RPC_GET_BLOCK::request& req, COMMAND_RPC_GET_BLOCK::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
   {
     RPC_TRACKER(get_block);
-    bool r;
-    if (use_bootstrap_daemon_if_necessary<COMMAND_RPC_GET_BLOCK>(invoke_http_mode::JON_RPC, "getblock", req, res, r))
-      return r;
+   
 
-    CHECK_PAYMENT_MIN1(req, res, COST_PER_BLOCK, false);
 
     crypto::hash block_hash;
     if (!req.hash.empty())
@@ -2012,9 +1777,7 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
   bool core_rpc_server::on_hard_fork_info(const COMMAND_RPC_HARD_FORK_INFO::request& req, COMMAND_RPC_HARD_FORK_INFO::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
   {
     RPC_TRACKER(hard_fork_info);
-    bool r;
-    if (use_bootstrap_daemon_if_necessary<COMMAND_RPC_HARD_FORK_INFO>(invoke_http_mode::JON_RPC, "hard_fork_info", req, res, r))
-      return r;
+    
 
     CHECK_PAYMENT(req, res, COST_PER_HARD_FORK_INFO);
     const Blockchain &blockchain = m_core.get_blockchain_storage();
@@ -2236,9 +1999,6 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
   bool core_rpc_server::on_get_version(const COMMAND_RPC_GET_VERSION::request& req, COMMAND_RPC_GET_VERSION::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
   {
     RPC_TRACKER(get_version);
-    bool r;
-    if (use_bootstrap_daemon_if_necessary<COMMAND_RPC_GET_VERSION>(invoke_http_mode::JON_RPC, "get_version", req, res, r))
-      return r;
 
     res.version = CORE_RPC_VERSION;
     res.release = MONERO_VERSION_IS_RELEASE;
@@ -2255,7 +2015,6 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
       res.status = "height or count is too large";
       return true;
     }
-    CHECK_PAYMENT_MIN1(req, res, COST_PER_COINBASE_TX_SUM_BLOCK * req.count, false);
     std::pair<boost::multiprecision::uint128_t, boost::multiprecision::uint128_t> amounts = m_core.get_coinbase_tx_sum(req.height, req.count);
     store_128(amounts.first, res.emission_amount, res.wide_emission_amount, res.emission_amount_top64);
     store_128(amounts.second, res.fee_amount, res.wide_fee_amount, res.fee_amount_top64);
@@ -2266,11 +2025,7 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
   bool core_rpc_server::on_get_base_fee_estimate(const COMMAND_RPC_GET_BASE_FEE_ESTIMATE::request& req, COMMAND_RPC_GET_BASE_FEE_ESTIMATE::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
   {
     RPC_TRACKER(get_base_fee_estimate);
-    bool r;
-    if (use_bootstrap_daemon_if_necessary<COMMAND_RPC_GET_BASE_FEE_ESTIMATE>(invoke_http_mode::JON_RPC, "get_fee_estimate", req, res, r))
-      return r;
 
-    CHECK_PAYMENT(req, res, COST_PER_FEE_ESTIMATE);
     res.fee = m_core.get_blockchain_storage().get_dynamic_base_fee_estimate(req.grace_blocks);
     res.quantization_mask = Blockchain::get_fee_quantization_mask();
     res.status = CORE_RPC_STATUS_OK;
@@ -2313,9 +2068,7 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
   bool core_rpc_server::on_get_limit(const COMMAND_RPC_GET_LIMIT::request& req, COMMAND_RPC_GET_LIMIT::response& res, const connection_context *ctx)
   {
     RPC_TRACKER(get_limit);
-    bool r;
-    if (use_bootstrap_daemon_if_necessary<COMMAND_RPC_GET_LIMIT>(invoke_http_mode::JON, "/get_limit", req, res, r))
-      return r;
+
 
     res.limit_down = epee::net_utils::connection_basic::get_rate_down_limit();
     res.limit_up = epee::net_utils::connection_basic::get_rate_up_limit();
@@ -2394,7 +2147,7 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
       return true;
     }
 
-    static const char software[] = "monero";
+    static const char software[] = "dfa";
 #ifdef BUILD_TAG
     static const char buildtag[] = BOOST_PP_STRINGIZE(BUILD_TAG);
     static const char subdir[] = "cli";
@@ -2502,7 +2255,7 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
   bool core_rpc_server::on_sync_info(const COMMAND_RPC_SYNC_INFO::request& req, COMMAND_RPC_SYNC_INFO::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
   {
     RPC_TRACKER(sync_info);
-    CHECK_PAYMENT(req, res, COST_PER_SYNC_INFO);
+
 
     crypto::hash top_hash;
     m_core.get_blockchain_top(res.height, top_hash);
@@ -2580,9 +2333,7 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
   {
     RPC_TRACKER(get_output_distribution_bin);
 
-    bool r;
-    if (use_bootstrap_daemon_if_necessary<COMMAND_RPC_GET_OUTPUT_DISTRIBUTION>(invoke_http_mode::BIN, "/get_output_distribution.bin", req, res, r))
-      return r;
+
 
     res.status = "Failed";
 
@@ -2651,9 +2402,6 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
   {
     RPC_TRACKER(rpc_access_info);
 
-    bool r;
-    if (use_bootstrap_daemon_if_necessary<COMMAND_RPC_ACCESS_INFO>(invoke_http_mode::JON_RPC, "rpc_access_info", req, res, r))
-      return r;
 
     // if RPC payment is not enabled
     {

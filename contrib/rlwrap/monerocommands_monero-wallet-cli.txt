@@ -17,9 +17,7 @@ set
 show_transfers
 sign
 spendkey
-start_mining
 status
-stop_mining
 sweep_all
 transfer
 verify

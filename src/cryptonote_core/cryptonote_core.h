@@ -37,7 +37,6 @@
 #include <boost/program_options/variables_map.hpp>
 
 #include "cryptonote_basic/fwd.h"
-#include "cryptonote_core/i_core_events.h"
 #include "cryptonote_protocol/cryptonote_protocol.h"
 #include "cryptonote_protocol/enums.h"
 #include "storages/portable_storage_template_helper.h"
@@ -84,7 +83,7 @@ namespace cryptonote
     * limited to, communication among the Blockchain, the transaction pool,
     * any miners, and the network.
     */
-   class core final: public i_miner_handler
+   class core final//: public i_miner_handler
    {
    public:
 
@@ -204,14 +203,13 @@ namespace cryptonote
       *
       * @return true if the block was added to the main chain, otherwise false
       */
-     virtual bool handle_block_found(const block& b, block_verification_context &bvc) override;
+     virtual bool handle_block_found(const block& b, block_verification_context &bvc) ;
 
      /**
       * @copydoc Blockchain::create_block_template
       *
       * @note see Blockchain::create_block_template
       */
-     virtual bool get_block_template(block& b, const account_public_address& adr, difficulty_type& diffic, uint64_t& height, uint64_t& expected_reward, const blobdata& ex_nonce, uint64_t &seed_height, crypto::hash &seed_hash) override;
      virtual bool get_block_template(block& b, const crypto::hash *prev_block, const account_public_address& adr, difficulty_type& diffic, uint64_t& height, uint64_t& expected_reward, const blobdata& ex_nonce, uint64_t &seed_height, crypto::hash &seed_hash);
 
      /**
@@ -219,21 +217,6 @@ namespace cryptonote
       * @note Should only be invoked from `levin_notify`.
       */
      virtual void on_transactions_relayed(epee::span<const cryptonote::blobdata> tx_blobs, relay_method tx_relay) final;
-
-
-     /**
-      * @brief gets the miner instance
-      *
-      * @return a reference to the miner instance
-      */
-     miner& get_miner(){return m_miner;}
-
-     /**
-      * @brief gets the miner instance (const)
-      *
-      * @return a const reference to the miner instance
-      */
-     const miner& get_miner()const{return m_miner;}
 
      /**
       * @brief adds command line options to the given options set
@@ -578,19 +561,7 @@ namespace cryptonote
       */
      bool get_output_distribution(uint64_t amount, uint64_t from_height, uint64_t to_height, uint64_t &start_height, std::vector<uint64_t> &distribution, uint64_t &base) const;
 
-     /**
-      * @copydoc miner::pause
-      *
-      * @note see miner::pause
-      */
-     void pause_mine();
-
-     /**
-      * @copydoc miner::resume
-      *
-      * @note see miner::resume
-      */
-     void resume_mine();
+    
 
      /**
       * @brief gets the Blockchain instance
@@ -613,12 +584,7 @@ namespace cryptonote
       */
      std::string print_pool(bool short_format) const;
 
-     /**
-      * @copydoc miner::on_synchronized
-      *
-      * @note see miner::on_synchronized
-      */
-     void on_synchronized();
+    
 
      /**
       * @copydoc Blockchain::safesyncmode
@@ -936,15 +902,6 @@ namespace cryptonote
      bool handle_incoming_tx_accumulated_batch(std::vector<tx_verification_batch_info> &tx_info, bool keeped_by_block);
 
      /**
-      * @copydoc miner::on_block_chain_update
-      *
-      * @note see miner::on_block_chain_update
-      *
-      * @return true
-      */
-     bool update_miner_block_template();
-
-     /**
       * @brief act on a set of command line options given
       *
       * @param vm the command line options
@@ -1013,9 +970,6 @@ namespace cryptonote
 
 
      epee::critical_section m_incoming_tx_lock; //!< incoming transaction lock
-
-     //m_miner and m_miner_addres are probably temporary here
-     miner m_miner; //!< miner instance
 
      std::string m_config_folder; //!< folder to look in for configs and other files
 

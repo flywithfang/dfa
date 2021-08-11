@@ -28,7 +28,6 @@ set_log
 show_hr
 start_mining
 status
-stop_daemon
 stop_mining
 sync_info
 unban

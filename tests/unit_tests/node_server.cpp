@@ -32,7 +32,6 @@
 #include "cryptonote_core/cryptonote_core.h"
 #include "p2p/net_node.h"
 #include "p2p/net_node.inl"
-#include "cryptonote_core/i_core_events.h"
 #include "cryptonote_protocol/cryptonote_protocol_handler.h"
 #include "cryptonote_protocol/cryptonote_protocol_handler.inl"
 
@@ -61,8 +60,6 @@ public:
   bool handle_incoming_tx(const cryptonote::tx_blob_entry& tx_blob, cryptonote::tx_verification_context& tvc, cryptonote::relay_method tx_relay, bool relayed) { return true; }
   bool handle_incoming_txs(const std::vector<cryptonote::tx_blob_entry>& tx_blob, std::vector<cryptonote::tx_verification_context>& tvc, cryptonote::relay_method tx_relay, bool relayed) { return true; }
   bool handle_incoming_block(const cryptonote::blobdata& block_blob, const cryptonote::block *block, cryptonote::block_verification_context& bvc, bool update_miner_blocktemplate = true) { return true; }
-  void pause_mine(){}
-  void resume_mine(){}
   bool on_idle(){return true;}
   bool find_blockchain_supplement(const std::list<crypto::hash>& qblock_ids, bool clip_pruned, cryptonote::NOTIFY_RESPONSE_CHAIN_ENTRY::request& resp){return true;}
   bool handle_get_objects(cryptonote::NOTIFY_REQUEST_GET_OBJECTS::request& arg, cryptonote::NOTIFY_RESPONSE_GET_OBJECTS::request& rsp, cryptonote::cryptonote_peer_context& context){return true;}

@@ -223,7 +223,6 @@ namespace cryptonote
   core::core():
               m_mempool(m_blockchain),
               m_blockchain(m_mempool),
-              m_miner(this),
               m_starter_message_showed(false),
               m_target_blockchain_height(0),
               m_checkpoints_path(""),
@@ -291,7 +290,6 @@ namespace cryptonote
   //-----------------------------------------------------------------------------------
   void core::stop()
   {
-    m_miner.stop();
     m_blockchain.cancel();
 
     tools::download_async_handle handle;
@@ -695,8 +693,6 @@ namespace cryptonote
       return false;
     }
 
-    r = m_miner.init(vm, m_nettype);
-    CHECK_AND_ASSERT_MES(r, false, "Failed to initialize miner instance");
 
     if (!keep_alt_blocks && !m_blockchain.get_db().is_read_only())
       m_blockchain.get_db().drop_alt_blocks();
@@ -731,7 +727,6 @@ namespace cryptonote
   //-----------------------------------------------------------------------------------------------
     bool core::deinit()
   {
-    m_miner.stop();
     m_mempool.deinit();
     m_blockchain.deinit();
     return true;
@@ -1286,11 +1281,7 @@ namespace cryptonote
     }
     m_mempool.set_relayed(epee::to_span(tx_hashes), tx_relay);
   }
-  //-----------------------------------------------------------------------------------------------
-  bool core::get_block_template(block& b, const account_public_address& adr, difficulty_type& diffic, uint64_t& height, uint64_t& expected_reward, const blobdata& ex_nonce, uint64_t &seed_height, crypto::hash &seed_hash)
-  {
-    return m_blockchain.create_block_template(b, adr, diffic, height, expected_reward, ex_nonce, seed_height, seed_hash);
-  }
+
   //-----------------------------------------------------------------------------------------------
   bool core::get_block_template(block& b, const crypto::hash *prev_block, const account_public_address& adr, difficulty_type& diffic, uint64_t& height, uint64_t& expected_reward, const blobdata& ex_nonce, uint64_t &seed_height, crypto::hash &seed_hash)
   {
@@ -1326,16 +1317,7 @@ namespace cryptonote
   {
     return m_blockchain.get_tx_outputs_gindexs(tx_id, n_txes, indexs);
   }
-  //-----------------------------------------------------------------------------------------------
-  void core::pause_mine()
-  {
-    m_miner.pause();
-  }
-  //-----------------------------------------------------------------------------------------------
-  void core::resume_mine()
-  {
-    m_miner.resume();
-  }
+ 
   //-----------------------------------------------------------------------------------------------
   block_complete_entry get_block_complete_entry(const block& b, tx_memory_pool &pool)
   {
@@ -1354,7 +1336,6 @@ namespace cryptonote
   bool core::handle_block_found(const block& b, block_verification_context &bvc)
   {
     bvc = {};
-    m_miner.pause();
     std::vector<block_complete_entry> blocks;
     try
     {
@@ -1362,33 +1343,23 @@ namespace cryptonote
     }
     catch (const std::exception &e)
     {
-      m_miner.resume();
       return false;
     }
     std::vector<block> pblocks;
     if (!prepare_handle_incoming_blocks(blocks, pblocks))
     {
       MERROR("Block found, but failed to prepare to add");
-      m_miner.resume();
       return false;
     }
     m_blockchain.add_new_block(b, bvc);
     cleanup_handle_incoming_blocks(true);
-    //anyway - update miner template
-    update_miner_block_template();
-    m_miner.resume();
-
 
     CHECK_AND_ASSERT_MES(!bvc.m_verifivation_failed, false, "mined block failed verification");
     
     return true;
   }
  
-  //-----------------------------------------------------------------------------------------------
-  void core::on_synchronized()
-  {
-    m_miner.on_synchronized();
-  }
+ 
   //-----------------------------------------------------------------------------------------------
   void core::safesyncmode(const bool onoff)
   {
@@ -1540,12 +1511,6 @@ namespace cryptonote
   std::string core::print_pool(bool short_format) const
   {
     return m_mempool.print_pool(short_format);
-  }
-  //-----------------------------------------------------------------------------------------------
-  bool core::update_miner_block_template()
-  {
-    m_miner.on_block_chain_update();
-    return true;
   }
   #include "cryptonote_core_idle.inl"
   //-----------------------------------------------------------------------------------------------
