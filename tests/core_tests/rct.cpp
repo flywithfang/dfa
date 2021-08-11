@@ -506,12 +506,3 @@ bool gen_rct_tx_rct_altered_extra::generate(std::vector<test_event_entry>& event
   return generate_with(events, out_idx, mixin, amount_paid, false,
     NULL, [&failed](transaction &tx) {std::string extra_nonce; crypto::hash pid = crypto::null_hash; set_payment_id_to_tx_extra_nonce(extra_nonce, pid); if (!add_extra_nonce_to_tx_extra(tx.extra, extra_nonce)) failed = true; }) && !failed;
 }
-
-bool gen_rct_tx_uses_output_too_early::generate(std::vector<test_event_entry>& events) const
-{
-  const int mixin = 10;
-  const int out_idx[] = {1, -1};
-  const uint64_t amount_paid = 10000;
-  const rct::RCTConfig rct_config { rct::RangeProofPaddedBulletproof, 2 };
-  return generate_with_full(events, out_idx, mixin, amount_paid, CRYPTONOTE_DEFAULT_TX_SPENDABLE_AGE-3, HF_VERSION_ENFORCE_MIN_AGE, rct_config, false, NULL, NULL);
-}

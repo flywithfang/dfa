@@ -45,10 +45,10 @@ namespace crypto {
   }
 
 #pragma pack(push, 1)
-  POD_CLASS hash {
+  struct hash {
     char data[HASH_SIZE];
   };
-  POD_CLASS hash8 {
+  struct hash8 {
     char data[8];
   };
 #pragma pack(pop)

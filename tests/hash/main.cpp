@@ -52,30 +52,6 @@ struct V4_Data
   uint64_t height;
 };
 
-PUSH_WARNINGS
-DISABLE_VS_WARNINGS(4297)
-extern "C" {
-  static void hash_tree(const void *data, size_t length, char *hash) {
-    if ((length & 31) != 0) {
-      throw ios_base::failure("Invalid input length for tree_hash");
-    }
-    tree_hash((const char (*)[crypto::HASH_SIZE]) data, length >> 5, hash);
-  }
-  static void cn_slow_hash_0(const void *data, size_t length, char *hash) {
-    return cn_slow_hash(data, length, hash, 0/*variant*/, 0/*prehashed*/, 0/*height*/);
-  }
-  static void cn_slow_hash_1(const void *data, size_t length, char *hash) {
-    return cn_slow_hash(data, length, hash, 1/*variant*/, 0/*prehashed*/, 0/*height*/);
-  }
-  static void cn_slow_hash_2(const void *data, size_t length, char *hash) {
-    return cn_slow_hash(data, length, hash, 2/*variant*/, 0/*prehashed*/, 0/*height*/);
-  }
-  static void cn_slow_hash_4(const void *data, size_t, char *hash) {
-    const V4_Data* p = reinterpret_cast<const V4_Data*>(data);
-    return cn_slow_hash(p->data, p->length, hash, 4/*variant*/, 0/*prehashed*/, p->height);
-  }
-}
-POP_WARNINGS
 
 extern "C" typedef void hash_f(const void *, size_t, char *);
 struct hash_func {

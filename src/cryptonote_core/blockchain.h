@@ -968,16 +968,7 @@ namespace cryptonote
      */
     void output_scan_worker(const std::vector<uint64_t> &offsets,std::vector<output_data_t> &outputs) const;
 
-    /**
-     * @brief computes the "short" and "long" hashes for a set of blocks
-     *
-     * @param height the height of the first block
-     * @param blocks the blocks to be hashed
-     * @param map return-by-reference the hashes for each block
-     */
-    void block_longhash_worker(uint64_t height, const epee::span<const block> &blocks,
-        std::unordered_map<crypto::hash, crypto::hash> &map) const;
-
+   
     /**
      * @brief returns a set of known alternate chains
      *

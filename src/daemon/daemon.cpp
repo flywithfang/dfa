@@ -37,10 +37,13 @@
 #include "common/password.h"
 #include "common/util.h"
 #include "cryptonote_basic/events.h"
-#include "daemon/command_server.h"
-#include "daemon/command_line_args.h"
 #include "net/net_ssl.h"
 #include "version.h"
+#include "cryptonote_protocol/cryptonote_protocol_handler.h"
+#include "p2p/net_node.h"
+#include "cryptonote_core/cryptonote_core.h"
+#include "rpc/core_rpc_server.h"
+
 
 using namespace epee;
 
@@ -124,13 +127,6 @@ public:
 
   try
   {
-    std::unique_ptr<daemonize::t_command_server> rpc_cmd_handler;
-    if (interactive)
-    {
-      // The first three variables are not used when the fourth is false
-      rpc_cmd_handler.reset(new daemonize::t_command_server(0, 0, boost::none, epee::net_utils::ssl_support_t::e_ssl_support_disabled, false, m_rpc.get(),m_core));
-      rpc_cmd_handler->start_handling(std::bind(&daemonize::t_internals::stop_p2p, this));
-    }
 
     if (m_rpc_port.size()>0)
     {
@@ -139,9 +135,6 @@ public:
     }
     
     m_p2p.run(); // blocks until p2p goes down
-
-    if (rpc_cmd_handler)
-      rpc_cmd_handler->stop_handling();
 
     MGINFO("Node stopped.");
     return true;

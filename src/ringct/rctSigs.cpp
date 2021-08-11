@@ -170,6 +170,24 @@ namespace rct {
       return verifyBorromean(bb, P1_p3, P2_p3);
     }
 
+ bool clsag_prepare(const rct::key &p, const rct::key &z, rct::key &I, rct::key &D, const rct::key &H, rct::key &a, rct::key &aG, rct::key &aH) {
+            rct::skpkGen(a,aG); // aG = a*G
+            rct::scalarmultKey(aH,H,a); // aH = a*H
+            rct::scalarmultKey(I,H,p); // I = p*H
+            rct::scalarmultKey(D,H,z); // D = z*H
+            return true;
+        }
+
+ bool clsag_sign(const rct::key &c, const rct::key &a, const rct::key &p, const rct::key &z, const rct::key &mu_P, const rct::key &mu_C, rct::key &s) {
+            rct::key s0_p_mu_P;
+            sc_mul(s0_p_mu_P.bytes,mu_P.bytes,p.bytes);
+            rct::key s0_add_z_mu_C;
+            sc_muladd(s0_add_z_mu_C.bytes,mu_C.bytes,z.bytes,s0_p_mu_P.bytes);
+            sc_mulsub(s.bytes,c.bytes,s0_add_z_mu_C.bytes,a.bytes);
+
+            return true;
+        }
+
     // Generate a CLSAG signature
     // See paper by Goodell et al. (https://eprint.iacr.org/2019/654)
     //
@@ -198,7 +216,7 @@ namespace rct {
         key aH;
 
         {
-            hwdev.clsag_prepare(p,z,sig.I,D,H,a,aG,aH);
+            clsag_prepare(p,z,sig.I,D,H,a,aG,aH);
         }
 
         geDsmp I_precomp;
@@ -251,8 +269,7 @@ namespace rct {
             c_to_hash[2*n+3] = aG;
             c_to_hash[2*n+4] = aH;
         }
-        hwdev.clsag_hash(c_to_hash,c);
-        
+        c = rct::hash_to_scalar(c_to_hash);
         size_t i;
         i = (l + 1) % n;
         if (i == 0)
@@ -290,7 +307,7 @@ namespace rct {
 
             c_to_hash[2*n+3] = L;
             c_to_hash[2*n+4] = R;
-            hwdev.clsag_hash(c_to_hash,c_new);
+            c_new = rct::hash_to_scalar(c_to_hash);
             copy(c,c_new);
             
             i = (i + 1) % n;
@@ -299,7 +316,7 @@ namespace rct {
         }
 
         // Compute final scalar
-        hwdev.clsag_sign(c,a,p,z,mu_P,mu_C,sig.s[l]);
+        clsag_sign(c,a,p,z,mu_P,mu_C,sig.s[l]);
         memwipe(&a, sizeof(key));
 
         return sig;

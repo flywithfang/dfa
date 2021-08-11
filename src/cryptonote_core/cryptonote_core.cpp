@@ -1011,7 +1011,6 @@ namespace cryptonote
     if (!tx_info.empty())
       handle_incoming_tx_accumulated_batch(tx_info, tx_relay == relay_method::block);
 
-    bool valid_events = false;
     bool ok = true;
     it = tx_blobs.begin();
     for (size_t i = 0; i < tx_blobs.size(); i++, ++it) {
@@ -1034,7 +1033,6 @@ namespace cryptonote
       if(tvc[i].m_added_to_pool)
       {
         MDEBUG("tx added: " << results[i].hash);
-        valid_events = true;
       }
       else
         results[i].res = false;

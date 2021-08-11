@@ -59,6 +59,7 @@
 #include "common/pruning.h"
 #include "time_helper.h"
 #include "string_tools.h"
+#include "crypto/rx-hash.h"
 
 #undef MONERO_DEFAULT_LOG_CATEGORY
 #define MONERO_DEFAULT_LOG_CATEGORY "blockchain"
@@ -78,8 +79,6 @@ using namespace epee;
 
 using namespace cryptonote;
 using epee::string_tools::pod_to_hex;
-extern "C" void slow_hash_allocate_state();
-extern "C" void slow_hash_free_state();
 
 DISABLE_VS_WARNINGS(4267)
 
@@ -2439,7 +2438,6 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
 
   // from hard fork 2, we require mixin at least 2 unless one output cannot mix with 2 others
   // if one output cannot mix with 2 others, we accept at most 1 output that can mix
-  if (hf_version >= 2)
   {
     size_t n_unmixable = 0, n_mixable = 0;
     size_t min_actual_mixin = std::numeric_limits<size_t>::max();
@@ -2467,7 +2465,6 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
     }
     MDEBUG("Mixin: " << min_actual_mixin << "-" << max_actual_mixin);
 
-    if (hf_version >= HF_VERSION_SAME_MIXIN)
     {
       if (min_actual_mixin != max_actual_mixin)
       {
@@ -2477,7 +2474,7 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
       }
     }
 
-    if (((hf_version == HF_VERSION_MIN_MIXIN_10 || hf_version == HF_VERSION_MIN_MIXIN_10+1) && min_actual_mixin != 10) || (hf_version >= HF_VERSION_MIN_MIXIN_10+2 && min_actual_mixin > 10))
+    if (min_actual_mixin != 10 )
     {
       MERROR_VER("Tx " << get_transaction_hash(tx) << " has invalid ring size (" << (min_actual_mixin + 1) << "), it should be 11");
       tvc.m_low_mixin = true;
@@ -2500,21 +2497,7 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
       }
     }
 
-    // min/max tx version based on HF, and we accept v1 txes if having a non mixable
-    const size_t max_tx_version = (hf_version <= 3) ? 1 : 2;
-    if (tx.version > max_tx_version)
-    {
-      MERROR_VER("transaction version " << (unsigned)tx.version << " is higher than max accepted version " << max_tx_version);
-      tvc.m_verifivation_failed = true;
-      return false;
-    }
-    const size_t min_tx_version = (n_unmixable > 0 ? 1 : (hf_version >= HF_VERSION_ENFORCE_RCT) ? 2 : 1);
-    if (tx.version < min_tx_version)
-    {
-      MERROR_VER("transaction version " << (unsigned)tx.version << " is lower than min accepted version " << min_tx_version);
-      tvc.m_verifivation_failed = true;
-      return false;
-    }
+  
   }
 
   // from v7, sorted ins
@@ -2580,7 +2563,6 @@ bool Blockchain::check_tx_inputs(transaction& tx, tx_verification_context &tvc, 
  
 
   // enforce min output age
-  if (hf_version >= HF_VERSION_ENFORCE_MIN_AGE)
   {
     CHECK_AND_ASSERT_MES(*pmax_used_block_height + CRYPTONOTE_DEFAULT_TX_SPENDABLE_AGE <= m_db->height(),
         false, "Transaction spends at least one output which is too young");
@@ -2836,7 +2818,7 @@ bool Blockchain::is_tx_spendtime_unlocked(uint64_t unlock_time, uint8_t hf_versi
   else
   {
     //interpret as time
-    const uint64_t current_time = hf_version >= HF_VERSION_DETERMINISTIC_UNLOCK_TIME ? get_adjusted_time(m_db->height()) : static_cast<uint64_t>(time(NULL));
+    const uint64_t current_time =  static_cast<uint64_t>(time(NULL));
     if(current_time +  CRYPTONOTE_LOCKED_TX_ALLOWED_DELTA_SECONDS_V2 >= unlock_time)
       return true;
     else
@@ -3120,7 +3102,7 @@ leave:
   bool precomputed = false;
   {
    
-    pow = get_block_longhash(this, bl, blockchain_height, 0);
+    pow = get_block_longhash(this, bl, blockchain_height);
 
     // validate pow versus difficulty target
     if(!check_hash(pow, block_diff))
@@ -3620,26 +3602,6 @@ void Blockchain::set_enforce_dns_checkpoints(bool enforce_checkpoints)
 {
   m_enforce_dns_checkpoints = enforce_checkpoints;
 }
-
-//------------------------------------------------------------------
-void Blockchain::block_longhash_worker(uint64_t height, const epee::span<const block> &blocks, std::unordered_map<crypto::hash, crypto::hash> &map) const
-{
-  TIME_MEASURE_START(t);
-  slow_hash_allocate_state();
-
-  for (const auto & block : blocks)
-  {
-    if (m_cancel)
-       break;
-    crypto::hash id = get_block_hash(block);
-    crypto::hash pow = get_block_longhash(this, block, height++, 0);
-    map.emplace(id, pow);
-  }
-
-  slow_hash_free_state();
-  TIME_MEASURE_FINISH(t);
-}
-
 
 
 //------------------------------------------------------------------

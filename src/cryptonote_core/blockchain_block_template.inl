@@ -74,7 +74,7 @@ bool Blockchain::create_block_template(block& b, const crypto::hash *from_block,
       height = from_block_height + 1;
       {
         uint64_t next_height;
-        crypto::rx_seedheights(height, &seed_height, &next_height);
+        rx_seedheights(height, &seed_height, &next_height);
         seed_hash = get_block_id_by_height(seed_height);
       }
     }
@@ -82,7 +82,7 @@ bool Blockchain::create_block_template(block& b, const crypto::hash *from_block,
     {
       height = alt_chain.back().height + 1;
       uint64_t next_height;
-      crypto::rx_seedheights(height, &seed_height, &next_height);
+      rx_seedheights(height, &seed_height, &next_height);
 
       if (alt_chain.size() && alt_chain.front().height <= seed_height)
       {
@@ -135,7 +135,7 @@ bool Blockchain::create_block_template(block& b, const crypto::hash *from_block,
     already_generated_coins = m_db->get_block_already_generated_coins(height - 1);
     {
       uint64_t next_height;
-      crypto::rx_seedheights(height, &seed_height, &next_height);
+      rx_seedheights(height, &seed_height, &next_height);
       seed_hash = get_block_id_by_height(seed_height);
     }
   }

@@ -33,7 +33,6 @@
 #include <string>
 
 #include "cryptonote_basic/cryptonote_basic_impl.h"
-#include "cryptonote_basic/merge_mining.h"
 
 namespace
 {

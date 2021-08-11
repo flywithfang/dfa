@@ -27,20 +27,14 @@
 # THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 set(daemon_sources
-  command_parser.cpp
-  command_server.cpp
   daemon.cpp
   main.cpp
-  rpc_command_executor.cpp
 )
 
 set(daemon_headers)
 
 set(daemon_private_headers
-  command_parser.h
-  command_server.h
   daemon.h
-  rpc_command_executor.h
 
   # cryptonote_protocol
   ../cryptonote_protocol/cryptonote_protocol_defs.h

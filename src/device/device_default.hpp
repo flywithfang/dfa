@@ -112,9 +112,6 @@ namespace hw {
             void get_transaction_prefix_hash(const cryptonote::transaction_prefix& tx, crypto::hash& h) override;
 
 
-
-            virtual bool  generate_otk(  const crypto::secret_key &tx_key,
-                                                     const cryptonote::tx_destination_entry &dst_entr,const size_t output_index, rct::key &shared_sec,crypto::public_key &otk) override;
             bool  mlsag_prehash(const std::string &blob, size_t inputs_size, size_t outputs_size, const rct::keyV &hashes, const rct::ctkeyV &outPk, rct::key &prehash) override;
             bool  mlsag_prepare(const rct::key &H, const rct::key &xx, rct::key &a, rct::key &aG, rct::key &aHP, rct::key &rvII) override;
             bool  mlsag_prepare(rct::key &a, rct::key &aG) override;

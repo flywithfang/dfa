@@ -33,8 +33,6 @@
 #include "common/password.h"
 #include "common/util.h"
 #include "cryptonote_core/cryptonote_core.h"
-#include "cryptonote_basic/miner.h"
-#include "daemon/command_server.h"
 #include "daemon/daemon.h"
 #include "daemonizer/daemonizer.h"
 #include "misc_log_ex.h"

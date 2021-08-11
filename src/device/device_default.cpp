@@ -32,7 +32,6 @@
 
 #include "device_default.hpp"
 #include "int-util.h"
-#include "crypto/wallet/crypto.h"
 #include "cryptonote_basic/account.h"
 #include "cryptonote_core/cryptonote_tx_utils.h"
 #include "ringct/rctOps.h"
@@ -203,25 +202,6 @@ namespace hw {
             cryptonote::get_transaction_prefix_hash(tx, h);
         }
 
-        bool device_default::generate_otk(const crypto::secret_key &tx_sec,const cryptonote::tx_destination_entry &dst_entr, const size_t output_index,rct::key & shared_sec,  crypto::public_key &otk) {
-
-            crypto::key_derivation derivation;
-                //H(kA,i)G+B=H(Ra,i)G+B
-            const auto & A=dst_entr.addr.m_view_public_key;
-            const auto & B=dst_entr.addr.m_spend_public_key;
-            bool r = generate_key_derivation(A,  tx_sec, derivation);
-            CHECK_AND_ASSERT_MES(r, false, "at creation outs: failed to generate_key_derivation(" << dst_entr.addr.m_view_public_key << ", " << ( tx_sec) << ")");
-            {
-                //shared secret H(kA,i)=H(Ra,i)
-                crypto::secret_key otk_a;
-                derivation_to_scalar(derivation, output_index, otk_a);
-                shared_sec = rct::sk2rct(otk_a);
-            }
-            r = derive_public_key(derivation, output_index, dst_entr.addr.m_spend_public_key, otk);
-            CHECK_AND_ASSERT_MES(r, false, "at creation outs: failed to derive_public_key(" << derivation << ", " << output_index << ", "<< B << ")");
-
-            return r;
-        }
 
 
         bool device_default::mlsag_prepare(const rct::key &H, const rct::key &xx,

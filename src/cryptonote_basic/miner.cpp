@@ -44,9 +44,9 @@
 #include "string_coding.h"
 #include "string_tools.h"
 #include "storages/portable_storage_template_helper.h"
-#include "boost/logic/tribool.hpp"
-#include <boost/filesystem.hpp>
 
+
+#include "crypto/rx-hash.h"
 #ifdef __APPLE__
   #include <sys/times.h>
   #include <IOKit/IOKitLib.h>
@@ -84,8 +84,6 @@ using namespace epee;
 #include "miner.h"
 
 
-extern "C" void slow_hash_allocate_state();
-extern "C" void slow_hash_free_state();
 namespace cryptonote
 {
 
@@ -312,7 +310,7 @@ namespace cryptonote
   {
     boost::interprocess::ipcdetail::atomic_write32(&m_stop, 1);
   }
-  extern "C" void rx_stop_mining(void);
+
   //-----------------------------------------------------------------------------------------------------
   bool miner::stop()
   {
@@ -339,8 +337,7 @@ namespace cryptonote
     for(; bl.nonce != std::numeric_limits<uint32_t>::max(); bl.nonce++)
     {
       crypto::hash h;
-      const auto threads =diffic <= 100 ? 0 : tools::get_max_concurrency();
-      cryptonote::get_block_longhash(pbc, bl, h, height, threads);
+      cryptonote::get_block_longhash(pbc, bl, h, height);
       if(cryptonote::check_hash(h, diffic))
       {
         bl.invalidate_hashes();
@@ -395,7 +392,7 @@ namespace cryptonote
     crypto::hash seed_hash{};
     uint64_t seed_height{};
     uint32_t* pnonce{};
-    slow_hash_allocate_state();
+    rx_slow_hash_allocate_state();
     ++m_threads_active;
     while(!m_stop)
     {
@@ -428,8 +425,7 @@ namespace cryptonote
       }
 
       crypto::hash h;
-      const auto threads =tools::get_max_concurrency();
-      crypto::rx_slow_hash(height, seed_height, seed_hash.data, bd.data(), bd.size(), (char*) h.data,  threads, false);
+      rx_slow_hash(height, seed_height, seed_hash.data, bd.data(), bd.size(), (char*) h.data,  true, false);
 
       if(cryptonote::check_hash(h, local_diff))
       {
@@ -451,7 +447,7 @@ namespace cryptonote
         print_miner_status();
       }
     }
-    slow_hash_free_state();
+    rx_slow_hash_free_state();
     MGINFO("Miner thread stopped ["<< th_local_index << "]");
     --m_threads_active;
     return true;

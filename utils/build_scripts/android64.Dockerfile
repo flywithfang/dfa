@@ -102,28 +102,6 @@ RUN curl -s -O https://www.openssl.org/source/openssl-${OPENSSL_VERSION}.tar.gz 
     && make -j${NPROC} \
     && make install
 
-# ZMQ
-ARG ZMQ_VERSION=master
-ARG ZMQ_HASH=501d0815bf2b0abb93be8214fc66519918ef6c40
-RUN git clone https://github.com/zeromq/libzmq.git -b ${ZMQ_VERSION} \
-    && cd libzmq \
-    && git checkout ${ZMQ_HASH} \
-    && ./autogen.sh \
-    && CC=clang CXX=clang++ ./configure --prefix=${PREFIX} --host=aarch64-linux-android --enable-static --disable-shared \
-    && make -j${NPROC} \
-    && make install
-
-# Sodium
-ARG SODIUM_VERSION=1.0.16
-ARG SODIUM_HASH=675149b9b8b66ff44152553fb3ebf9858128363d
-RUN set -ex \
-    && git clone https://github.com/jedisct1/libsodium.git -b ${SODIUM_VERSION} \
-    && cd libsodium \
-    && test `git rev-parse HEAD` = ${SODIUM_HASH} || exit 1 \
-    && ./autogen.sh \
-    && CC=clang CXX=clang++ ./configure --prefix=${PREFIX} --host=aarch64-linux-android --enable-static --disable-shared \
-    && make  -j${NPROC} \
-    && make install
 
 ADD . /src
 RUN cd /src \

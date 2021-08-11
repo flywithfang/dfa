@@ -266,10 +266,7 @@ struct gen_rct_tx_rct_altered_extra : public gen_rct_tx_validation_base
 };
 template<> struct get_test_options<gen_rct_tx_rct_altered_extra>: public get_test_options<gen_rct_tx_validation_base> {};
 
-struct gen_rct_tx_uses_output_too_early : public gen_rct_tx_validation_base
-{
-  bool generate(std::vector<test_event_entry>& events) const;
-};
+
 template<> struct get_test_options<gen_rct_tx_uses_output_too_early> {
   const std::pair<uint8_t, uint64_t> hard_forks[5] = {std::make_pair(1, 0), std::make_pair(2, 1), std::make_pair(4, 65), std::make_pair(12, 69), std::make_pair(0, 0)};
   const cryptonote::test_options test_options = {

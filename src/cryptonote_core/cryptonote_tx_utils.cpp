@@ -43,7 +43,7 @@ using namespace epee;
 #include "crypto/crypto.h"
 #include "crypto/hash.h"
 #include "ringct/rctSigs.h"
-
+#include "crypto/rx-hash.h"
 
 using namespace crypto;
 
@@ -141,6 +141,27 @@ namespace cryptonote
       return change_addr->m_view_public_key;
     return addr.m_view_public_key;
   }
+
+ bool   generate_otk(const crypto::secret_key &tx_sec,const cryptonote::tx_destination_entry &dst_entr, const size_t output_index,rct::key & shared_sec,  crypto::public_key &otk) {
+
+        crypto::key_derivation derivation;
+            //H(kA,i)G+B=H(Ra,i)G+B
+        const auto & A=dst_entr.addr.m_view_public_key;
+        const auto & B=dst_entr.addr.m_spend_public_key;
+        bool r = generate_key_derivation(A,  tx_sec, derivation);
+        CHECK_AND_ASSERT_MES(r, false, "at creation outs: failed to generate_key_derivation(" << dst_entr.addr.m_view_public_key << ", " << ( tx_sec) << ")");
+        {
+            //shared secret H(kA,i)=H(Ra,i)
+            crypto::secret_key otk_a;
+            derivation_to_scalar(derivation, output_index, otk_a);
+            shared_sec = rct::sk2rct(otk_a);
+        }
+        r = derive_public_key(derivation, output_index, dst_entr.addr.m_spend_public_key, otk);
+        CHECK_AND_ASSERT_MES(r, false, "at creation outs: failed to derive_public_key(" << derivation << ", " << output_index << ", "<< B << ")");
+
+        return r;
+    }
+
 
     //---------------------------------------------------------------
   bool construct_tx_and_get_tx_key(const account_keys& sender_account_keys,  std::vector<tx_source_entry>& sources, std::vector<tx_destination_entry>& destinations, const boost::optional<cryptonote::account_public_address>& change_addr, const std::vector<uint8_t> &extra, transaction& tx, uint64_t unlock_time, crypto::secret_key &tx_sec,  const rct::RCTConfig &rct_config,bool shuffle_outs)
@@ -267,7 +288,7 @@ namespace cryptonote
       CHECK_AND_ASSERT_MES(dst_entr.amount==0, false, "Destination with wrong amount: " << dst_entr.amount);
       crypto::public_key otk;
       rct::key shared_sec{};
-      auto r = hwdev.generate_otk(tx_sec,dst_entr,  output_index,shared_sec, otk);
+      auto r = generate_otk(tx_sec,dst_entr,  output_index,shared_sec, otk);
       CHECK_AND_ASSERT_MES(!r, false, "generate_otk " );
 
       shared_secs.push_back(shared_sec);
@@ -393,37 +414,37 @@ namespace cryptonote
   void get_altblock_longhash(const block& b, crypto::hash& res, const uint64_t main_height, const uint64_t height, const uint64_t seed_height, const crypto::hash& seed_hash)
   {
     blobdata bd = get_block_hashing_blob(b);
-    rx_slow_hash(main_height, seed_height, seed_hash.data, bd.data(), bd.size(), res.data, 0, 1);
+    rx_slow_hash(main_height, seed_height, seed_hash.data, bd.data(), bd.size(), res.data, false, 1);
   }
 
-  bool get_block_longhash(const Blockchain *pbc, const block& b, crypto::hash& res, const uint64_t height, const int miners)
+  bool get_block_longhash(const Blockchain *pbc, const block& b, crypto::hash& res, const uint64_t height)
   {
    
     blobdata bd = get_block_hashing_blob(b);
     {
       uint64_t seed_height, main_height;
-      crypto::hash hash;
+      crypto::hash seed_hash{};
       if (pbc != NULL)
       {
         seed_height = rx_seedheight(height);
-        hash = pbc->get_pending_block_id_by_height(seed_height);
+        seed_hash = pbc->get_pending_block_id_by_height(seed_height);
         main_height = pbc->get_current_blockchain_height();
       } else
       {
-        memset(&hash, 0, sizeof(hash));  // only happens when generating genesis block
+        memset(&seed_hash, 0, sizeof(hash));  // only happens when generating genesis block
         seed_height = 0;
         main_height = 0;
       }
-      rx_slow_hash(main_height, seed_height, hash.data, bd.data(), bd.size(), res.data,  miners, false);
+      rx_slow_hash(main_height, seed_height, seed_hash.data, bd.data(), bd.size(), res.data,  false, false);
     }
 
     return true;
   }
 
-  crypto::hash get_block_longhash(const Blockchain *pbc, const block& b, const uint64_t height, const int miners)
+  crypto::hash get_block_longhash(const Blockchain *pbc, const block& b, const uint64_t height)
   {
     crypto::hash p = crypto::null_hash;
-    get_block_longhash(pbc, b, p, height, miners);
+    get_block_longhash(pbc, b, p, height);
     return p;
   }
 
@@ -431,4 +452,11 @@ namespace cryptonote
   {
     rx_reorg(split_height);
   }
+
+ bool  verify_keys(const crypto::secret_key &secret_key, const crypto::public_key &public_key) {
+      crypto::public_key calculated_pub;
+      bool r = crypto::secret_key_to_public_key(secret_key, calculated_pub);
+      return r && public_key == calculated_pub;
+  }
+
 }
