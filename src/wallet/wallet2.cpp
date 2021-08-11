@@ -1048,7 +1048,7 @@ void wallet2::create_keys_file(const std::string &wallet_, bool watch_only, cons
 
 
 
-void wallet2::init_type(hw::device::device_type device_type)
+void wallet2::init_type()
 {
   m_account_public_address = m_account.get_keys().m_account_address;
 }
@@ -1078,7 +1078,7 @@ crypto::secret_key wallet2::generate(const std::string& wallet_, const epee::wip
 
   crypto::secret_key retval = m_account.generate(recovery_param, recover);
 
-  init_type(hw::device::device_type::SOFTWARE);
+  init_type();
   setup_keys(password);
 
  

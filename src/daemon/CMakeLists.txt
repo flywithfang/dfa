@@ -64,6 +64,7 @@ target_link_libraries(daemon
     cncrypto
     common
     p2p
+    ringct
     cryptonote_protocol
     daemonizer
     serialization

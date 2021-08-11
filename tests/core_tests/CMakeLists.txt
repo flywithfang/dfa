@@ -77,7 +77,6 @@ target_link_libraries(core_tests
     p2p
     version
     epee
-    device
     wallet
     ${CMAKE_THREAD_LIBS_INIT}
     ${EXTRA_LIBRARIES})

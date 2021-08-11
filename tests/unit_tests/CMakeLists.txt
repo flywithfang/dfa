@@ -41,7 +41,6 @@ set(unit_tests_sources
   checkpoints.cpp
   command_line.cpp
   crypto.cpp
-  device.cpp
   difficulty.cpp
   dns_resolver.cpp
   epee_boosted_tcp_server.cpp

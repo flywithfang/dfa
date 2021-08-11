@@ -961,7 +961,7 @@ std::tuple<bool, uint64_t,std::vector<cryptonote::block_complete_entry> , std::v
 
     tx_cache_data cache_tx_data(const cryptonote::transaction& tx ) const;
 
-    void init_type(hw::device::device_type device_type);
+    void init_type();
     void setup_new_blockchain();
     void create_keys_file(const std::string &wallet_, bool watch_only, const epee::wipeable_string &password, bool create_address_file);
 

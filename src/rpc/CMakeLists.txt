@@ -92,6 +92,7 @@ target_link_libraries(rpc
     cryptonote_core
     cryptonote_protocol
     net
+    ringct
     version
     ${Boost_REGEX_LIBRARY}
     ${Boost_THREAD_LIBRARY}

@@ -48,4 +48,5 @@ bool bulletproof_VERIFY(const std::vector<Bulletproof> &proofs);
 
 }
 
+
 #endif

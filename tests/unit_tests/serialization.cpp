@@ -47,7 +47,7 @@
 #include "wallet/wallet2.h"
 #include "gtest/gtest.h"
 #include "unit_tests_utils.h"
-#include "device/device.hpp"
+
 using namespace std;
 using namespace crypto;
 

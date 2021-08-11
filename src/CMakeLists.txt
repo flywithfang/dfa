@@ -137,5 +137,4 @@ if(PER_BLOCK_CHECKPOINT)
 endif()
 
 add_subdirectory(checkpoints)
-add_subdirectory(device)
 add_subdirectory(checker)
