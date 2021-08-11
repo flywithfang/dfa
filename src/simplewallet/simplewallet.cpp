@@ -1819,9 +1819,7 @@ boost::optional<epee::wipeable_string> simple_wallet::open_wallet(const boost::p
       prefix = tr("Opened wallet");
     message_writer(console_color_white, true) <<
       prefix << ": " << m_wallet->get_account().get_public_address_str(m_wallet->nettype());
-    if (m_wallet->get_account().get_device()) {
-       message_writer(console_color_white, true) << "Wallet is on device: " << m_wallet->get_account().get_device().get_name();
-    }
+
    
   }
   catch (const std::exception& e)
@@ -2078,31 +2076,7 @@ boost::optional<epee::wipeable_string> simple_wallet::on_device_passphrase_reque
 //----------------------------------------------------------------------------------------------------
 void simple_wallet::on_refresh_finished(uint64_t start_height, uint64_t fetched_blocks, bool is_init, bool received_money)
 {
-  const uint64_t rfbh = m_wallet->get_refresh_from_block_height();
-  std::string err;
-  const uint64_t dh = m_wallet->get_daemon_blockchain_height(err);
-  if (err.empty() && rfbh > dh)
-  {
-    message_writer(console_color_yellow, false) << tr("The wallet's refresh-from-block-height setting is higher than the daemon's height: this may mean your wallet will skip over transactions");
-  }
-
-  // Key image sync after the first refresh
-  if (!m_wallet->get_account().get_device().has_tx_cold_sign() || m_wallet->get_account().get_device().has_ki_live_refresh()) {
-    return;
-  }
-
-  if (!received_money ) {
-    return;
-  }
-
-  // Finished first refresh for HW device and money received -> KI sync
-  message_writer() << "\n" << tr("The first refresh has finished for the HW-based wallet with received money. hw_key_images_sync is needed. ");
-
-  std::string accepted = input_line(tr("Do you want to do it now? (Y/Yes/N/No): "));
-  if (std::cin.eof() || !command_line::is_yes(accepted)) {
-    message_writer(console_color_red, false) << tr("hw_key_images_sync skipped. Run command manually before a transfer.");
-    return;
-  }
+ 
 
 }
 //----------------------------------------------------------------------------------------------------

@@ -193,7 +193,7 @@ namespace hw {
         }
 
         bool device_default::open_tx(crypto::secret_key &tx_key) {
-            cryptonote::keypair txkey = cryptonote::keypair::generate(*this);
+            cryptonote::keypair txkey = cryptonote::keypair::generate();
             tx_key = txkey.sec;
             return true;
         }

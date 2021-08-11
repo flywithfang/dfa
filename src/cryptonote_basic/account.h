@@ -42,7 +42,6 @@ namespace cryptonote
     account_public_address m_account_address;
     crypto::secret_key   m_spend_secret_key;
     crypto::secret_key   m_view_secret_key;
-    hw::device *m_device = &hw::get_device("default");
     crypto::chacha_iv m_encryption_iv;
 
     BEGIN_KV_SERIALIZE_MAP()  
@@ -60,10 +59,6 @@ namespace cryptonote
     void encrypt_viewkey(const crypto::chacha_key &key);
     void decrypt_viewkey(const crypto::chacha_key &key);
 
-    hw::device& get_device()  const ;
-    void set_device( hw::device &hwdev) ;
-
-    
   private:
     void xor_with_key_stream(const crypto::chacha_key &key);
   };
@@ -80,8 +75,6 @@ namespace cryptonote
     std::string get_public_address_str(network_type nettype) const;
     std::string get_public_integrated_address_str(const crypto::hash8 &payment_id, network_type nettype) const;
 
-    hw::device& get_device() const  {return m_keys.get_device();}
-    void set_device( hw::device &hwdev) {m_keys.set_device(hwdev);}
     void deinit();
 
     uint64_t get_createtime() const { return m_creation_timestamp; }

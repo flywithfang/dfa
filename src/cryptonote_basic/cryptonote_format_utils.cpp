@@ -114,17 +114,13 @@ namespace cryptonote
 
 namespace cryptonote
 {
-  //---------------------------------------------------------------
-  void get_transaction_prefix_hash(const transaction_prefix& tx, crypto::hash& h, hw::device &hwdev)
-  {
-    hwdev.get_transaction_prefix_hash(tx,h);
-  }
+  
 
   //---------------------------------------------------------------
-  crypto::hash get_transaction_prefix_hash(const transaction_prefix& tx, hw::device &hwdev)
+  crypto::hash get_transaction_prefix_hash(const transaction_prefix& tx)
   {
     crypto::hash h = null_hash;
-    get_transaction_prefix_hash(tx, h, hwdev);
+    get_transaction_prefix_hash(tx, h);
     return h;
   }
 
@@ -136,13 +132,7 @@ namespace cryptonote
     ::serialization::serialize(a, const_cast<transaction_prefix&>(tx));
     crypto::cn_fast_hash(s.str().data(), s.str().size(), h);
   }
-  //---------------------------------------------------------------
-  crypto::hash get_transaction_prefix_hash(const transaction_prefix& tx)
-  {
-    crypto::hash h = null_hash;
-    get_transaction_prefix_hash(tx, h);
-    return h;
-  }
+
   //---------------------------------------------------------------
   bool expand_transaction_1(transaction &tx, bool base_only)
   {
@@ -271,7 +261,7 @@ namespace cryptonote
     return is_v1_tx(blobdata_ref{tx_blob.data(), tx_blob.size()});
   }
   //---------------------------------------------------------------
-  bool generate_key_image_helper(const account_keys& ack,   const crypto::public_key& tx_public_key,  size_t real_output_index, keypair& otk_p, crypto::key_image& ki, hw::device &hwdev)
+  bool generate_key_image_helper(const account_keys& ack,   const crypto::public_key& tx_public_key,  size_t real_output_index, keypair& otk_p, crypto::key_image& ki)
   {
     crypto::key_derivation kA{};
     //rGa=rA
@@ -288,7 +278,7 @@ namespace cryptonote
  //computes Hs(a*R || idx) + b
       crypto::derive_secret_key(kA, real_output_index, b, otk_p.sec); // 
     
-      CHECK_AND_ASSERT_MES(hwdev.secret_key_to_public_key(otk_p.sec, otk_p.pub), false, "Failed to derive public key");
+      CHECK_AND_ASSERT_MES(crypto::secret_key_to_public_key(otk_p.sec, otk_p.pub), false, "Failed to derive public key");
     crypto::generate_key_image(otk_p.pub, otk_p.sec, ki);
     return true;
 
@@ -786,10 +776,10 @@ public:
   bool is_out_to_acc(const account_keys& acc, const txout_to_key& otk, const crypto::public_key& tx_pub_key, size_t output_index)
   {
     crypto::key_derivation derivation;
-    bool r = acc.get_device().generate_key_derivation(tx_pub_key, acc.m_view_secret_key, derivation);
+    bool r = crypto::generate_key_derivation(tx_pub_key, acc.m_view_secret_key, derivation);
     CHECK_AND_ASSERT_MES(r, false, "Failed to generate key derivation");
     crypto::public_key pk;
-    r = acc.get_device().derive_public_key(derivation, output_index, acc.m_account_address.m_spend_public_key, pk);
+    r = crypto::derive_public_key(derivation, output_index, acc.m_account_address.m_spend_public_key, pk);
     CHECK_AND_ASSERT_MES(r, false, "Failed to derive public key");
     if (pk == otk.key)
       return true;

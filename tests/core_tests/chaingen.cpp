@@ -501,8 +501,7 @@ bool init_spent_output_indices(map_output_idx_t& outs, map_output_t& outs_mine, 
             const auto tx_key=get_tx_pub_key_from_extra(*oi.p_tx); 
             
              
-             auto &  dev=hw::get_device(("default"));
-            generate_key_image_helper(acc_keys, tx_key ,tx_keys, oi.out_no, in_ephemeral, img,dev );
+            generate_key_image_helper(acc_keys, tx_key ,tx_keys, oi.out_no, in_ephemeral, img );
 
             // lookup for this key image in the events vector
             BOOST_FOREACH(auto& tx_pair, mtx) {
@@ -991,7 +990,7 @@ bool construct_miner_tx_manually(size_t height, uint64_t already_generated_coins
                                  keypair* p_txkey/* = 0*/)
 {
   keypair txkey;
-  txkey = keypair::generate(hw::get_device("default"));
+  txkey = keypair::generate();
   add_tx_pub_key_to_extra(tx, txkey.pub);
 
   if (0 != p_txkey)

@@ -82,7 +82,7 @@ namespace
 }
 
 namespace rct {
-    Bulletproof proveRangeBulletproof(keyV &C, keyV &noises, const std::vector<uint64_t> &amounts, const std::vector<key>& shared_secs, hw::device &hwdev)
+    Bulletproof proveRangeBulletproof(keyV &C, keyV &noises, const std::vector<uint64_t> &amounts, const std::vector<key>& shared_secs)
     {
         CHECK_AND_ASSERT_THROW_MES(amounts.size() == shared_secs.size(), "Invalid amounts/sk sizes");
         noises.resize(amounts.size());
@@ -195,7 +195,7 @@ namespace rct {
     //   P[l] == p*G
     //   C[l] == z*G
     //   C[i] == C_nonzero[i] - C_offset (for hashing purposes) for all i
-    clsag CLSAG_Gen(const key &message, const keyV & P, const key & p, const keyV & C, const key & z, const keyV & C_nonzero, const key & C_offset, const unsigned int l,  hw::device &hwdev) {
+    clsag CLSAG_Gen(const key &message, const keyV & P, const key & p, const keyV & C, const key & z, const keyV & C_nonzero, const key & C_offset, const unsigned int l) {
         clsag sig;
         size_t n = P.size(); // ring size
         CHECK_AND_ASSERT_THROW_MES(n == C.size(), "Signing and commitment key vector sizes must match!");
@@ -322,11 +322,8 @@ namespace rct {
         return sig;
     }
 
-    clsag CLSAG_Gen(const key &message, const keyV & P, const key & p, const keyV & C, const key & z, const keyV & C_nonzero, const key & C_offset, const unsigned int l) {
-        return CLSAG_Gen(message, P, p, C, z, C_nonzero, C_offset, l,  hw::get_device("default"));
-    }
 
-    key get_pre_mlsag_hash(const rctSig &rv, hw::device &hwdev)
+    key get_pre_mlsag_hash(const rctSig &rv)
     {
       keyV hashes;
       hashes.reserve(3);
@@ -376,7 +373,7 @@ namespace rct {
 
 
 
-    clsag proveRctCLSAGSimple(const key &message, const std::vector<ctkey> &decoys, const ctkey &real_in, const key &noise, const key &in_C2,  unsigned int index, hw::device &hwdev) {
+    clsag proveRctCLSAGSimple(const key &message, const std::vector<ctkey> &decoys, const ctkey &real_in, const key &noise, const key &in_C2,  unsigned int index) {
         //setup vars
         size_t rows = 1;
         size_t cols = decoys.size();
@@ -407,7 +404,7 @@ namespace rct {
        // sk[0] = copy(otk_sec);
         key noise_delta;
         sc_sub(noise_delta.bytes, real_noise.bytes, noise.bytes);
-        clsag result = CLSAG_Gen(message, P, otk_sec, C, noise_delta, C_nonzero, in_C2, index,  hwdev);
+        clsag result = CLSAG_Gen(message, P, otk_sec, C, noise_delta, C_nonzero, in_C2, index);
       //  memwipe(sk.data(), sk.size() * sizeof(key));
         return result;
     }
@@ -580,7 +577,7 @@ namespace rct {
     
     //RCT simple    
     //for post-rct only
-    rctSig genRctSimple(const key &message, const std::vector<ctkey> & inSk, const keyV & destinations, const vector<xmr_amount> &inamounts, const vector<xmr_amount> &outamounts, xmr_amount txnFee, const ctkeyM & mixRing, const std::vector<key> &shared_secs,  const std::vector<unsigned int> & index, std::vector<ctkey> &outSk, const RCTConfig &rct_config, hw::device &hwdev) {
+    rctSig genRctSimple(const key &message, const std::vector<ctkey> & inSk, const keyV & destinations, const vector<xmr_amount> &inamounts, const vector<xmr_amount> &outamounts, xmr_amount txnFee, const ctkeyM & mixRing, const std::vector<key> &shared_secs,  const std::vector<unsigned int> & index, std::vector<ctkey> &outSk, const RCTConfig &rct_config) {
 //        const bool bulletproof = rct_config.range_proof_type != RangeProofBorromean;
         CHECK_AND_ASSERT_THROW_MES(inamounts.size() > 0, "Empty inamounts");
         CHECK_AND_ASSERT_THROW_MES(inamounts.size() == inSk.size(), "Different number of inamounts/inSk");
@@ -614,14 +611,8 @@ namespace rct {
           //  if (rct_config.range_proof_type == RangeProofPaddedBulletproof)
             {
                 rct::keyV C, noises;
-                if (hwdev.get_mode() == hw::device::TRANSACTION_CREATE_FAKE)
                 {
-                    // use a fake bulletproof for speed
-                    rv.p.bulletproofs.push_back(make_dummy_bulletproof(outamounts, C, noises));
-                }
-                else
-                {
-                    rv.p.bulletproofs.push_back(proveRangeBulletproof(C, noises, outamounts, shared_secs, hwdev));
+                    rv.p.bulletproofs.push_back(proveRangeBulletproof(C, noises, outamounts, shared_secs));
                     #ifdef DBG
                     CHECK_AND_ASSERT_THROW_MES(verBulletproof(rv.p.bulletproofs.back()), "verBulletproof failed on newly created proof");
                     #endif
@@ -670,7 +661,7 @@ namespace rct {
         genC(in_C2s[i], noises[i], inamounts[i]);
         DP(in_C2s[i]);
 
-        key full_message = get_pre_mlsag_hash(rv,hwdev);
+        key full_message = get_pre_mlsag_hash(rv);
       
         for (i = 0 ; i < inamounts.size(); i++)
         {
@@ -680,14 +671,14 @@ namespace rct {
                 const std::vector<ctkey> & decoys=rv.mixRing[i];
                 const key & in_C2=in_C2s[i];
                 const key & noise=noises[i];
-                rv.p.CLSAGs[i] = proveRctCLSAGSimple(full_message, decoys, real_in, noise, in_C2, index[i], hwdev);
+                rv.p.CLSAGs[i] = proveRctCLSAGSimple(full_message, decoys, real_in, noise, in_C2, index[i]);
             }
            
         }
         return rv;
     }
 
-    rctSig genRctSimple(const key &message, const ctkeyV & inSk, const ctkeyV & inPk, const keyV & destinations, const vector<xmr_amount> &inamounts, const vector<xmr_amount> &outamounts, const keyV &amount_keys, xmr_amount txnFee, unsigned int mixin, const RCTConfig &rct_config, hw::device &hwdev) {
+    rctSig genRctSimple(const key &message, const ctkeyV & inSk, const ctkeyV & inPk, const keyV & destinations, const vector<xmr_amount> &inamounts, const vector<xmr_amount> &outamounts, const keyV &amount_keys, xmr_amount txnFee, unsigned int mixin, const RCTConfig &rct_config) {
         std::vector<unsigned int> index;
         index.resize(inPk.size());
         ctkeyM mixRing;
@@ -697,7 +688,7 @@ namespace rct {
           mixRing[i].resize(mixin+1);
           index[i] = populateFromBlockchainSimple(mixRing[i], inPk[i], mixin);
         }
-        return genRctSimple(message, inSk, destinations, inamounts, outamounts, txnFee, mixRing, amount_keys,  index, outSk, rct_config, hwdev);
+        return genRctSimple(message, inSk, destinations, inamounts, outamounts, txnFee, mixRing, amount_keys,  index, outSk, rct_config);
     }
 
    
@@ -824,7 +815,7 @@ namespace rct {
 
         const keyV &pseudoOuts =  rv.p.pseudoOuts ;
 
-        const key message = get_pre_mlsag_hash(rv, hw::get_device("default"));
+        const key message = get_pre_mlsag_hash(rv);
 
         results.clear();
         results.resize(rv.mixRing.size());

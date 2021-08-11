@@ -342,7 +342,6 @@ std::string wallet2::get_tx_proof(const crypto::hash &txid, const cryptonote::ac
 
 std::string wallet2::get_tx_proof(const cryptonote::transaction &tx, const crypto::secret_key &tx_sec, const cryptonote::account_public_address &address,  const std::string &message) const
 {
-  hw::device &hwdev = m_account.get_device();
   
   const auto & A=address.m_view_public_key;
   const auto & B=address.m_spend_public_key;
@@ -361,7 +360,7 @@ std::string wallet2::get_tx_proof(const cryptonote::transaction &tx, const crypt
   if (is_out)
   {
      rct::key  aP;
-    hwdev.scalarmultKey(aP, rct::pk2rct(A), rct::sk2rct(tx_sec));
+    crypto::scalarmultKey(aP, rct::pk2rct(A), rct::sk2rct(tx_sec));
     kA = rct::rct2pk(aP);
     crypto::public_key tx_pub_key;
 
@@ -379,11 +378,11 @@ std::string wallet2::get_tx_proof(const cryptonote::transaction &tx, const crypt
     throw_wallet_ex_if(tx_pub_key == null_pkey, error::wallet_internal_error, "Tx pubkey was not found");
 
     const crypto::secret_key& a = m_account.get_keys().m_view_secret_key;
-    hwdev.scalarmultKey(aP, rct::pk2rct(tx_pub_key), rct::sk2rct(a));
+    crypto::scalarmultKey(aP, rct::pk2rct(tx_pub_key), rct::sk2rct(a));
     kA =  rct2pk(aP);
  
     {
-      hwdev.generate_tx_proof(prefix_hash,A, tx_pub_key, boost::none, kA, a, sig);
+      crypto::generate_tx_proof(prefix_hash,A, tx_pub_key, boost::none, kA, a, sig);
     }
    
     sig_str = std::string("InProofV2");
@@ -453,7 +452,7 @@ std::string wallet2::get_spend_proof(const crypto::hash &txid, const std::string
     const crypto::public_key in_tx_pub_key = in_td.m_tx_key;
     keypair otk_p;
     crypto::key_image in_img;
-    throw_wallet_ex_if(!generate_key_image_helper(m_account.get_keys(),in_tx_pub_key,  in_td.m_internal_output_index, otk_p, in_img, m_account.get_device()),
+    throw_wallet_ex_if(!generate_key_image_helper(m_account.get_keys(),in_tx_pub_key,  in_td.m_internal_output_index, otk_p, in_img),
       error::wallet_internal_error, "failed to generate key image");
     throw_wallet_ex_if(spend->k_image != in_img, error::wallet_internal_error, "key image mismatch");
 

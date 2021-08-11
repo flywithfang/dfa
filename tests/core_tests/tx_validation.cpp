@@ -49,7 +49,7 @@ namespace
       m_tx.version = version;
       m_tx.unlock_time = unlock_time;
 
-      m_tx_key = keypair::generate(hw::get_device("default"));
+      m_tx_key = keypair::generate();
       add_tx_pub_key_to_extra(m_tx, m_tx_key.pub);
     }
 
@@ -61,7 +61,7 @@ namespace
         keypair& in_ephemeral = m_in_contexts.back();
         crypto::key_image img;
         auto& out_key = reinterpret_cast<const crypto::public_key&>(src_entr.outputs[src_entr.real_output].second.dest);
-        generate_key_image_helper(sender_account_keys,   src_entr.real_out_tx_key,  src_entr.real_output_in_tx_index, in_ephemeral, img, hw::get_device(("default")));
+        generate_key_image_helper(sender_account_keys,   src_entr.real_out_tx_key,  src_entr.real_output_in_tx_index, in_ephemeral, img);
 
         // put key image into tx input
         txin_to_key input_to_key;
@@ -510,7 +510,7 @@ bool gen_tx_key_image_not_derive_from_tx_key::generate(std::vector<test_event_en
   builder.step2_fill_inputs(miner_account.get_keys(), sources);
 
   txin_to_key& in_to_key = boost::get<txin_to_key>(builder.m_tx.vin.front());
-  keypair kp = keypair::generate(hw::get_device("default"));
+  keypair kp = keypair::generate();
   key_image another_ki;
   crypto::generate_key_image(kp.pub, kp.sec, another_ki);
   in_to_key.k_image = another_ki;

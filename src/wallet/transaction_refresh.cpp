@@ -116,7 +116,6 @@ void wallet2::refresh(uint64_t start_height, uint64_t & blocks_fetched, bool& re
   uint64_t added_blocks = 0;
   size_t try_count = 0;
   crypto::hash last_tx_hash_id = m_transfers_in.size() ? m_transfers_in.back().m_txid : null_hash;
-  hw::device &hwdev = m_account.get_device();
 
   // pull the first set of blobs
   std::list<crypto::hash> short_chain_history =get_short_chain_history();
@@ -156,7 +155,7 @@ void wallet2::refresh(uint64_t start_height, uint64_t & blocks_fetched, bool& re
   });
 
   auto scope_exit_handler_hwdev = epee::misc_utils::create_scope_leave_handler([&](){
-    hwdev.computing_key_images(false);
+    crypto::computing_key_images(false);
   }    );
 
   // get updated pool state first, but do not process those txes just yet,
@@ -685,7 +684,7 @@ void wallet2::process_new_transaction(const cryptonote::transaction& tx, const s
 wallet2::tx_scan_info_t wallet2::scan_output(const cryptonote::transaction &tx, bool miner_tx, const is_out_data & tc,size_t i)
 {
   tx_scan_info_t scan{};
-    bool r = cryptonote::generate_key_image_helper(m_account.get_keys(),  tc.tx_key, i, scan.otk_p, scan.ki, m_account.get_device());
+    bool r = cryptonote::generate_key_image_helper(m_account.get_keys(),  tc.tx_key, i, scan.otk_p, scan.ki);
       
       const auto otk= boost::get<cryptonote::txout_to_key>(tx.vout[i].target).key;
 
@@ -790,7 +789,6 @@ void wallet2::pull_hashes(uint64_t start_height, uint64_t &blocks_start_height, 
 //----------------------------------------------------------------------------------------------------
 wallet2::tx_cache_data wallet2::cache_tx_data(const cryptonote::transaction& tx) const
 {
-  hw::device &hwdev =  m_account.get_device();
   const cryptonote::account_keys &keys = m_account.get_keys();
   const auto a = keys.m_view_secret_key;
   const auto b= keys.m_spend_secret_key;
@@ -828,7 +826,7 @@ wallet2::tx_cache_data wallet2::cache_tx_data(const cryptonote::transaction& tx)
         //otk=H(kA,i)+B
           crypto::public_key B2;
           //B=otk - H(kG,a,oi)*G
-          hwdev.derive_subaddress_public_key(otk, kA, oi, B2);
+          crypto::derive_subaddress_public_key(otk, kA, oi, B2);
           MDEBUG("B2 "+ string_tools::pod_to_hex(B2));
           MDEBUG("B" +  string_tools::pod_to_hex(m_account.get_spend_public_key()));
           rec[oi] = m_account.get_spend_public_key()==B2;

@@ -360,7 +360,6 @@ std::cout<<"load_keys_buf" << keys_buf.size()<<" pass "<<password.data()<<std::e
     }
   }
   const cryptonote::account_keys& keys = m_account.get_keys();
-  hw::device &hwdev = m_account.get_device();
   r = r && cryptonote::verify_keys(keys.m_view_secret_key,  keys.m_account_address.m_view_public_key);
     r = r && cryptonote::verify_keys(keys.m_spend_secret_key, keys.m_account_address.m_spend_public_key);
   throw_wallet_ex_if(!r, error::wallet_files_doesnt_correspond, m_keys_file, m_wallet_file);

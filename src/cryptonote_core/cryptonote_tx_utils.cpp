@@ -74,7 +74,7 @@ namespace cryptonote
     transaction tx{};
     const  std::tuple<bool, transaction> failed={false,tx};
 
-    keypair txkey = keypair::generate(hw::get_device("default"));
+    keypair txkey = keypair::generate();
     add_tx_pub_key_to_extra(tx, txkey.pub);
     if(!blob_reserve.empty())
       if(!add_extra_nonce_to_tx_extra(tx.extra, blob_reserve))
@@ -166,10 +166,9 @@ namespace cryptonote
     //---------------------------------------------------------------
   bool construct_tx_and_get_tx_key(const account_keys& sender_account_keys,  std::vector<tx_source_entry>& sources, std::vector<tx_destination_entry>& destinations, const boost::optional<cryptonote::account_public_address>& change_addr, const std::vector<uint8_t> &extra, transaction& tx, uint64_t unlock_time, crypto::secret_key &tx_sec,  const rct::RCTConfig &rct_config,bool shuffle_outs)
   {
-     hw::device &hwdev = sender_account_keys.get_device();
     tx=transaction{}; //clear everthing
 
-    cryptonote::keypair txkey = cryptonote::keypair::generate(hwdev);
+    cryptonote::keypair txkey = cryptonote::keypair::generate();
     tx_sec = txkey.sec;
     const crypto::public_key txkey_pub=txkey.pub;
    
@@ -221,7 +220,7 @@ namespace cryptonote
       keypair& in_ephemeral = in_contexts.back().in_ephemeral;
       crypto::key_image img;
       const auto & real_input= src_entr.decoys[src_entr.real_output];
-      if(!generate_key_image_helper(sender_account_keys, src_entr.real_out_tx_key,  src_entr.real_output_in_tx_index, in_ephemeral,img, hwdev))
+      if(!generate_key_image_helper(sender_account_keys, src_entr.real_out_tx_key,  src_entr.real_output_in_tx_index, in_ephemeral,img))
       {
         LOG_ERROR("Key image generation failed!");
         return false;
@@ -365,12 +364,12 @@ namespace cryptonote
       }
    
       crypto::hash tx_prefix_hash;
-      get_transaction_prefix_hash(tx, tx_prefix_hash, hwdev);
+      get_transaction_prefix_hash(tx, tx_prefix_hash);
       rct::ctkeyV outSk;
 
       const auto & message= rct::hash2rct(tx_prefix_hash);
       const auto fee = amount_in - amount_out;
-      tx.rct_signatures = rct::genRctSimple(message, real_ins, dst_otks, inamounts, outamounts,fee , mixRing, shared_secs,   ring_index, outSk, rct_config, hwdev);
+      tx.rct_signatures = rct::genRctSimple(message, real_ins, dst_otks, inamounts, outamounts,fee , mixRing, shared_secs,   ring_index, outSk, rct_config);
     
       memwipe(real_ins.data(), real_ins.size() * sizeof(rct::ctkey));
 

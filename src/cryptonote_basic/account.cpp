@@ -53,15 +53,6 @@ DISABLE_VS_WARNINGS(4244 4345)
 {
 
   //-----------------------------------------------------------------
-  hw::device& account_keys::get_device() const  {
-    return *m_device;
-  }
-  //-----------------------------------------------------------------
-  void account_keys::set_device( hw::device &hwdev)  {
-    m_device = &hwdev;
-    MCDEBUG("device", "account_keys::set_device device type: "<<typeid(hwdev).name());
-  }
-  //-----------------------------------------------------------------
   static void derive_key(const crypto::chacha_key &base_key, crypto::chacha_key &key)
   {
     static_assert(sizeof(base_key) == sizeof(crypto::hash), "chacha key and hash should be the same size");
@@ -135,11 +126,7 @@ DISABLE_VS_WARNINGS(4244 4345)
   //-----------------------------------------------------------------
   void account_base::deinit()
   {
-    try{
-      m_keys.get_device().disconnect();
-    } catch (const std::exception &e){
-      MERROR("Device disconnect exception: " << e.what());
-    }
+   
   }
   //-----------------------------------------------------------------
   void account_base::forget_spend_key()

@@ -278,7 +278,7 @@ private:
     //! Just parses variables.
     static std::unique_ptr<wallet2> make_dummy(const boost::program_options::variables_map& vm, bool unattended, const std::function<boost::optional<password_container>(const char *, bool)> &password_prompter);
 
-    static bool verify_password(const std::string& keys_file_name, const epee::wipeable_string& password, bool no_spend_key, hw::device &hwdev, uint64_t kdf_rounds);
+    static bool verify_password(const std::string& keys_file_name, const epee::wipeable_string& password,  uint64_t kdf_rounds);
 
     wallet2(cryptonote::network_type nettype = cryptonote::MAINNET, uint64_t kdf_rounds = 1, bool unattended = false, std::unique_ptr<epee::net_utils::http::http_client_factory> http_client_factory = std::unique_ptr<epee::net_utils::http::http_client_factory>(new net::http::client_factory()));
     ~wallet2();
@@ -657,7 +657,8 @@ private:
 
     void commit_tx(pending_tx& ptx_vector);
     void commit_tx(std::vector<pending_tx>& ptx_vector);
-    std::vector<wallet2::pending_tx> transfer(cryptonote::tx_destination_entry dst, const size_t fake_outs_count, const uint64_t unlock_time, const std::vector<uint8_t>& extra);     // pass subaddr_indices by value on purpose
+
+    std::vector<wallet2::pending_tx> transfer(cryptonote::tx_destination_entry dst, const size_t fake_outs_count, const uint64_t unlock_time, const std::vector<uint8_t>& extra={});    
     std::vector<wallet2::pending_tx> sweep_transfers(uint64_t below, const cryptonote::account_public_address &address,   const size_t fake_outs_count=10, const uint64_t unlock_time=0, const std::vector<uint8_t>& extra={});
    
     bool sanity_check(const std::vector<wallet2::pending_tx> &ptx_vector, std::vector<cryptonote::tx_destination_entry> dsts) const;

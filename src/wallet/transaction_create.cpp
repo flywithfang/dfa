@@ -144,7 +144,6 @@ std::vector<wallet2::pending_tx> wallet2::transfer(cryptonote::tx_destination_en
   }
   
   //ensure device is let in NONE mode in any case
-  hw::device &hwdev = m_account.get_device();
     throw_wallet_ex_if(0 == dt.amount, error::zero_amount);
   // early out if we know we can't make it anyway
   // we could also check for being within FEE_PER_KB, but if the fee calculation
@@ -176,7 +175,6 @@ std::vector<wallet2::pending_tx> wallet2::transfer(cryptonote::tx_destination_en
     return td1.amount()<td2.amount();
   });
 // while we have something to send
-  hwdev.set_mode(hw::device::TRANSACTION_CREATE_REAL);
   std::vector<TX> txes;
    txes.emplace_back();
    TX &tx = txes.back();
@@ -203,12 +201,7 @@ std::vector<wallet2::pending_tx> wallet2::transfer(cryptonote::tx_destination_en
 std::vector<wallet2::pending_tx> wallet2::__sweep(const cryptonote::account_public_address &addr,std::vector<size_t> selected, const uint64_t unlock_time, const std::vector<uint8_t>& extra,const size_t fake_outs_count)
 {
   std::vector<wallet2::pending_tx> ptx_vector;
-   //ensure device is let in NONE mode in any case
-  hw::device &hwdev = m_account.get_device();
   
-  // while we have something to send
-  hwdev.set_mode(hw::device::TRANSACTION_CREATE_REAL);
-
       TX tx;
       tx.fee=get_base_fee();
       uint64_t total=0;
