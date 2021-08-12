@@ -133,6 +133,14 @@ public:
       MGINFO("Public RPC port " << m_rpc_port << " will be advertised to other peers over P2P");
       m_p2p.set_rpc_port(boost::lexical_cast<uint16_t>(m_rpc_port));
     }
+
+    MGINFO("Starting RPC server...");
+    if (!m_rpc.run(2, false))
+    {
+      throw std::runtime_error("Failed to start RPC server.");
+    }
+    MGINFO(" RPC server started ok");
+
     
     m_p2p.run(); // blocks until p2p goes down
 

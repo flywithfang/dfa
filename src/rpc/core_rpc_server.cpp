@@ -250,11 +250,7 @@ namespace cryptonote
     }
     return inited;
   }
-  
-#define CHECK_PAYMENT_BASE(req, res, payment, same_ts) d
-#define CHECK_PAYMENT(req, res, payment) 
-#define CHECK_PAYMENT_SAME_TS(req, res, payment)
-#define CHECK_PAYMENT_MIN1(req, res, payment, same_ts) 
+
   //------------------------------------------------------------------------------------------------------------------------------
   bool core_rpc_server::check_core_ready()
   {
@@ -492,7 +488,7 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
     res.status = "Failed";
     res.blocks.clear();
     res.blocks.reserve(req.heights.size());
-    CHECK_PAYMENT_MIN1(req, res, req.heights.size() * COST_PER_BLOCK, false);
+    
     for (uint64_t height : req.heights)
     {
       block blk;
@@ -565,7 +561,7 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
     RPC_TRACKER(get_outs);
    
 
-    CHECK_PAYMENT_MIN1(req, res, req.outputs.size() * COST_PER_OUT, false);
+    
 
     res.status = "Failed";
 
@@ -610,7 +606,7 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
     RPC_TRACKER(get_indexes);
 
 
-    CHECK_PAYMENT_MIN1(req, res, COST_PER_OUTPUT_INDEXES, false);
+    
 
     bool r = m_core.get_tx_outputs_gindexs(req.txid, res.o_indexes);
     if(!r)
@@ -873,7 +869,7 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
       return true;
     }
 
-    CHECK_PAYMENT_MIN1(req, res, req.key_images.size() * COST_PER_KEY_IMAGE, false);
+    
 
     std::vector<crypto::key_image> key_images;
     for(const auto& ki_hex_str: req.key_images)
@@ -910,7 +906,7 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
       res.status = "Failed";
       return true;
     }
-    for (std::vector<cryptonote::spent_key_image_info>::const_iterator i = ki.begin(); i != ki.end(); ++i)
+    for (auto i = ki.begin(); i != ki.end(); ++i)
     {
       crypto::hash hash;
       crypto::key_image spent_key_image;
@@ -1279,7 +1275,7 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
     RPC_TRACKER(get_transaction_pool_stats);
  
 
-    CHECK_PAYMENT_MIN1(req, res, COST_PER_TX_POOL_STATS, false);
+    
 
     const bool restricted = m_restricted && ctx;
     const bool request_has_rpc_origin = ctx != NULL;
@@ -1537,7 +1533,7 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
     RPC_TRACKER(get_block_header_by_hash);
   
 
-    CHECK_PAYMENT_MIN1(req, res, COST_PER_BLOCK_HEADER, false);
+    
 
     const bool restricted = m_restricted && ctx;
     if (restricted && req.hashes.size() > RESTRICTED_BLOCK_COUNT)
@@ -1619,7 +1615,7 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
       return false;
     }
 
-    CHECK_PAYMENT_MIN1(req, res, (req.end_height - req.start_height + 1) * COST_PER_BLOCK_HEADER, false);
+    
     for (uint64_t h = req.start_height; h <= req.end_height; ++h)
     {
       crypto::hash block_hash = m_core.get_block_id_by_height(h);
@@ -1668,7 +1664,7 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
       error_resp.message = std::string("Requested block height: ") + std::to_string(req.height) + " greater than current top block height: " +  std::to_string(m_core.get_current_blockchain_height() - 1);
       return false;
     }
-    CHECK_PAYMENT_MIN1(req, res, COST_PER_BLOCK_HEADER, false);
+    
     crypto::hash block_hash = m_core.get_block_id_by_height(req.height);
     block blk;
     bool have_block = m_core.get_block_by_hash(block_hash, blk);
@@ -1954,47 +1950,7 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
     res.status = CORE_RPC_STATUS_OK;
     return true;
   }
-  //------------------------------------------------------------------------------------------------------------------------------
-  bool core_rpc_server::on_get_output_histogram(const COMMAND_RPC_GET_OUTPUT_HISTOGRAM::request& req, COMMAND_RPC_GET_OUTPUT_HISTOGRAM::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
-  {
-    RPC_TRACKER(get_output_histogram);
 
-    const bool restricted = m_restricted && ctx;
-    size_t amounts = req.amounts.size();
-    if (restricted && amounts == 0)
-    {
-      res.status = "Restricted RPC will not serve histograms on the whole blockchain. Use your own node.";
-      return true;
-    }
-
-    if (restricted && req.recent_cutoff > 0 && req.recent_cutoff < (uint64_t)time(NULL) - OUTPUT_HISTOGRAM_RECENT_CUTOFF_RESTRICTION)
-    {
-      res.status = "Recent cutoff is too old";
-      return true;
-    }
-
-    std::map<uint64_t, std::tuple<uint64_t, uint64_t, uint64_t>> histogram;
-    try
-    {
-      histogram = m_core.get_blockchain_storage().get_output_histogram( req.unlocked, req.recent_cutoff, req.min_count);
-    }
-    catch (const std::exception &e)
-    {
-      res.status = "Failed to get output histogram";
-      return true;
-    }
-
-    res.histogram.clear();
-    res.histogram.reserve(histogram.size());
-    for (const auto &i: histogram)
-    {
-      if (std::get<0>(i.second) >= req.min_count && (std::get<0>(i.second) <= req.max_count || req.max_count == 0))
-        res.histogram.push_back(COMMAND_RPC_GET_OUTPUT_HISTOGRAM::entry(i.first, std::get<0>(i.second), std::get<1>(i.second), std::get<2>(i.second)));
-    }
-
-    res.status = CORE_RPC_STATUS_OK;
-    return true;
-  }
   //------------------------------------------------------------------------------------------------------------------------------
   bool core_rpc_server::on_get_version(const COMMAND_RPC_GET_VERSION::request& req, COMMAND_RPC_GET_VERSION::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
   {
@@ -2238,18 +2194,7 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
     res.status = "'update' not implemented yet";
     return true;
   }
-  //------------------------------------------------------------------------------------------------------------------------------
-  bool core_rpc_server::on_pop_blocks(const COMMAND_RPC_POP_BLOCKS::request& req, COMMAND_RPC_POP_BLOCKS::response& res, const connection_context *ctx)
-  {
-    RPC_TRACKER(pop_blocks);
 
-    m_core.get_blockchain_storage().pop_blocks(req.nblocks);
-
-    res.height = m_core.get_current_blockchain_height();
-    res.status = CORE_RPC_STATUS_OK;
-
-    return true;
-  }
  
   //------------------------------------------------------------------------------------------------------------------------------
   bool core_rpc_server::on_sync_info(const COMMAND_RPC_SYNC_INFO::request& req, COMMAND_RPC_SYNC_INFO::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)

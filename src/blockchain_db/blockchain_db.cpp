@@ -228,7 +228,7 @@ void BlockchainDB::add_transaction(const crypto::hash& blk_hash, const std::pair
     }
   }
 
-  uint64_t tx_id = add_transaction_data(blk_hash, txp, tx_hash, tx_prunable_hash);
+  const uint64_t tx_id = add_transaction_data(blk_hash, txp, tx_hash, tx_prunable_hash);
 
   std::vector<uint64_t> amount_output_indices(tx.vout.size());
 
@@ -243,13 +243,11 @@ void BlockchainDB::add_transaction(const crypto::hash& blk_hash, const std::pair
       cryptonote::tx_out vout = tx.vout[oi];
       rct::key commitment = rct::zeroCommit(vout.amount);
       vout.amount = 0;
-      amount_output_indices[oi] = add_output(tx_hash, vout, oi, tx.unlock_time,
-        &commitment);
+      amount_output_indices[oi] = add_output(tx_hash, vout, oi, tx.unlock_time,&commitment);
     }
     else
     {
-      amount_output_indices[oi] = add_output(tx_hash, tx.vout[oi], oi, tx.unlock_time,
-         &tx.rct_signatures.outPk[oi].commitment );
+      amount_output_indices[oi] = add_output(tx_hash, tx.vout[oi], oi, tx.unlock_time,&tx.rct_signatures.outPk[oi].commitment );
     }
   }
   add_tx_amount_output_indices(tx_id, amount_output_indices);

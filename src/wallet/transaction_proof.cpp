@@ -360,7 +360,7 @@ std::string wallet2::get_tx_proof(const cryptonote::transaction &tx, const crypt
   if (is_out)
   {
      rct::key  aP;
-    crypto::scalarmultKey(aP, rct::pk2rct(A), rct::sk2rct(tx_sec));
+    rct::scalarmultKey(aP, rct::pk2rct(A), rct::sk2rct(tx_sec));
     kA = rct::rct2pk(aP);
     crypto::public_key tx_pub_key;
 
@@ -378,7 +378,7 @@ std::string wallet2::get_tx_proof(const cryptonote::transaction &tx, const crypt
     throw_wallet_ex_if(tx_pub_key == null_pkey, error::wallet_internal_error, "Tx pubkey was not found");
 
     const crypto::secret_key& a = m_account.get_keys().m_view_secret_key;
-    crypto::scalarmultKey(aP, rct::pk2rct(tx_pub_key), rct::sk2rct(a));
+    rct::scalarmultKey(aP, rct::pk2rct(tx_pub_key), rct::sk2rct(a));
     kA =  rct2pk(aP);
  
     {

@@ -93,26 +93,14 @@ void drop_from_short_history(std::list<crypto::hash> &short_chain_history, size_
 //----------------------------------------------------------------------------------------------------
 void wallet2::refresh( uint64_t start_height)
 {
-   uint64_t blocks_fetched=0;
-  bool received_money = false;
-  refresh( start_height, blocks_fetched, received_money);
+  refresh( start_height);
 }
 //----------------------------------------------------------------------------------------------------
-void wallet2::refresh(uint64_t start_height, uint64_t & blocks_fetched, bool& received_money, bool check_pool)
+void wallet2::refresh(const uint64_t start_height, bool check_pool)
 {
-   if (!start_height)
-      start_height = m_refresh_from_block_height;
 
   MDEBUG("refresh "<< start_height<<",check_pool "<<check_pool);
-  if (m_offline)
-  {
-    blocks_fetched = 0;
-    received_money = 0;
-    return;
-  }
 
-  received_money = false;
-  blocks_fetched = 0;
   uint64_t added_blocks = 0;
   size_t try_count = 0;
   crypto::hash last_tx_hash_id = m_transfers_in.size() ? m_transfers_in.back().m_txid : null_hash;
@@ -124,8 +112,6 @@ void wallet2::refresh(uint64_t start_height, uint64_t & blocks_fetched, bool& re
     std::cout<<h<<std::endl;
   }
   m_run.store(true, std::memory_order_relaxed);
-
- 
 
   uint64_t blocks_start_height;
  
@@ -154,9 +140,6 @@ void wallet2::refresh(uint64_t start_height, uint64_t & blocks_fetched, bool& re
     }
   });
 
-  auto scope_exit_handler_hwdev = epee::misc_utils::create_scope_leave_handler([&](){
-    crypto::computing_key_images(false);
-  }    );
 
   // get updated pool state first, but do not process those txes just yet,
   // since that might cause a password prompt, which would introduce a data
@@ -239,7 +222,6 @@ void wallet2::refresh(uint64_t start_height, uint64_t & blocks_fetched, bool& re
           MERROR("Error parsing blobs: " << e.what());
           error = true;
         }
-        blocks_fetched += added_blocks;
       }
       throw_wallet_ex_if(!waiter.wait(), error::wallet_internal_error, "Exception in thread pool");
       if(!first && blocks_start_height == next_start_height)
@@ -280,7 +262,6 @@ void wallet2::refresh(uint64_t start_height, uint64_t & blocks_fetched, bool& re
     }
     catch (const std::exception&)
     {
-      blocks_fetched += added_blocks;
       throw_wallet_ex_if(!waiter.wait(), error::wallet_internal_error, "Exception in thread pool");
       if(try_count < 3)
       {
@@ -299,14 +280,11 @@ void wallet2::refresh(uint64_t start_height, uint64_t & blocks_fetched, bool& re
       }
     }
   }
-  if(last_tx_hash_id != (m_transfers_in.size() ? m_transfers_in.back().m_txid : null_hash))
-    received_money = true;
-
 
 
   m_first_refresh_done = true;
 
-  MINFO("Refresh done, blobs received: " << blocks_fetched << ", balance (all accounts): " << print_money(balance(false)) << ", unlocked: " << print_money(unlocked_balance(false)));
+  MINFO("Refresh done, blobs received: " <<  ", balance (all accounts): " << print_money(balance(false)) << ", unlocked: " << print_money(unlocked_balance(false)));
 }
 
 //----------------------------------------------------------------------------------------------------
@@ -657,8 +635,8 @@ void wallet2::process_new_transaction(const cryptonote::transaction& tx, const s
   {
     if(in.type() != typeid(cryptonote::txin_to_key))
       continue;
-    const auto &in_to_key = boost::get<cryptonote::txin_to_key>(in);
-    auto it = m_key_images.find(in_to_key.k_image);
+    const auto & spend_kimage = boost::get<cryptonote::txin_to_key>(in).k_image;
+    auto it = m_key_images.find(spend_kimage);
     if(it != m_key_images.end())
     {
       const auto & td = m_transfers_in[it->second];

@@ -644,7 +644,7 @@ private:
      * \brief Tells if the wallet file is deprecated.
      */
     void refresh( uint64_t start_height);
-    void refresh( uint64_t start_height, uint64_t & blocks_fetched, bool& received_money, bool check_pool = true);
+    void refresh( const uint64_t start_height, uint64_t & blocks_fetched, bool check_pool = true);
 
     cryptonote::network_type nettype() const { return m_nettype; }
 
@@ -827,13 +827,8 @@ private:
 
     bool is_synced();
 
-    uint64_t get_fee_multiplier(uint32_t priority, int fee_algorithm = -1);
     uint64_t get_base_fee();
-    uint64_t get_fee_quantization_mask();
-    uint64_t get_min_ring_size();
-    uint64_t get_max_ring_size();
-    uint64_t adjust_mixin(uint64_t mixin);
-
+  
 
     /*
      * "attributes" are a mechanism to store an arbitrary number of string values
@@ -880,10 +875,6 @@ private:
     uint64_t get_bytes_sent() const;
     uint64_t get_bytes_received() const;
 
-
-    bool lock_keys_file();
-    bool unlock_keys_file();
-    bool is_keys_file_locked() const;
 
     void change_password(const std::string &filename, const epee::wipeable_string &original_password, const epee::wipeable_string &new_password);
 
@@ -991,8 +982,6 @@ std::tuple<bool, uint64_t,std::vector<cryptonote::block_complete_entry> , std::v
 
     serializable_unordered_map<crypto::hash, crypto::secret_key> m_tx_secs;
    
-    uint64_t m_upper_transaction_weight_limit; //TODO: auto-calc this value or request from daemon, now use some fixed value
-
     std::atomic<bool> m_run;
 
     boost::recursive_mutex m_daemon_rpc_mutex;
@@ -1008,7 +997,6 @@ std::tuple<bool, uint64_t,std::vector<cryptonote::block_complete_entry> , std::v
     // If m_refresh_from_block_height is explicitly set to zero we need this to differentiate it from the case that
     // m_refresh_from_block_height was defaulted to zero.*/
     bool m_explicit_refresh_from_block_height;
-    bool m_confirm_non_default_ring_size;
     uint64_t m_max_reorg_depth;
     uint32_t m_inactivity_lock_timeout;
     bool m_is_initialized;

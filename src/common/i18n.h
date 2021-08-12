@@ -31,7 +31,7 @@
 #define QT_TRANSLATE_NOOP(context,str) i18n_translate(str,context)
 
 inline std::string i18n_get_language(){return std::string();}
-inline int i18n_set_language(const char *directory, const char *base, std::string language = std::string()){}
+inline int i18n_set_language(const char *directory, const char *base, std::string language = std::string()){return 0;}
 inline const char *i18n_translate(const char *str, const std::string &context){return str;}
 static inline std::string get_default_i18n_context() { return std::string(); }
 static inline const char *tr(const char *str) { return str; }

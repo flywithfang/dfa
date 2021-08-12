@@ -106,29 +106,7 @@ static const std::string ASCII_OUTPUT_MAGIC = "MoneroAsciiDataV1";
 boost::mutex tools::wallet2::default_daemon_address_lock;
 std::string tools::wallet2::default_daemon_address = "";
 
-namespace
-{
 
- 
-
-
-
-  bool keys_intersect(const std::unordered_set<crypto::public_key>& s1, const std::unordered_set<crypto::public_key>& s2)
-  {
-    if (s1.empty() || s2.empty())
-      return false;
-
-    for (const auto& e: s1)
-    {
-      if (s2.find(e) != s2.end())
-        return true;
-    }
-
-    return false;
-  }
-
-
-}
 
 namespace
 {
@@ -442,7 +420,6 @@ wallet_keys_unlocker::~wallet_keys_unlocker()
 
 wallet2::wallet2(network_type nettype, uint64_t kdf_rounds, bool unattended, std::unique_ptr<epee::net_utils::http::http_client_factory> http_client_factory):
   m_http_client(http_client_factory->create()),
-  m_upper_transaction_weight_limit(0),
   m_run(true),
   m_nettype(nettype),
   m_always_confirm_transfers(true),
@@ -987,7 +964,6 @@ bool wallet2::verify_password(const std::string& keys_file_name, const epee::wip
 
   const cryptonote::account_keys& keys = account_data_check.get_keys();
   r = r && cryptonote::verify_keys(keys.m_view_secret_key,  keys.m_account_address.m_view_public_key);
-  if(!no_spend_key)
     r = r && cryptonote::verify_keys(keys.m_spend_secret_key, keys.m_account_address.m_spend_public_key);
   return r;
 }
@@ -1125,15 +1101,6 @@ bool wallet2::check_connection(uint32_t *version, bool *ssl, uint32_t timeout)
 {
   throw_wallet_ex_if(!m_is_initialized, error::wallet_not_initialized);
 
-  if (m_offline)
-  {
-    m_rpc_version = 0;
-    if (version)
-      *version = 0;
-    if (ssl)
-      *ssl = false;
-    return false;
-  }
 
    {
     boost::lock_guard<boost::recursive_mutex> lock(m_daemon_rpc_mutex);
@@ -1556,59 +1523,8 @@ void wallet2::add_pool_transfer_out(const pending_tx & ptx)
 
 }
 
-//------------------------------------------------------------------------------------------------------------------------------
-uint64_t wallet2::get_min_ring_size()
-{
- 
-    return 11;
- 
-}
-//------------------------------------------------------------------------------------------------------------------------------
-uint64_t wallet2::get_max_ring_size()
-{
- 
-    return 11;
-  
-}
-//------------------------------------------------------------------------------------------------------------------------------
-uint64_t wallet2::adjust_mixin(uint64_t mixin)
-{
-  return 11;
-}
 
 
-bool wallet2::lock_keys_file()
-{
-  if (m_wallet_file.empty())
-    return true;
-  if (m_keys_file_locker)
-  {
-    MDEBUG(m_keys_file << " is already locked.");
-    return false;
-  }
-  m_keys_file_locker.reset(new tools::file_locker(m_keys_file));
-  return true;
-}
-
-bool wallet2::unlock_keys_file()
-{
-  if (m_wallet_file.empty())
-    return true;
-  if (!m_keys_file_locker)
-  {
-    MDEBUG(m_keys_file << " is already unlocked.");
-    return false;
-  }
-  m_keys_file_locker.reset();
-  return true;
-}
-
-bool wallet2::is_keys_file_locked() const
-{
-  if (m_wallet_file.empty())
-    return false;
-  return m_keys_file_locker->locked();
-}
 
 
 
