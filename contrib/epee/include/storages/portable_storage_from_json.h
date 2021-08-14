@@ -40,11 +40,11 @@ namespace epee
   {
     namespace json
     {
-#define CHECK_ISSPACE()  if(!epee::misc_utils::parse::isspace(*it)){ ASSERT_MES_AND_THROW("Wrong JSON character at: " << std::string(it, buf_end));}
+#define CHECK_ISSPACE()  if(!epee::misc_utils::parse::isspace(*it)){ throw_and_log("Wrong JSON character at: " << std::string(it, buf_end));}
 
       /*inline void parse_error()
       {
-        ASSERT_MES_AND_THROW("json parse error");
+        throw_and_log("json parse error");
       }*/
       template<class t_storage>
       inline void run_handler(typename t_storage::hsection current_section, std::string::const_iterator& sec_buf_begin, std::string::const_iterator buf_end, t_storage& stg, unsigned int recursion)
@@ -161,7 +161,7 @@ namespace epee
               {
                 stg.set_value(name, false, current_section);              
                 state = match_state_wonder_after_value;
-              }else ASSERT_MES_AND_THROW("Unknown value keyword " << word);
+              }else throw_and_log("Unknown value keyword " << word);
             }else if(*it == '{')
             {
               //sub section here
@@ -187,7 +187,7 @@ namespace epee
           case match_state_wonder_array:
             if(*it == '[')
             {
-              ASSERT_MES_AND_THROW("array of array not suppoerted yet :( sorry"); 
+              throw_and_log("array of array not suppoerted yet :( sorry"); 
               //mean array of array
             }
             if(*it == '{')
@@ -261,7 +261,7 @@ namespace epee
                 state = match_state_array_after_value;
                 array_md = array_mode_booleans;
 
-              }else ASSERT_MES_AND_THROW("Unknown value keyword " << word)
+              }else throw_and_log("Unknown value keyword " << word)
             }else CHECK_ISSPACE();
             break;
           case match_state_array_after_value:
@@ -347,17 +347,17 @@ namespace epee
                   CHECK_AND_ASSERT_THROW_MES(r, " failed to insert values section entry");
                   state = match_state_array_after_value;
                 }
-                else ASSERT_MES_AND_THROW("Unknown value keyword " << word);
+                else throw_and_log("Unknown value keyword " << word);
               }else CHECK_ISSPACE();
               break;
             case array_mode_undifined:
             default:
-              ASSERT_MES_AND_THROW("Bad array state");
+              throw_and_log("Bad array state");
             }
             break;
           case match_state_error:
           default:
-            ASSERT_MES_AND_THROW("WRONG JSON STATE");
+            throw_and_log("WRONG JSON STATE");
           }
         }
       }

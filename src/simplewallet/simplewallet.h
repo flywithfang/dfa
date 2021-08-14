@@ -167,7 +167,6 @@ namespace cryptonote
     bool refresh_main(uint64_t start_height,  bool is_init = false);
     bool status(const std::vector<std::string> &args);
     bool wallet_info(const std::vector<std::string> &args);
-    bool show_transfer(const std::vector<std::string> &args);
     bool change_password(const std::vector<std::string>& args);
     bool lock(const std::vector<std::string>& args);
     bool net_stats(const std::vector<std::string>& args);

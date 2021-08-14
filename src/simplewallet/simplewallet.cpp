@@ -189,7 +189,6 @@ namespace
   const char* USAGE_CHECK_SPEND_PROOF("check_spend_proof <txid> <signature_file> [<message>]");
   const char* USAGE_SHOW_TRANSFERS("show_transfers [in|out|all] [<min_height> [<max_height>]]");
   const char* USAGE_RESCAN_BC("rescan_bc [hard|soft|keep_ki] [start_height=0]");
-  const char* USAGE_SHOW_TRANSFER("show_transfer <txid>");
   const char* USAGE_LOCK("lock");
   const char* USAGE_NET_STATS("net_stats");
   const char* USAGE_PUBLIC_NODES("public_nodes");
@@ -1971,21 +1970,7 @@ void simple_wallet::on_new_block(uint64_t height, const cryptonote::block& block
 //----------------------------------------------------------------------------------------------------
 void simple_wallet::on_money_received(uint64_t height, const crypto::hash &txid, const cryptonote::transaction& tx, uint64_t amount,  bool is_change, uint64_t unlock_time)
 {
-  if (m_locked)
-    return;
-  message_writer(console_color_green, false) << "\r" <<
-    tr("Height ") << height << ", " <<
-    tr("txid ") << txid << ", " <<
-    print_money(amount) ;
-
-  const uint64_t warn_height = m_wallet->nettype() == TESTNET ? 1000000 : m_wallet->nettype() == STAGENET ? 50000 : 1650000;
-
-  if (unlock_time && !cryptonote::is_coinbase(tx))
-    message_writer() << tr("NOTE: This transaction is locked, see details with: show_transfer ") + epee::string_tools::pod_to_hex(txid);
-  if (m_auto_refresh_refreshing)
-    m_cmd_binder.print_prompt();
-  else
-    m_refresh_progress_reporter.update(height, true);
+  
 }
 //----------------------------------------------------------------------------------------------------
 void simple_wallet::on_unconfirmed_money_received(uint64_t height, const crypto::hash &txid, const cryptonote::transaction& tx, uint64_t amount)
@@ -3515,121 +3500,7 @@ bool simple_wallet::wallet_info(const std::vector<std::string> &args)
     m_wallet->nettype() == cryptonote::STAGENET ? tr("Stagenet") : tr("Mainnet"));
   return true;
 }
-//----------------------------------------------------------------------------------------------------
-bool simple_wallet::show_transfer(const std::vector<std::string> &args)
-{
-  if (args.size() != 1)
-  {
-    PRINT_USAGE(USAGE_SHOW_TRANSFER);
-    return true;
-  }
 
-  cryptonote::blobdata txid_data;
-  if(!epee::string_tools::parse_hexstr_to_binbuff(args.front(), txid_data) || txid_data.size() != sizeof(crypto::hash))
-  {
-    fail_msg_writer() << tr("failed to parse txid");
-    return true;
-  }
-  crypto::hash txid = *reinterpret_cast<const crypto::hash*>(txid_data.data());
-
-  const uint64_t top_height = m_wallet->get_blockchain_current_height();
-
-    std::vector<tools::wallet2::transfer_details> payments;
-  m_wallet->get_confirmed_transfer_in(payments, 0, (uint64_t)-1);
-  for (const auto & pd : payments) {
-    if (pd.m_txid == txid) {
-      success_msg_writer() << "Incoming transaction found";
-      success_msg_writer() << "txid: " << txid;
-      success_msg_writer() << "Height: " << pd.m_block_height;
-      success_msg_writer() << "Timestamp: " << tools::get_human_readable_timestamp(pd.m_block_time);
-      success_msg_writer() << "Amount: " << print_money(pd.m_amount);
-      if (pd.m_unlock_time < CRYPTONOTE_MAX_BLOCK_NUMBER)
-      {
-        uint64_t bh = std::max(pd.m_unlock_time, pd.m_block_height + CRYPTONOTE_DEFAULT_TX_SPENDABLE_AGE);
-        if (bh >= top_height)
-          success_msg_writer() << "Locked: " << (bh - top_height) << " blocks to unlock";
-        else
-          success_msg_writer() << std::to_string(top_height - bh) << " confirmations";
-      }
-      else
-      {
-        const uint64_t adjusted_time = m_wallet->get_daemon_adjusted_time();
-        uint64_t threshold = adjusted_time + (m_wallet->use_fork_rules(2, 0) ? CRYPTONOTE_LOCKED_TX_ALLOWED_DELTA_SECONDS_V2 : CRYPTONOTE_LOCKED_TX_ALLOWED_DELTA_SECONDS_V1);
-        if (threshold >= pd.m_unlock_time)
-          success_msg_writer() << "unlocked for " << get_human_readable_timespan(std::chrono::seconds(threshold - pd.m_unlock_time));
-        else
-          success_msg_writer() << "locked for " << get_human_readable_timespan(std::chrono::seconds(pd.m_unlock_time - threshold));
-      }
-      return true;
-    }
-  }
-
-  std::list<std::pair<crypto::hash, tools::wallet2::confirmed_transfer_out>> payments_out;
-  m_wallet->get_payments_out(payments_out, 0, (uint64_t)-1);
-  for (std::list<std::pair<crypto::hash, tools::wallet2::confirmed_transfer_out>>::const_iterator i = payments_out.begin(); i != payments_out.end(); ++i) {
-    if (i->first == txid)
-    {
-      const auto &pd = i->second;
-      uint64_t fee = pd.fee();
-      std::string addr=cryptonote::get_account_address_as_str(m_wallet->nettype(), pd.m_addr);
-    
-      success_msg_writer() << "Outgoing transaction found";
-      success_msg_writer() << "txid: " << txid;
-      success_msg_writer() << "Height: " << pd.m_block_height;
-      success_msg_writer() << "Send Time: " << tools::get_human_readable_timestamp(pd.m_sent_time);
-      success_msg_writer() << "Amount: " << print_money(pd.m_amount);
-      success_msg_writer() << "Fee: " << print_money(fee);
-      success_msg_writer() << "Destinations: " << addr;
-      return true;
-    }
-  }
-
-  try
-  {
-    m_wallet->update_pool_state();
-
-    std::list<std::pair<crypto::hash, tools::wallet2::pool_transfer_in>> pool_payments;
-    m_wallet->get_unconfirmed_transfer_in(pool_payments);
-    for ( auto i = pool_payments.begin(); i != pool_payments.end(); ++i) {
-      const auto &pd = i->second;
-      if (pd.m_tx_hash == txid)
-      {
-        success_msg_writer() << "Unconfirmed incoming transaction found in the txpool";
-        success_msg_writer() << "txid: " << txid;
-        success_msg_writer() << "Timestamp: " << tools::get_human_readable_timestamp(pd.m_timestamp);
-        success_msg_writer() << "Amount: " << print_money(pd.m_amount);
-        if (pd.m_double_spend_seen)
-          success_msg_writer() << tr("Double spend seen on the network: this transaction may or may not end up being mined");
-        return true;
-      }
-    }
-  }
-  catch (...)
-  {
-    fail_msg_writer() << "Failed to get pool state";
-  }
-
-  std::list<std::pair<crypto::hash, tools::wallet2::unconfirmed_transfer_out>> upayments;
-  m_wallet->get_unconfirmed_payments_out(upayments);
-  for (auto i = upayments.begin(); i != upayments.end(); ++i) {
-    if (i->first == txid)
-    {
-      const tools::wallet2::unconfirmed_transfer_out &pd = i->second;
-      uint64_t fee = pd.fee();
-      bool is_failed = pd.m_state == tools::wallet2::unconfirmed_transfer_out::failed;
-
-      success_msg_writer() << (is_failed ? "Failed" : "Pending") << " outgoing transaction found";
-      success_msg_writer() << "txid: " << txid;
-      success_msg_writer() << "Send Time: " << tools::get_human_readable_timestamp(pd.m_sent_time);
-      success_msg_writer() << "Amount: " << print_money(pd.m_amount);
-      success_msg_writer() << "Fee: " << print_money(fee);
-      return true;
-    }
-  }
-
-  fail_msg_writer() << tr("Transaction ID not found");
-  return true;
-}
 //----------------------------------------------------------------------------------------------------
 bool simple_wallet::process_command(const std::vector<std::string> &args)
 {

@@ -41,7 +41,7 @@ namespace cryptonote
 {
 
 typedef struct txindex {
-    crypto::hash key;
+    crypto::hash tx_hash;
     tx_data_t data;
 } txindex;
 
@@ -52,7 +52,7 @@ typedef struct mdb_txn_cursors
   MDB_cursor *m_txc_block_info;
 
   MDB_cursor *m_txc_output_txs;
-  MDB_cursor *m_txc_output_amounts;
+  MDB_cursor *m_txc_tx_outputs;
 
   MDB_cursor *m_txc_txs;
   MDB_cursor *m_txc_txs_pruned;
@@ -60,7 +60,7 @@ typedef struct mdb_txn_cursors
   MDB_cursor *m_txc_txs_prunable_hash;
   MDB_cursor *m_txc_txs_prunable_tip;
   MDB_cursor *m_txc_tx_indices;
-  MDB_cursor *m_txc_tx_outputs;
+  MDB_cursor *m_txc_tx_o_indices;
 
   MDB_cursor *m_txc_spent_keys;
 
@@ -77,15 +77,13 @@ typedef struct mdb_txn_cursors
 #define m_cur_blocks	m_cursors->m_txc_blocks
 #define m_cur_block_heights	m_cursors->m_txc_block_heights
 #define m_cur_block_info	m_cursors->m_txc_block_info
-#define m_cur_output_txs	m_cursors->m_txc_output_txs
-#define m_cur_output_amounts	m_cursors->m_txc_output_amounts
-#define m_cur_txs	m_cursors->m_txc_txs
+#define m_cur_tx_outputs	m_cursors->m_txc_tx_outputs
 #define m_cur_txs_pruned	m_cursors->m_txc_txs_pruned
 #define m_cur_txs_prunable	m_cursors->m_txc_txs_prunable
 #define m_cur_txs_prunable_hash	m_cursors->m_txc_txs_prunable_hash
 #define m_cur_txs_prunable_tip	m_cursors->m_txc_txs_prunable_tip
 #define m_cur_tx_indices	m_cursors->m_txc_tx_indices
-#define m_cur_tx_outputs	m_cursors->m_txc_tx_outputs
+#define m_cur_tx_o_indices	m_cursors->m_txc_tx_o_indices
 #define m_cur_spent_keys	m_cursors->m_txc_spent_keys
 #define m_cur_txpool_meta	m_cursors->m_txc_txpool_meta
 #define m_cur_txpool_blob	m_cursors->m_txc_txpool_blob
@@ -99,14 +97,13 @@ typedef struct mdb_rflags
   bool m_rf_blocks;
   bool m_rf_block_heights;
   bool m_rf_block_info;
-  bool m_rf_output_txs;
-  bool m_rf_output_amounts;
-  bool m_rf_txs;
+ 
   bool m_rf_txs_pruned;
   bool m_rf_txs_prunable;
   bool m_rf_txs_prunable_hash;
   bool m_rf_txs_prunable_tip;
   bool m_rf_tx_indices;
+  bool m_rf_tx_o_indices;
   bool m_rf_tx_outputs;
   bool m_rf_spent_keys;
   bool m_rf_txpool_meta;
@@ -254,6 +251,33 @@ public:
 
   virtual uint64_t get_tx_unlock_time(const crypto::hash& h) const;
 
+  // return tx with hash <h>
+  // throw if no such tx exists
+  /**
+   * @brief fetches the transaction with the given hash
+   *
+   * If the transaction does not exist, the subclass should throw TX_DNE.
+   *
+   * @param h the hash to look for
+   *
+   * @return the transaction with the given hash
+   */
+  virtual transaction get_tx(const crypto::hash& h) const;
+
+  virtual bool get_tx(const crypto::hash& h, transaction &tx) const;
+
+  /**
+   * @brief fetches the transaction base with the given hash
+   *
+   * If the transaction does not exist, the subclass should throw TX_DNE.
+   *
+   * @param h the hash to look for
+   *
+   * @return the transaction with the given hash
+   */
+  virtual transaction get_pruned_tx(const crypto::hash& h) const;
+  virtual bool        get_pruned_tx(const crypto::hash& h, transaction &tx) const;
+
   virtual bool get_tx_blob(const crypto::hash& h, cryptonote::blobdata &tx) const;
   virtual bool get_pruned_tx_blob(const crypto::hash& h, cryptonote::blobdata &tx) const;
   virtual bool get_pruned_tx_blobs_from(const crypto::hash& h, size_t count, std::vector<cryptonote::blobdata> &bd) const;
@@ -267,19 +291,29 @@ public:
 
   virtual uint64_t get_tx_block_height(const crypto::hash& h) const;
 
-  virtual uint64_t get_num_outputs() const;
-
-  virtual output_data_t get_output_key(const uint64_t& index, bool include_commitmemt) const;
+  virtual output_data_t get_output_key(const uint64_t& index) const;
   virtual void get_output_key( const std::vector<uint64_t> &offsets, std::vector<output_data_t> &outputs, bool allow_partial = false) const;
 
   virtual tx_out_index get_output_tx_and_index_from_global(const uint64_t& index) const;
   virtual void get_output_tx_and_index_from_global(const std::vector<uint64_t> &global_indices,
       std::vector<tx_out_index> &tx_out_indices) const;
 
-  virtual tx_out_index get_output_tx_and_index( const uint64_t& index) const;
-  virtual void get_output_tx_and_index( const std::vector<uint64_t> &offsets, std::vector<tx_out_index> &indices) const;
-
-  virtual std::vector<std::vector<uint64_t>> get_tx_amount_output_indices(const uint64_t tx_id, size_t n_txes) const;
+/**
+     * @brief gets the global indices for outputs from a given transaction
+     *
+     * This function gets the global indices for all outputs belonging
+     * to a specific transaction.
+     *
+     * @param tx_id the hash of the transaction to fetch indices for
+     * @param indexs return-by-reference the global indices for the transaction's outputs
+     * @param n_txes how many txes in a row to get results for
+     *
+     * @return false if the transaction does not exist, or if no indices are found, otherwise true
+     */
+    bool get_tx_outputs_gindexs(const crypto::hash& tx_id, std::vector<uint64_t>& indexs) const;
+    bool get_tx_outputs_gindexs(const crypto::hash& tx_id, size_t n_txes, std::vector<std::vector<uint64_t>>& indexs) const;
+    
+  virtual std::vector<std::vector<uint64_t>> get_tx_output_indices(const uint64_t tx_id, size_t n_txes) const;
 
   virtual bool has_key_image(const crypto::key_image& img) const;
 
@@ -307,8 +341,7 @@ public:
   virtual bool for_all_key_images(std::function<bool(const crypto::key_image&)>) const;
   virtual bool for_blocks_range(const uint64_t& h1, const uint64_t& h2, std::function<bool(uint64_t, const crypto::hash&, const cryptonote::block&)>) const;
   virtual bool for_all_transactions(std::function<bool(const crypto::hash&, const cryptonote::transaction&)>, bool pruned) const;
-  virtual bool for_all_outputs(std::function<bool( const crypto::hash &tx_hash, uint64_t height, size_t tx_idx)> f) const;
-  virtual bool for_all_outputs( const std::function<bool(uint64_t height)> &f) const;
+  virtual bool for_all_outputs(  const uint64_t start_height,std::function<bool(uint64_t,const output_data_t&)>& f) const;
   virtual bool for_all_alt_blocks(std::function<bool(const crypto::hash &blkid, const alt_block_data_t &data, const cryptonote::blobdata_ref *blob)> f, bool include_blob = false) const;
 
   virtual uint64_t add_block( const std::pair<block, blobdata>& blk
@@ -338,20 +371,6 @@ public:
 
   virtual bool can_thread_bulk_indices() const { return true; }
 
-  /**
-   * @brief return a histogram of outputs on the blockchain
-   *
-   * @param amounts optional set of amounts to lookup
-   * @param unlocked whether to restrict count to unlocked outputs
-   * @param recent_cutoff timestamp to determine which outputs are recent
-   * @param min_count return only amounts with at least that many instances
-   *
-   * @return a set of amount/instances
-   */
-  std::map<uint64_t, std::tuple<uint64_t, uint64_t, uint64_t>> get_output_histogram( bool unlocked, uint64_t recent_cutoff, uint64_t min_count) const;
-
-  bool get_output_distribution( uint64_t from_height, uint64_t to_height, std::vector<uint64_t> &distribution, uint64_t &base) const;
-
   // helper functions
   static int compare_uint64(const MDB_val *a, const MDB_val *b);
   static int compare_hash32(const MDB_val *a, const MDB_val *b);
@@ -365,28 +384,23 @@ private:
   void check_and_resize_for_batch(uint64_t batch_num_blocks, uint64_t batch_bytes);
   uint64_t get_estimated_batch_size(uint64_t batch_num_blocks, uint64_t batch_bytes) const;
 
-  virtual void add_block( const block& blk, size_t block_weight, uint64_t long_term_block_weight
-                , const difficulty_type& cum_diff, const uint64_t& coins_generated
-                , uint64_t num_rct_outs, const crypto::hash& block_hash);
+  void __add_block( const block& blk, size_t block_weight, uint64_t long_term_block_weight
+                , const difficulty_type& cum_diff, const uint64_t& coins_generated, uint64_t num_rct_outs, const crypto::hash& block_hash);
 
-  virtual void remove_block();
+  void __remove_block();
 
-  virtual uint64_t add_transaction_data(const crypto::hash& blk_hash, const std::pair<transaction, blobdata_ref>& tx, const crypto::hash& tx_hash, const crypto::hash& tx_prunable_hash);
+  uint64_t add_transaction_data(const crypto::hash& blk_hash, const std::pair<transaction, blobdata_ref>& tx, const crypto::hash& tx_hash, const crypto::hash& tx_prunable_hash);
 
-  virtual void remove_transaction_data(const crypto::hash& tx_hash, const transaction& tx);
+  void    __remove_transaction(const crypto::hash& tx_hash);
+  void remove_transaction_data(const crypto::hash& tx_hash, const transaction& tx);
 
-  virtual uint64_t add_output(const crypto::hash& tx_hash,const tx_out& tx_output,const uint64_t& local_index,const uint64_t unlock_time,const rct::key *commitment);
-
-  virtual void add_tx_amount_output_indices(const uint64_t tx_id,const std::vector<uint64_t>& amount_output_indices);
+  uint64_t add_output(const crypto::hash& tx_hash,const txout_to_key& tx_output,const uint64_t& local_index,const uint64_t unlock_time,const rct::key *commitment);
 
   void remove_tx_outputs(const uint64_t tx_id, const transaction& tx);
 
-  void remove_output(const uint64_t amount, const uint64_t& out_index);
+  void add_spent_key(const crypto::key_image& k_image);
 
-
-  virtual void add_spent_key(const crypto::key_image& k_image);
-
-  virtual void remove_spent_key(const crypto::key_image& k_image);
+  void remove_spent_key(const crypto::key_image& k_image);
 
   uint64_t num_outputs() const;
 
@@ -408,27 +422,19 @@ private:
 
   uint64_t get_max_block_size();
   void add_max_block_size(uint64_t sz);
-
-  // fix up anything that may be wrong due to past bugs
-  virtual void fixup();
-
-  // migrate from older DB version to current
-  void migrate(const uint32_t oldversion);
-
-  // migrate from DB version 0 to 1
-  void migrate_0_1();
-
-  // migrate from DB version 1 to 2
-  void migrate_1_2();
-
-  // migrate from DB version 2 to 3
-  void migrate_2_3();
-
-  // migrate from DB version 3 to 4
-  void migrate_3_4();
-
-  // migrate from DB version 4 to 5
-  void migrate_4_5();
+  /**
+   * @brief helper function for add_transactions, to add each individual transaction
+   *
+   * This function is called by add_transactions() for each transaction to be
+   * added.
+   *
+   * @param blk_hash hash of the block which has the transaction
+   * @param tx the transaction to add
+   * @param tx_hash_ptr the hash of the transaction, if already calculated
+   * @param tx_prunable_hash_ptr the hash of the prunable part of the transaction, if already calculated
+   */
+  void __add_transaction(const crypto::hash& blk_hash, const std::pair<transaction, blobdata_ref>& tx, const crypto::hash* tx_hash_ptr = NULL, const crypto::hash* tx_prunable_hash_ptr = NULL);
+  
 
   void cleanup_batch();
 
@@ -445,10 +451,10 @@ private:
   MDB_dbi m_txs_prunable_hash;
   MDB_dbi m_txs_prunable_tip;
   MDB_dbi m_tx_indices;
-  MDB_dbi m_tx_outputs;
+  MDB_dbi m_tx_o_indices;
 
   MDB_dbi m_output_txs;
-  MDB_dbi m_output_amounts;
+  MDB_dbi m_tx_outputs;
 
   MDB_dbi m_spent_keys;
 

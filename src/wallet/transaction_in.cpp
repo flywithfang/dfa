@@ -209,9 +209,7 @@ bool wallet2::get_rct_distribution(uint64_t &start_height, std::vector<uint64_t>
   cryptonote::COMMAND_RPC_GET_OUTPUT_DISTRIBUTION::request req {};
   cryptonote::COMMAND_RPC_GET_OUTPUT_DISTRIBUTION::response res{};
   req.from_height = 0;
-  req.cumulative = false;
   req.binary = true;
-  req.compress = true;
 
   bool r;
   try
@@ -226,8 +224,6 @@ bool wallet2::get_rct_distribution(uint64_t &start_height, std::vector<uint64_t>
     return false;
   }
 
-  for (size_t i = 1; i < res.dist.data.distribution.size(); ++i)
-    res.dist.data.distribution[i] += res.dist.data.distribution[i-1];
 
   start_height = res.dist.data.start_height;
   distribution = std::move(res.dist.data.distribution);

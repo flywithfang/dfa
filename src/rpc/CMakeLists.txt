@@ -30,7 +30,7 @@ include_directories(SYSTEM ${ZMQ_INCLUDE_PATH})
 
 set(rpc_base_sources
   rpc_args.cpp
-  rpc_handler.cpp)
+ )
 
 set(rpc_sources
   core_rpc_server.cpp
@@ -39,11 +39,11 @@ set(rpc_sources
 
 set(rpc_base_headers
   rpc_args.h
-  rpc_handler.h)
+  )
 
 set(rpc_headers
   rpc_version_str.h
-  rpc_handler.h)
+  )
 
 
 

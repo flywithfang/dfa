@@ -447,12 +447,12 @@ namespace rct {
             sc_0(mu_C_to_hash[0].bytes);
             memcpy(mu_C_to_hash[0].bytes,config::HASH_KEY_CLSAG_AGG_1,sizeof(config::HASH_KEY_CLSAG_AGG_1)-1);
             for (size_t i = 1; i < n+1; ++i) {
-                mu_P_to_hash[i] = pubs[i-1].dest;
-                mu_C_to_hash[i] = pubs[i-1].dest;
+                mu_P_to_hash[i] = pubs[i-1].otk;
+                mu_C_to_hash[i] = pubs[i-1].otk;
             }
             for (size_t i = n+1; i < 2*n+1; ++i) {
-                mu_P_to_hash[i] = pubs[i-n-1].mask;
-                mu_C_to_hash[i] = pubs[i-n-1].mask;
+                mu_P_to_hash[i] = pubs[i-n-1].commitment;
+                mu_C_to_hash[i] = pubs[i-n-1].commitment;
             }
             mu_P_to_hash[2*n+1] = sig.I;
             mu_P_to_hash[2*n+2] = sig.D;
@@ -470,8 +470,8 @@ namespace rct {
             memcpy(c_to_hash[0].bytes,config::HASH_KEY_CLSAG_ROUND,sizeof(config::HASH_KEY_CLSAG_ROUND)-1);
             for (size_t i = 1; i < n+1; ++i)
             {
-                c_to_hash[i] = pubs[i-1].dest;
-                c_to_hash[i+n] = pubs[i-1].mask;
+                c_to_hash[i] = pubs[i-1].otk;
+                c_to_hash[i+n] = pubs[i-1].commitment;
             }
             c_to_hash[2*n+1] = C_offset;
             c_to_hash[2*n+2] = message;
@@ -494,9 +494,9 @@ namespace rct {
                 sc_mul(c_c.bytes,mu_C.bytes,c.bytes);
 
                 // Precompute points for L/R
-                precomp(P_precomp.k,pubs[i].dest);
+                precomp(P_precomp.k,pubs[i].otk);
 
-                CHECK_AND_ASSERT_MES(ge_frombytes_vartime(&temp_p3, pubs[i].mask.bytes) == 0, false, "point conv failed");
+                CHECK_AND_ASSERT_MES(ge_frombytes_vartime(&temp_p3, pubs[i].commitment.bytes) == 0, false, "point conv failed");
                 ge_sub(&temp_p1,&temp_p3,&C_offset_cached);
                 ge_p1p1_to_p3(&temp_p3,&temp_p1);
                 ge_dsm_precomp(C_precomp.k,&temp_p3);
@@ -505,7 +505,7 @@ namespace rct {
                 addKeys_aGbBcC(L,sig.s[i],c_p,P_precomp.k,c_c,C_precomp.k);
 
                 // Compute R
-                hash_to_p3(hash8_p3,pubs[i].dest);
+                hash_to_p3(hash8_p3,pubs[i].otk);
                 ge_dsm_precomp(hash_precomp.k, &hash8_p3);
                 addKeys_aAbBcC(R,sig.s[i],hash_precomp.k,c_p,I_precomp.k,c_c,D_precomp.k);
 
@@ -735,7 +735,7 @@ namespace rct {
 
           rct::keyV masks(rv.outPk.size());
           for (size_t i = 0; i < rv.outPk.size(); i++) {
-            masks[i] = rv.outPk[i].mask;
+            masks[i] = rv.outPk[i].commitment;
           }
           key sumOutpks = addKeys(masks);
           DP(sumOutpks);
@@ -860,16 +860,16 @@ namespace rct {
 
      
         //mask amount and mask
-        ecdhTuple ecdh_info = rv.ecdhInfo[i];
-        const uint64_t amount = rct::ecdhDecode(ecdh_info.amount, shared_sec);
+        const auto encrypted_amount = rv.ecdhInfo[i].amount;
+        const uint64_t amount = rct::ecdhDecode(encrypted_amount, shared_sec);
 
         const auto noise = rct::genCommitmentMask(shared_sec);
-        key C = rv.outPk[i].mask;
+        key C = rv.outPk[i].commitment;
         DP("C");DP(C);
 
         key C2;
         CHECK_AND_ASSERT_THROW_MES(sc_check(noise.bytes) == 0, "warning, bad ECDH mask");
-        //mask*G+bH
+        //noise*G+bH
         addKeys2(C2, noise, rct::d2h(amount), H);
 
         DP("C2");DP(C2);

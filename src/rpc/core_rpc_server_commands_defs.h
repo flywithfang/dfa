@@ -36,7 +36,6 @@
 #include "cryptonote_basic/cryptonote_basic.h"
 #include "cryptonote_basic/difficulty.h"
 #include "crypto/hash.h"
-#include "rpc/rpc_handler.h"
 #include "common/varint.h"
 #include "common/perf_timer.h"
 
@@ -472,12 +471,10 @@ namespace cryptonote
     struct request_t: public rpc_access_request_base
     {
       std::vector<get_outputs_out> outputs;
-      bool get_txid;
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE_PARENT(rpc_access_request_base)
         KV_SERIALIZE(outputs)
-        KV_SERIALIZE_OPT(get_txid, true)
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<request_t> request;
@@ -488,14 +485,14 @@ namespace cryptonote
       rct::key commitment;
       bool unlocked;
       uint64_t height;
-      crypto::hash txid;
+      crypto::hash tx_hash;
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE_VAL_POD_AS_BLOB(key)
         KV_SERIALIZE_VAL_POD_AS_BLOB(commitment)
         KV_SERIALIZE(unlocked)
         KV_SERIALIZE(height)
-        KV_SERIALIZE_VAL_POD_AS_BLOB(txid)
+        KV_SERIALIZE_VAL_POD_AS_BLOB(tx_hash)
       END_KV_SERIALIZE_MAP()
     };
 
@@ -2136,6 +2133,13 @@ namespace cryptonote
     typedef epee::misc_utils::struct_init<response_t> response;
   };
 
+struct output_distribution_data
+{
+  std::vector<std::uint64_t> distribution;
+  std::uint64_t start_height;
+};
+
+
   struct COMMAND_RPC_GET_OUTPUT_DISTRIBUTION
   {
     struct request_t: public rpc_access_request_base
@@ -2143,58 +2147,39 @@ namespace cryptonote
      
       uint64_t from_height;
       uint64_t to_height;
-      bool cumulative;
       bool binary;
-      bool compress;
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE_PARENT(rpc_access_request_base)
         KV_SERIALIZE_OPT(from_height, (uint64_t)0)
         KV_SERIALIZE_OPT(to_height, (uint64_t)0)
-        KV_SERIALIZE_OPT(cumulative, false)
         KV_SERIALIZE_OPT(binary, true)
-        KV_SERIALIZE_OPT(compress, false)
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<request_t> request;
 
     struct distribution
     {
-      rpc::output_distribution_data data;
-      std::string compressed_data;
+      output_distribution_data data;
       bool binary;
-      bool compress;
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE_N(data.start_height, "start_height")
         KV_SERIALIZE(binary)
-        KV_SERIALIZE(compress)
         if (this_ref.binary)
         {
           if (is_store)
           {
-            if (this_ref.compress)
-            {
-              const_cast<std::string&>(this_ref.compressed_data) = compress_integer_array(this_ref.data.distribution);
-              KV_SERIALIZE(compressed_data)
-            }
-            else
               KV_SERIALIZE_CONTAINER_POD_AS_BLOB_N(data.distribution, "distribution")
           }
           else
           {
-            if (this_ref.compress)
-            {
-              KV_SERIALIZE(compressed_data)
-              const_cast<std::vector<uint64_t>&>(this_ref.data.distribution) = decompress_integer_array<uint64_t>(this_ref.compressed_data);
-            }
-            else
+         
               KV_SERIALIZE_CONTAINER_POD_AS_BLOB_N(data.distribution, "distribution")
           }
         }
         else
           KV_SERIALIZE_N(data.distribution, "distribution")
-        KV_SERIALIZE_N(data.base, "base")
       END_KV_SERIALIZE_MAP()
     };
 

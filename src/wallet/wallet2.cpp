@@ -666,18 +666,6 @@ bool wallet2::is_spent(size_t idx, bool strict) const
 }
 
 
-//----------------------------------------------------------------------------------------------------
-size_t wallet2::get_transfer_details(const crypto::key_image &ki) const
-{
-  for (size_t idx = 0; idx < m_transfers_in.size(); ++idx)
-  {
-    const transfer_details &td = m_transfers_in[idx];
-    if ( td.m_key_image == ki)
-      return idx;
-  }
-  CHECK_AND_ASSERT_THROW_MES(false, "Key image not found");
-}
-
 
 //----------------------------------------------------------------------------------------------------
 bool wallet2::spends_one_of_ours(const cryptonote::transaction &tx) const
@@ -1584,30 +1572,7 @@ uint64_t wallet2::get_upper_transaction_weight_limit()
   return CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE_V5 / 2 - CRYPTONOTE_COINBASE_BLOB_RESERVED_SIZE;
 
 }
-//----------------------------------------------------------------------------------------------------
-uint64_t wallet2::get_num_rct_outputs()
-{
-  cryptonote::COMMAND_RPC_GET_OUTPUT_HISTOGRAM::request req_t = AUTO_VAL_INIT(req_t);
-  cryptonote::COMMAND_RPC_GET_OUTPUT_HISTOGRAM::response resp_t = AUTO_VAL_INIT(resp_t);
-  req_t.amounts.push_back(0);
-  req_t.min_count = 0;
-  req_t.max_count = 0;
-  req_t.unlocked = true;
-  req_t.recent_cutoff = 0;
 
-  {
-    const boost::lock_guard<boost::recursive_mutex> lock{m_daemon_rpc_mutex};
-
-
-    bool r = net_utils::invoke_http_json_rpc("/json_rpc", "get_output_histogram", req_t, resp_t, *m_http_client, rpc_timeout);
-    THROW_ON_RPC_RESPONSE_ERROR(r, {}, resp_t, "get_output_histogram", error::get_histogram_error, resp_t.status);
-    throw_wallet_ex_if(resp_t.histogram.size() != 1, error::get_histogram_error, "Expected exactly one response");
-    throw_wallet_ex_if(resp_t.histogram[0].amount != 0, error::get_histogram_error, "Expected 0 amount");
-    
-  }
-
-  return resp_t.histogram[0].total_instances;
-}
 //----------------------------------------------------------------------------------------------------
 const wallet2::transfer_details &wallet2::get_transfer_details(size_t idx) const
 {

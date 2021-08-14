@@ -98,12 +98,12 @@ namespace rct {
       //otk,commit=aG+bH
       //otk.sec ,noise
       union{
-        key dest; 
+      //  key dest; 
         key otk;
         key otk_sec;
       };
         union{
-        key mask; 
+     //   key mask; 
         key noise;
         key commitment;
       };

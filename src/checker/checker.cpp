@@ -78,23 +78,7 @@ public:
       tx_key = e.pub_key;
         std::cout<<"extra pub_key "<<e.pub_key<<std::endl;
     }
-       void operator()(const tx_extra_padding & e) const
-    {
-        std::cout<<"extra tx_extra_padding "<<endl<<e.size<<std::endl;
-    }
-       void operator()(const tx_extra_merge_mining_tag & e) const
-    {
-        std::cout<<"extra tx_extra_merge_mining_tag "<<std::endl;
-    }
-       void operator()(const tx_extra_additional_pub_keys & e) const
-    {
-        std::cout<<"extra tx_extra_additional_pub_keys "<<std::endl;
-        cout<<e.data<<endl;
-    }
-     void operator()(const tx_extra_mysterious_minergate & e) const
-    {
-        std::cout<<"extra tx_extra_additional_pub_keys "<<std::endl;
-    }
+   
 };
 
 tuple<public_key> print_extra(const std::vector<uint8_t> & tx_extra){
@@ -145,7 +129,7 @@ rct::keyV print_in(const transaction & tx){
         }
         last = r_o;
         output_data_t out = db->get_output_key(r_o,true);
-        cout<<"  "<<out.height<<",o-k "<<out.pubkey<<","<<out.unlock_time<<",C1="<<out.commitment<<","<<endl;
+        cout<<"  "<<out.height<<",o-k "<<out.otk<<","<<out.unlock_time<<",C1="<<out.commitment<<","<<endl;
       }
       const bool spent=db->has_key_image(tk.k_image);
     cout<<"key_image "<<tk.k_image<<",spent:"<<spent<<endl;

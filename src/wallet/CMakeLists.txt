@@ -52,7 +52,6 @@ monero_add_library(wallet
   ${wallet_private_headers})
 target_link_libraries(wallet
   PUBLIC
-    rpc_base
     common
     cryptonote_core
     mnemonics

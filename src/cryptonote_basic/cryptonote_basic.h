@@ -123,6 +123,7 @@ namespace cryptonote
 
     std::vector<txin_v> vin;
     std::vector<tx_out> vout;
+    crypto::public_key tx_pub_key;//kG
     //extra
     std::vector<uint8_t> extra;
 

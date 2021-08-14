@@ -443,22 +443,8 @@ public:
     {
         std::cout<<"extra pub_key "<<e.pub_key<<std::endl;
     }
-       void operator()(const tx_extra_padding & e) const
-    {
-        std::cout<<"extra tx_extra_padding "<<std::endl;
-    }
-       void operator()(const tx_extra_merge_mining_tag & e) const
-    {
-        std::cout<<"extra tx_extra_merge_mining_tag "<<std::endl;
-    }
-       void operator()(const tx_extra_additional_pub_keys & e) const
-    {
-        std::cout<<"extra tx_extra_additional_pub_keys "<<std::endl;
-    }
-     void operator()(const tx_extra_mysterious_minergate & e) const
-    {
-        std::cout<<"extra tx_extra_additional_pub_keys "<<std::endl;
-    }
+       
+     
 };
   void print_extra(const tx_extra_field& extra){
      boost::apply_visitor( print_extra_visitor(), extra);
@@ -515,11 +501,7 @@ public:
 
     // sort by:
     if (!pick<tx_extra_pub_key>(nar, tx_extra_fields, TX_EXTRA_TAG_PUBKEY)) return false;
-    if (!pick<tx_extra_additional_pub_keys>(nar, tx_extra_fields, TX_EXTRA_TAG_ADDITIONAL_PUBKEYS)) return false;
     if (!pick<tx_extra_nonce>(nar, tx_extra_fields, TX_EXTRA_NONCE)) return false;
-    if (!pick<tx_extra_merge_mining_tag>(nar, tx_extra_fields, TX_EXTRA_MERGE_MINING_TAG)) return false;
-    if (!pick<tx_extra_mysterious_minergate>(nar, tx_extra_fields, TX_EXTRA_MYSTERIOUS_MINERGATE_TAG)) return false;
-    if (!pick<tx_extra_padding>(nar, tx_extra_fields, TX_EXTRA_TAG_PADDING)) return false;
 
     // if not empty, someone added a new type and did not add a case above
     if (!tx_extra_fields.empty())
@@ -595,25 +577,7 @@ public:
     memcpy(&tx_extra[start_pos], extra_nonce.data(), extra_nonce.size());
     return true;
   }
-  //---------------------------------------------------------------
-  bool add_mm_merkle_root_to_tx_extra(std::vector<uint8_t>& tx_extra, const crypto::hash& mm_merkle_root, size_t mm_merkle_tree_depth)
-  {
-    CHECK_AND_ASSERT_MES(mm_merkle_tree_depth < 32, false, "merge mining merkle tree depth should be less than 32");
-    size_t start_pos = tx_extra.size();
-    tx_extra.resize(tx_extra.size() + 3 + 32);
-    //write tag
-    tx_extra[start_pos] = TX_EXTRA_MERGE_MINING_TAG;
-    //write data size
-    ++start_pos;
-    tx_extra[start_pos] = 33;
-    //write depth varint (always one byte here)
-    ++start_pos;
-    tx_extra[start_pos] = mm_merkle_tree_depth;
-    //write data
-    ++start_pos;
-    memcpy(&tx_extra[start_pos], &mm_merkle_root, 32);
-    return true;
-  }
+ 
   //---------------------------------------------------------------
   bool remove_field_from_tx_extra(std::vector<uint8_t>& tx_extra, const std::type_info &type)
   {
@@ -645,42 +609,7 @@ public:
     std::copy(s.begin(), s.end(), std::back_inserter(tx_extra));
     return true;
   }
-  //---------------------------------------------------------------
-  void set_payment_id_to_tx_extra_nonce(blobdata& extra_nonce, const crypto::hash& payment_id)
-  {
-    extra_nonce.clear();
-    extra_nonce.push_back(TX_EXTRA_NONCE_PAYMENT_ID);
-    const uint8_t* payment_id_ptr = reinterpret_cast<const uint8_t*>(&payment_id);
-    std::copy(payment_id_ptr, payment_id_ptr + sizeof(payment_id), std::back_inserter(extra_nonce));
-  }
-  //---------------------------------------------------------------
-  void set_encrypted_payment_id_to_tx_extra_nonce(blobdata& extra_nonce, const crypto::hash8& payment_id)
-  {
-    extra_nonce.clear();
-    extra_nonce.push_back(TX_EXTRA_NONCE_ENCRYPTED_PAYMENT_ID);
-    const uint8_t* payment_id_ptr = reinterpret_cast<const uint8_t*>(&payment_id);
-    std::copy(payment_id_ptr, payment_id_ptr + sizeof(payment_id), std::back_inserter(extra_nonce));
-  }
-  //---------------------------------------------------------------
-  bool get_payment_id_from_tx_extra_nonce(const blobdata& extra_nonce, crypto::hash& payment_id)
-  {
-    if(sizeof(crypto::hash) + 1 != extra_nonce.size())
-      return false;
-    if(TX_EXTRA_NONCE_PAYMENT_ID != extra_nonce[0])
-      return false;
-    payment_id = *reinterpret_cast<const crypto::hash*>(extra_nonce.data() + 1);
-    return true;
-  }
-  //---------------------------------------------------------------
-  bool get_encrypted_payment_id_from_tx_extra_nonce(const blobdata& extra_nonce, crypto::hash8& payment_id)
-  {
-    if(sizeof(crypto::hash8) + 1 != extra_nonce.size())
-      return false;
-    if (TX_EXTRA_NONCE_ENCRYPTED_PAYMENT_ID != extra_nonce[0])
-      return false;
-    payment_id = *reinterpret_cast<const crypto::hash8*>(extra_nonce.data() + 1);
-    return true;
-  }
+ 
   //---------------------------------------------------------------
   bool get_inputs_money_amount(const transaction& tx, uint64_t& money)
   {
@@ -836,7 +765,7 @@ public:
         default_decimal_point = decimal_point;
         break;
       default:
-        ASSERT_MES_AND_THROW("Invalid decimal point specification: " << decimal_point);
+        throw_and_log("Invalid decimal point specification: " << decimal_point);
     }
   }
   //---------------------------------------------------------------
@@ -858,7 +787,7 @@ public:
       case 0:
         return "pdf";
       default:
-        ASSERT_MES_AND_THROW("Invalid decimal point specification: " << decimal_point);
+        throw_and_log("Invalid decimal point specification: " << decimal_point);
     }
   }
   //---------------------------------------------------------------

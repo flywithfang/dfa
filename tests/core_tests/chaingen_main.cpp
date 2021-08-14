@@ -192,7 +192,6 @@ int main(int argc, char* argv[])
     GENERATE_AND_PLAY(gen_rct_tx_non_zero_vout_amount);
     GENERATE_AND_PLAY(gen_rct_tx_pre_rct_duplicate_key_image);
     GENERATE_AND_PLAY(gen_rct_tx_rct_duplicate_key_image);
-    GENERATE_AND_PLAY(gen_rct_tx_pre_rct_wrong_key_image);
     GENERATE_AND_PLAY(gen_rct_tx_rct_wrong_key_image);
     GENERATE_AND_PLAY(gen_rct_tx_pre_rct_wrong_fee);
     GENERATE_AND_PLAY(gen_rct_tx_rct_wrong_fee);

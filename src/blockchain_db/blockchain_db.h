@@ -73,7 +73,7 @@
  * inside the DB. Tables exist to map between hash and ID. A block ID is
  * also referred to as its "height". Transactions and outputs generally are
  * not referred to by ID outside of this module, but the tx ID is returned
- * by tx_exists() and used by get_tx_amount_output_indices(). Like their
+ * by tx_exists() and used by get_tx_output_indices(). Like their
  * corresponding hashes, IDs are globally unique.
  *
  * The remaining uses of the word "index" refer to local offsets, and are
@@ -123,10 +123,14 @@ bool matches_category(relay_method method, relay_category category) noexcept;
  */
 struct output_data_t
 {
-  crypto::public_key pubkey;       //!< the output's public key (for spend verification)
+  crypto::public_key otk;       //!< the output's public key (for spend verification)
   uint64_t           unlock_time;  //!< the output's unlock time (or height)
   uint64_t           height;       //!< the height of the block which created the output
+  uint64_t           local_index;
   rct::key           commitment;   //!< the output's amount commitment (for spend verification)
+  crypto::hash       tx_hash;
+  crypto::public_key tx_pub_key;
+
 };
 #pragma pack(pop)
 
@@ -377,191 +381,12 @@ class KEY_IMAGE_EXISTS : public DB_EXCEPTION
  */
 class BlockchainDB
 {
-private:
-  /*********************************************************************
-   * private virtual members
-   *********************************************************************/
-
-  /**
-   * @brief add the block and metadata to the db
-   *
-   * The subclass implementing this will add the specified block and
-   * block metadata to its backing store.  This does not include its
-   * transactions, those are added in a separate step.
-   *
-   * If any of this cannot be done, the subclass should throw the corresponding
-   * subclass of DB_EXCEPTION
-   *
-   * @param blk the block to be added
-   * @param block_weight the weight of the block (transactions and all)
-   * @param long_term_block_weight the long term block weight of the block (transactions and all)
-   * @param cum_diff the accumulated difficulty after this block
-   * @param coins_generated the number of coins generated total after this block
-   * @param blk_hash the hash of the block
-   */
-  virtual void add_block( const block& blk, size_t block_weight, uint64_t long_term_block_weight, const difficulty_type& cum_diff, const uint64_t& coins_generated, uint64_t num_rct_outs, const crypto::hash& blk_hash) = 0;
-
-  /**
-   * @brief remove data about the top block
-   *
-   * The subclass implementing this will remove the block data from the top
-   * block in the chain.  The data to be removed is that which was added in
-   * BlockchainDB::add_block(const block& blk, size_t block_weight, uint64_t long_term_block_weight, const difficulty_type& cum_diff, const uint64_t& coins_generated, const crypto::hash& blk_hash)
-   *
-   * If any of this cannot be done, the subclass should throw the corresponding
-   * subclass of DB_EXCEPTION
-   */
-  virtual void remove_block() = 0;
-
-  /**
-   * @brief store the transaction and its metadata
-   *
-   * The subclass implementing this will add the specified transaction data
-   * to its backing store.  This includes only the transaction blob itself
-   * and the other data passed here, not the separate outputs of the
-   * transaction.
-   *
-   * It returns a tx ID, which is a mapping from the tx_hash. The tx ID
-   * is used in #add_tx_amount_output_indices().
-   *
-   * If any of this cannot be done, the subclass should throw the corresponding
-   * subclass of DB_EXCEPTION
-   *
-   * @param blk_hash the hash of the block containing the transaction
-   * @param tx the transaction to be added
-   * @param tx_hash the hash of the transaction
-   * @param tx_prunable_hash the hash of the prunable part of the transaction
-   * @return the transaction ID
-   */
-  virtual uint64_t add_transaction_data(const crypto::hash& blk_hash, const std::pair<transaction, blobdata_ref>& tx, const crypto::hash& tx_hash, const crypto::hash& tx_prunable_hash) = 0;
-
-  /**
-   * @brief remove data about a transaction
-   *
-   * The subclass implementing this will remove the transaction data 
-   * for the passed transaction.  The data to be removed was added in
-   * add_transaction_data().  Additionally, current subclasses have behavior
-   * which requires the transaction itself as a parameter here.  Future
-   * implementations should note that this parameter is subject to be removed
-   * at a later time.
-   *
-   * If any of this cannot be done, the subclass should throw the corresponding
-   * subclass of DB_EXCEPTION
-   *
-   * @param tx_hash the hash of the transaction to be removed
-   * @param tx the transaction
-   */
-  virtual void remove_transaction_data(const crypto::hash& tx_hash, const transaction& tx) = 0;
-
-  /**
-   * @brief store an output
-   *
-   * The subclass implementing this will add the output data passed to its
-   * backing store in a suitable manner.  In addition, the subclass is responsible
-   * for keeping track of the global output count in some manner, so that
-   * outputs may be indexed by the order in which they were created.  In the
-   * future, this tracking (of the number, at least) should be moved to
-   * this class, as it is necessary and the same among all BlockchainDB.
-   *
-   * It returns an amount output index, which is the index of the output
-   * for its specified amount.
-   *
-   * This data should be stored in such a manner that the only thing needed to
-   * reverse the process is the tx_out.
-   *
-   * If any of this cannot be done, the subclass should throw the corresponding
-   * subclass of DB_EXCEPTION
-   *
-   * @param tx_hash hash of the transaction the output was created by
-   * @param tx_output the output
-   * @param local_index index of the output in its transaction
-   * @param unlock_time unlock time/height of the output
-   * @param commitment the rct commitment to the output amount
-   * @return amount output index
-   */
-  virtual uint64_t add_output(const crypto::hash& tx_hash, const tx_out& tx_output, const uint64_t& local_index, const uint64_t unlock_time, const rct::key *commitment) = 0;
-
-  /**
-   * @brief store amount output indices for a tx's outputs
-   *
-   * The subclass implementing this will add the amount output indices to its
-   * backing store in a suitable manner. The tx_id will be the same one that
-   * was returned from #add_output().
-   *
-   * If any of this cannot be done, the subclass should throw the corresponding
-   * subclass of DB_EXCEPTION
-   *
-   * @param tx_id ID of the transaction containing these outputs
-   * @param amount_output_indices the amount output indices of the transaction
-   */
-  virtual void add_tx_amount_output_indices(const uint64_t tx_id, const std::vector<uint64_t>& amount_output_indices) = 0;
-
-  /**
-   * @brief store a spent key
-   *
-   * The subclass implementing this will store the spent key image.
-   *
-   * If any of this cannot be done, the subclass should throw the corresponding
-   * subclass of DB_EXCEPTION
-   *
-   * @param k_image the spent key image to store
-   */
-  virtual void add_spent_key(const crypto::key_image& k_image) = 0;
-
-  /**
-   * @brief remove a spent key
-   *
-   * The subclass implementing this will remove the key image.
-   *
-   * If any of this cannot be done, the subclass should throw the corresponding
-   * subclass of DB_EXCEPTION
-   *
-   * @param k_image the spent key image to remove
-   */
-  virtual void remove_spent_key(const crypto::key_image& k_image) = 0;
-
-
-  /*********************************************************************
-   * private concrete members
-   *********************************************************************/
-  /**
-   * @brief private version of pop_block, for undoing if an add_block fails
-   *
-   * This function simply calls pop_block(block& blk, std::vector<transaction>& txs)
-   * with dummy parameters, as the returns-by-reference can be discarded.
-   */
-  void pop_block();
-
-  // helper function to remove transaction from blockchain
-  /**
-   * @brief helper function to remove transaction from the blockchain
-   *
-   * This function encapsulates aspects of removing a transaction.
-   *
-   * @param tx_hash the hash of the transaction to be removed
-   */
-  void remove_transaction(const crypto::hash& tx_hash);
-
-  uint64_t num_calls = 0;  //!< a performance metric
-  uint64_t time_blk_hash = 0;  //!< a performance metric
-  uint64_t time_add_block1 = 0;  //!< a performance metric
-  uint64_t time_add_transaction = 0;  //!< a performance metric
-
 
 protected:
 
-  /**
-   * @brief helper function for add_transactions, to add each individual transaction
-   *
-   * This function is called by add_transactions() for each transaction to be
-   * added.
-   *
-   * @param blk_hash hash of the block which has the transaction
-   * @param tx the transaction to add
-   * @param tx_hash_ptr the hash of the transaction, if already calculated
-   * @param tx_prunable_hash_ptr the hash of the prunable part of the transaction, if already calculated
-   */
-  void add_transaction(const crypto::hash& blk_hash, const std::pair<transaction, blobdata_ref>& tx, const crypto::hash* tx_hash_ptr = NULL, const crypto::hash* tx_prunable_hash_ptr = NULL);
+  uint64_t time_blk_hash = 0;  //!< a performance metric
+  uint64_t time_add_block1 = 0;  //!< a performance metric
+  uint64_t time_add_transaction = 0;  //!< a performance metric
 
   mutable uint64_t time_tx_exists = 0;  //!< a performance metric
   uint64_t time_commit1 = 0;  //!< a performance metric
@@ -845,8 +670,29 @@ public:
    *
    * @return the height of the chain post-addition
    */
-  virtual uint64_t add_block( const std::pair<block, blobdata>& blk, size_t block_weight, uint64_t long_term_block_weight, const difficulty_type& cum_diff, const uint64_t& coins_generated
-                            , const std::vector<std::pair<transaction, blobdata>>& txs);
+  virtual uint64_t add_block( const std::pair<block, blobdata>& blk, size_t block_weight, uint64_t long_term_block_weight, const difficulty_type& cum_diff, const uint64_t& coins_generated, const std::vector<std::pair<transaction, blobdata>>& txs)=0;
+
+ /**
+   * <!--
+   * TODO: Rewrite (if necessary) such that all calls to remove_* are
+   *       done in concrete members of this base class.
+   * -->
+   *
+   * @brief pops the top block off the blockchain
+   *
+   * The subclass should remove the most recent block from the blockchain,
+   * along with all transactions, outputs, and other metadata created as
+   * a result of its addition to the blockchain.  Most of this is handled
+   * by the concrete members of the base class provided the subclass correctly
+   * implements remove_* functions.
+   *
+   * The subclass should return by reference the popped block and
+   * its associated transactions
+   *
+   * @param blk return-by-reference the block which was popped
+   * @param txs return-by-reference the transactions from the popped block
+   */
+  virtual void pop_block(block& blk, std::vector<transaction>& txs)=0;
 
   /**
    * @brief checks if a block exists
@@ -1151,27 +997,7 @@ public:
   virtual uint64_t height() const = 0;
 
 
-  /**
-   * <!--
-   * TODO: Rewrite (if necessary) such that all calls to remove_* are
-   *       done in concrete members of this base class.
-   * -->
-   *
-   * @brief pops the top block off the blockchain
-   *
-   * The subclass should remove the most recent block from the blockchain,
-   * along with all transactions, outputs, and other metadata created as
-   * a result of its addition to the blockchain.  Most of this is handled
-   * by the concrete members of the base class provided the subclass correctly
-   * implements remove_* functions.
-   *
-   * The subclass should return by reference the popped block and
-   * its associated transactions
-   *
-   * @param blk return-by-reference the block which was popped
-   * @param txs return-by-reference the transactions from the popped block
-   */
-  virtual void pop_block(block& blk, std::vector<transaction>& txs);
+ 
 
 
   /**
@@ -1214,7 +1040,7 @@ public:
    *
    * @return the transaction with the given hash
    */
-  virtual transaction get_tx(const crypto::hash& h) const;
+  virtual transaction get_tx(const crypto::hash& h) const=0;
 
   /**
    * @brief fetches the transaction base with the given hash
@@ -1225,7 +1051,7 @@ public:
    *
    * @return the transaction with the given hash
    */
-  virtual transaction get_pruned_tx(const crypto::hash& h) const;
+  virtual transaction get_pruned_tx(const crypto::hash& h) const=0;
 
   /**
    * @brief fetches the transaction with the given hash
@@ -1236,7 +1062,7 @@ public:
    *
    * @return true iff the transaction was found
    */
-  virtual bool get_tx(const crypto::hash& h, transaction &tx) const;
+  virtual bool get_tx(const crypto::hash& h, transaction &tx) const=0;
 
   /**
    * @brief fetches the transaction base with the given hash
@@ -1247,7 +1073,7 @@ public:
    *
    * @return true iff the transaction was found
    */
-  virtual bool get_pruned_tx(const crypto::hash& h, transaction &tx) const;
+  virtual bool get_pruned_tx(const crypto::hash& h, transaction &tx) const=0;
 
   /**
    * @brief fetches the transaction blob with the given hash
@@ -1390,21 +1216,7 @@ public:
    */
   virtual uint64_t get_tx_block_height(const crypto::hash& h) const = 0;
 
-  // returns the total number of outputs of amount <amount>
-  /**
-   * @brief fetches the number of outputs of a given amount
-   *
-   * The subclass should return a count of outputs of the given amount,
-   * or zero if there are none.
-   *
-   * <!-- TODO: should outputs spent with a low mixin (especially 0) be
-   * excluded from the count? -->
-   *
-   * @param amount the output amount being looked up
-   *
-   * @return the number of outputs of the given amount
-   */
-  virtual uint64_t get_num_outputs() const = 0;
+ 
 
   /**
    * @brief return index of the first element (should be hidden, but isn't)
@@ -1429,7 +1241,7 @@ public:
    *
    * @return the requested output data
    */
-  virtual output_data_t get_output_key( const uint64_t& index, bool include_commitmemt = true) const = 0;
+  virtual output_data_t get_output_key( const uint64_t& index) const = 0;
 
   /**
    * @brief gets an output's tx hash and index
@@ -1443,32 +1255,7 @@ public:
    */
   virtual tx_out_index get_output_tx_and_index_from_global(const uint64_t& index) const = 0;
 
-  /**
-   * @brief gets an output's tx hash and index
-   *
-   * The subclass should return the hash of the transaction which created the
-   * output with the amount and index given, as well as its index in that
-   * transaction.
-   *
-   * @param amount an output amount
-   * @param index an output's amount-specific index
-   *
-   * @return the tx hash and output index
-   */
-  virtual tx_out_index get_output_tx_and_index( const uint64_t& index) const = 0;
-
-  /**
-   * @brief gets some outputs' tx hashes and indices
-   *
-   * This function is a mirror of
-   * get_output_tx_and_index(const uint64_t& amount, const uint64_t& index),
-   * but for a list of outputs rather than just one.
-   *
-   * @param amount an output amount
-   * @param offsets a list of amount-specific output indices
-   * @param indices return-by-reference a list of tx hashes and output indices (as pairs)
-   */
-  virtual void get_output_tx_and_index(const std::vector<uint64_t> &offsets, std::vector<tx_out_index> &indices) const = 0;
+ 
 
   /**
    * @brief gets outputs' data
@@ -1504,7 +1291,7 @@ public:
    *
    * @return a list of amount-specific output indices
    */
-  virtual std::vector<std::vector<uint64_t>> get_tx_amount_output_indices(const uint64_t tx_id, size_t n_txes = 1) const = 0;
+  virtual std::vector<std::vector<uint64_t>> get_tx_output_indices(const uint64_t tx_id, size_t n_txes = 1) const = 0;
 
   /**
    * @brief check if a key image is stored as spent
@@ -1749,8 +1536,8 @@ public:
    *
    * @return false if the function returns false for any output, otherwise true
    */
-  virtual bool for_all_outputs(std::function<bool(const crypto::hash &tx_hash, uint64_t height, size_t tx_idx)> f) const = 0;
-  virtual bool for_all_outputs( const std::function<bool(uint64_t height)> &f) const = 0;
+
+  virtual bool for_all_outputs( const uint64_t start_height,std::function<bool(uint64_t,const output_data_t&)> & f) const = 0;
 
   /**
    * @brief runs a function over all alternative blocks stored
@@ -1798,23 +1585,9 @@ public:
   virtual void check_hard_fork_info() = 0;
 
   /**
-   * @brief delete hard fork info from database
+   * @brief delete hard fork info fromoutput_distribution_data database
    */
   virtual void drop_hard_fork_info() = 0;
-
-  /**
-   * @brief return a histogram of outputs on the blockchain
-   *
-   * @param amounts optional set of amounts to lookup
-   * @param unlocked whether to restrict count to unlocked outputs
-   * @param recent_cutoff timestamp to determine whether an output is recent
-   * @param min_count return only amounts with at least that many instances
-   *
-   * @return a set of amount/instances
-   */
-  virtual std::map<uint64_t, std::tuple<uint64_t, uint64_t, uint64_t>> get_output_histogram( bool unlocked, uint64_t recent_cutoff, uint64_t min_count) const = 0;
-
-  virtual bool get_output_distribution(uint64_t from_height, uint64_t to_height, std::vector<uint64_t> &distribution, uint64_t &base) const = 0;
 
   /**
    * @brief is BlockchainDB in read-only mode?
@@ -1830,12 +1603,6 @@ public:
    */
   virtual uint64_t get_database_size() const = 0;
 
-  // TODO: this should perhaps be (or call) a series of functions which
-  // progressively update through version updates
-  /**
-   * @brief fix up anything that may be wrong due to past bugs
-   */
-  virtual void fixup();
 
   /**
    * @brief set whether or not to automatically remove logs

@@ -1301,9 +1301,9 @@ namespace cryptonote
     return m_blockchain.get_outs(req, res);
   }
   //-----------------------------------------------------------------------------------------------
-  bool core::get_output_distribution(uint64_t amount, uint64_t from_height, uint64_t to_height, uint64_t &start_height, std::vector<uint64_t> &distribution, uint64_t &base) const
+  bool core::get_output_distribution( uint64_t from_height, uint64_t to_height, uint64_t &start_height, std::vector<uint64_t> &distribution) const
   {
-    return m_blockchain.get_output_distribution( from_height, to_height, start_height, distribution, base);
+    return m_blockchain.get_output_distribution( from_height, to_height, start_height, distribution);
   }
   //-----------------------------------------------------------------------------------------------
   bool core::get_tx_outputs_gindexs(const crypto::hash& tx_id, std::vector<uint64_t>& indexs) const

@@ -110,8 +110,8 @@ void wallet2::update_pool_state( bool refreshed)
         break;
       }
     }
-    auto pit = it++;
-    auto & utd = pit->second;
+    auto & utd = it->second;
+    ++it;
     if (!found)
     {
       // we want to avoid a false positive when we ask for the pool just after
@@ -123,7 +123,7 @@ void wallet2::update_pool_state( bool refreshed)
       if (utd.m_state == wallet2::unconfirmed_transfer_out::pending)
       {
         MINFO("Pending txid " << txid << " not in pool, marking as not in pool");
-        pit->second.m_state = wallet2::unconfirmed_transfer_out::pending_not_in_pool;
+        utd.m_state = wallet2::unconfirmed_transfer_out::pending_not_in_pool;
       }
       else if (utd.m_state == wallet2::unconfirmed_transfer_out::pending_not_in_pool && refreshed &&
         now > std::chrono::system_clock::from_time_t(utd.m_sent_time) + tx_propagation_timeout)

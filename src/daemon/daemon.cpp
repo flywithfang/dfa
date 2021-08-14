@@ -135,7 +135,7 @@ public:
     }
 
     MGINFO("Starting RPC server...");
-    if (!m_rpc.run(2, false))
+    if (!m_rpc->run(2, false))
     {
       throw std::runtime_error("Failed to start RPC server.");
     }

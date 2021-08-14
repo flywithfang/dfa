@@ -771,7 +771,6 @@ private:
     * \brief GUI Address book get/store
     */
         
-    uint64_t get_num_rct_outputs();
     size_t get_num_transfer_details() const { return m_transfers_in.size(); }
     const transfer_details &get_transfer_details(size_t idx) const;
 
@@ -940,13 +939,11 @@ std::tuple<bool, uint64_t,std::vector<cryptonote::block_complete_entry> , std::v
     bool is_spent(const transfer_details &td) const;
     bool is_spent(size_t idx, bool strict = true) const;
     void get_outs(std::vector<std::vector<get_outs_entry>> &outs, const std::vector<size_t> &selected_transfers, size_t fake_outputs_count);
-    std::vector<std::vector<tools::wallet2::get_outs_entry>>  get_outs(const std::vector<size_t> &selected_transfers, size_t fake_outputs_count, std::vector<uint64_t> &rct_offsets);
     bool tx_add_fake_output(std::vector<std::vector<tools::wallet2::get_outs_entry>> &outs, uint64_t global_index, const crypto::public_key& tx_public_key, const rct::key& mask, uint64_t real_index, bool unlocked) const;
     std::vector<size_t> get_only_rct(const std::vector<size_t> &unused_dust_indices, const std::vector<size_t> &unused_transfers_indices) const;
     tx_scan_info_t scan_output(const cryptonote::transaction &tx, bool miner_tx, const is_out_data & tc,size_t i);
     void trim_hashchain();
     void setup_keys(const epee::wipeable_string &password);
-    size_t get_transfer_details(const crypto::key_image &ki) const;
 
     bool get_rct_distribution(uint64_t &start_height, std::vector<uint64_t> &distribution);
 

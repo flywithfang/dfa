@@ -51,7 +51,6 @@ using namespace epee;
 #include "crypto/hash.h"
 #include "crypto/rx-hash.h"
 #include "rpc/rpc_args.h"
-#include "rpc/rpc_handler.h"
 
 
 #include "core_rpc_server_error_codes.h"
@@ -559,9 +558,6 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
   bool core_rpc_server::on_get_outs(const COMMAND_RPC_GET_OUTPUTS::request& req, COMMAND_RPC_GET_OUTPUTS::response& res, const connection_context *ctx)
   {
     RPC_TRACKER(get_outs);
-   
-
-    
 
     res.status = "Failed";
 
@@ -577,7 +573,6 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
 
     cryptonote::COMMAND_RPC_GET_OUTPUTS_BIN::request req_bin;
     req_bin.outputs = req.outputs;
-    req_bin.get_txid = req.get_txid;
     cryptonote::COMMAND_RPC_GET_OUTPUTS_BIN::response res_bin;
     if(!m_core.get_outs(req_bin, res_bin))
     {
@@ -588,13 +583,11 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
     for (const auto &i: res_bin.outs)
     {
       res.outs.push_back(cryptonote::COMMAND_RPC_GET_OUTPUTS::outkey());
-      cryptonote::COMMAND_RPC_GET_OUTPUTS::outkey &outkey = res.outs.back();
+      auto &outkey = res.outs.back();
       outkey.key = epee::string_tools::pod_to_hex(i.key);
       outkey.commitment = epee::string_tools::pod_to_hex(i.commitment);
       outkey.unlocked = i.unlocked;
       outkey.height = i.height;
-      if (req.get_txid)
-        outkey.txid = epee::string_tools::pod_to_hex(i.txid);
     }
 
     res.status = CORE_RPC_STATUS_OK;
@@ -1218,7 +1211,6 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
     size_t n_txes = m_core.get_pool_transactions_count(allow_sensitive);
     if (n_txes > 0)
     {
-      CHECK_PAYMENT_SAME_TS(req, res, n_txes * COST_PER_TX);
       m_core.get_pool_transactions_and_spent_keys_info(res.transactions, res.spent_key_images, allow_sensitive);
       for (tx_info& txi : res.transactions)
         txi.tx_blob = epee::string_tools::buff_to_hex_nodelimer(txi.tx_blob);
@@ -1775,7 +1767,6 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
     RPC_TRACKER(hard_fork_info);
     
 
-    CHECK_PAYMENT(req, res, COST_PER_HARD_FORK_INFO);
     const Blockchain &blockchain = m_core.get_blockchain_storage();
     uint8_t version = req.version > 0 ? req.version : blockchain.get_next_hard_fork_version();
     res.version = blockchain.get_current_hard_fork_version();
@@ -1849,107 +1840,7 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
     return true;
   }
   //------------------------------------------------------------------------------------------------------------------------------
-  bool core_rpc_server::on_set_bans(const COMMAND_RPC_SETBANS::request& req, COMMAND_RPC_SETBANS::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
-  {
-    RPC_TRACKER(set_bans);
-
-    for (auto i = req.bans.begin(); i != req.bans.end(); ++i)
-    {
-      epee::net_utils::network_address na;
-
-      // try subnet first
-      if (!i->host.empty())
-      {
-        auto ns_parsed = net::get_ipv4_subnet_address(i->host);
-        if (ns_parsed)
-        {
-          if (i->ban)
-            m_p2p.block_subnet(*ns_parsed, i->seconds);
-          else
-            m_p2p.unblock_subnet(*ns_parsed);
-          continue;
-        }
-      }
-
-      // then host
-      if (!i->host.empty())
-      {
-        auto na_parsed = net::get_network_address(i->host, 0);
-        if (!na_parsed)
-        {
-          error_resp.code = CORE_RPC_ERROR_CODE_WRONG_PARAM;
-          error_resp.message = "Unsupported host/subnet type";
-          return false;
-        }
-        na = std::move(*na_parsed);
-      }
-      else
-      {
-        na = epee::net_utils::ipv4_network_address{i->ip, 0};
-      }
-      if (i->ban)
-        m_p2p.block_host(na, i->seconds);
-      else
-        m_p2p.unblock_host(na);
-    }
-
-    res.status = CORE_RPC_STATUS_OK;
-    return true;
-  }
-  //------------------------------------------------------------------------------------------------------------------------------
-  bool core_rpc_server::on_flush_txpool(const COMMAND_RPC_FLUSH_TRANSACTION_POOL::request& req, COMMAND_RPC_FLUSH_TRANSACTION_POOL::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
-  {
-    RPC_TRACKER(flush_txpool);
-
-    bool failed = false;
-    std::vector<crypto::hash> txids;
-    if (req.txids.empty())
-    {
-      std::vector<transaction> pool_txs;
-      bool r = m_core.get_pool_transactions(pool_txs, true);
-      if (!r)
-      {
-        res.status = "Failed to get txpool contents";
-        return true;
-      }
-      for (const auto &tx: pool_txs)
-      {
-        txids.push_back(cryptonote::get_transaction_hash(tx));
-      }
-    }
-    else
-    {
-      for (const auto &str: req.txids)
-      {
-        crypto::hash txid;
-        if(!epee::string_tools::hex_to_pod(str, txid))
-        {
-          failed = true;
-        }
-        else
-        {
-          txids.push_back(txid);
-        }
-      }
-    }
-    if (!m_core.get_blockchain_storage().flush_txes_from_pool(txids))
-    {
-      res.status = "Failed to remove one or more tx(es)";
-      return true;
-    }
-
-    if (failed)
-    {
-      if (txids.empty())
-        res.status = "Failed to parse txid";
-      else
-        res.status = "Failed to parse some of the txids";
-      return true;
-    }
-
-    res.status = CORE_RPC_STATUS_OK;
-    return true;
-  }
+ 
 
   //------------------------------------------------------------------------------------------------------------------------------
   bool core_rpc_server::on_get_version(const COMMAND_RPC_GET_VERSION::request& req, COMMAND_RPC_GET_VERSION::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
@@ -2238,6 +2129,42 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
     res.status = CORE_RPC_STATUS_OK;
     return true;
   }
+   //------------------------------------------------------------------------------------------------------------------------------
+  bool core_rpc_server::on_get_output_distribution_bin(const COMMAND_RPC_GET_OUTPUT_DISTRIBUTION::request& req, COMMAND_RPC_GET_OUTPUT_DISTRIBUTION::response& res, const connection_context *ctx)
+  {
+    RPC_TRACKER(get_output_distribution_bin);
+
+    res.status = "Failed";
+
+    if (!req.binary)
+    {
+      res.status = "Binary only call";
+      return true;
+    }
+    try
+    {
+     // 0 is placeholder for the whole chain
+      const uint64_t to = req.to_height ? req.to_height : (m_core.get_current_blockchain_height() - 1);
+        uint64_t start_height{};
+        std::vector<uint64_t> dist;
+        auto r =  m_core.get_output_distribution( req.from_height, to, start_height, dist); 
+        if (!r)
+        {
+          res.status = "Failed to get output distribution";
+          return false;
+        }
+
+        res.dist={ {std::move(dist), start_height}, req.binary};
+    }
+    catch (const std::exception &e)
+    {
+      res.status = "Failed to get output distribution";
+      return true;
+    }
+
+    res.status = CORE_RPC_STATUS_OK;
+    return true;
+  }
   //------------------------------------------------------------------------------------------------------------------------------
   bool core_rpc_server::on_get_output_distribution(const COMMAND_RPC_GET_OUTPUT_DISTRIBUTION::request& req, COMMAND_RPC_GET_OUTPUT_DISTRIBUTION::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
   {
@@ -2246,22 +2173,18 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
     try
     {
       // 0 is placeholder for the whole chain
-      const uint64_t req_to_height = req.to_height ? req.to_height : (m_core.get_current_blockchain_height() - 1);
-      {
-        auto data = rpc::RpcHandler::get_output_distribution([this](uint64_t amount, uint64_t from, uint64_t to, uint64_t &start_height, std::vector<uint64_t> &distribution, uint64_t &base) { 
-          return m_core.get_output_distribution(amount, from, to, start_height, distribution, base); }, 
-          0, req.from_height, req_to_height, [this](uint64_t height) { 
-            return m_core.get_blockchain_storage().get_db().get_block_hash_from_height(height); }, 
-            req.cumulative, m_core.get_current_blockchain_height());
-        if (!data)
+      const uint64_t to = req.to_height ? req.to_height : (m_core.get_current_blockchain_height() - 1);
+        uint64_t start_height{};
+        std::vector<uint64_t> dist;
+        auto r =  m_core.get_output_distribution( req.from_height, to, start_height, dist); 
+        if (!r)
         {
           error_resp.code = CORE_RPC_ERROR_CODE_INTERNAL_ERROR;
           error_resp.message = "Failed to get output distribution";
           return false;
         }
 
-        res.dist={std::move(*data),  "", req.binary, req.compress};
-      }
+        res.dist={ {std::move(dist), start_height}, req.binary};
     }
     catch (const std::exception &e)
     {
@@ -2273,50 +2196,7 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
     res.status = CORE_RPC_STATUS_OK;
     return true;
   }
-  //------------------------------------------------------------------------------------------------------------------------------
-  bool core_rpc_server::on_get_output_distribution_bin(const COMMAND_RPC_GET_OUTPUT_DISTRIBUTION::request& req, COMMAND_RPC_GET_OUTPUT_DISTRIBUTION::response& res, const connection_context *ctx)
-  {
-    RPC_TRACKER(get_output_distribution_bin);
-
-
-
-    res.status = "Failed";
-
-    if (!req.binary)
-    {
-      res.status = "Binary only call";
-      return true;
-    }
-    try
-    {
-      // 0 is placeholder for the whole chain
-      const uint64_t req_to_height = req.to_height ? req.to_height : (m_core.get_current_blockchain_height() - 1);
-     // for (uint64_t amount: req.amounts)
-      {
-        auto data = rpc::RpcHandler::get_output_distribution([this](uint64_t amount, uint64_t from, uint64_t to, uint64_t &start_height, std::vector<uint64_t> &distribution, uint64_t &base) { 
-          return m_core.get_output_distribution(amount, from, to, start_height, distribution, base); },
-           0, req.from_height, req_to_height, [this](uint64_t height) { 
-            return m_core.get_blockchain_storage().get_db().get_block_hash_from_height(height); 
-          }, 
-            req.cumulative, m_core.get_current_blockchain_height());
-        if (!data)
-        {
-          res.status = "Failed to get output distribution";
-          return true;
-        }
-
-        res.dist={std::move(*data),  "", req.binary, req.compress};
-      }
-    }
-    catch (const std::exception &e)
-    {
-      res.status = "Failed to get output distribution";
-      return true;
-    }
-
-    res.status = CORE_RPC_STATUS_OK;
-    return true;
-  }
+ 
   //------------------------------------------------------------------------------------------------------------------------------
   bool core_rpc_server::on_prune_blockchain(const COMMAND_RPC_PRUNE_BLOCKCHAIN::request& req, COMMAND_RPC_PRUNE_BLOCKCHAIN::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
   {
@@ -2342,24 +2222,7 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
     res.status = CORE_RPC_STATUS_OK;
     return true;
   }
-  //------------------------------------------------------------------------------------------------------------------------------
-  bool core_rpc_server::on_rpc_access_info(const COMMAND_RPC_ACCESS_INFO::request& req, COMMAND_RPC_ACCESS_INFO::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
-  {
-    RPC_TRACKER(rpc_access_info);
-
-
-    // if RPC payment is not enabled
-    {
-      res.diff = 0;
-      res.credits_per_hash_found = 0;
-      res.credits = 0;
-      res.height = 0;
-      res.seed_height = 0;
-      res.status = CORE_RPC_STATUS_OK;
-      return true;
-    }
-
-  }
+ 
   //------------------------------------------------------------------------------------------------------------------------------
   bool core_rpc_server::on_flush_cache(const COMMAND_RPC_FLUSH_CACHE::request& req, COMMAND_RPC_FLUSH_CACHE::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
   {
@@ -2371,33 +2234,8 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
     res.status = CORE_RPC_STATUS_OK;
     return true;
   }
-  //------------------------------------------------------------------------------------------------------------------------------
-  bool core_rpc_server::on_rpc_access_submit_nonce(const COMMAND_RPC_ACCESS_SUBMIT_NONCE::request& req, COMMAND_RPC_ACCESS_SUBMIT_NONCE::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
-  {
-    return true;
-  }
-  //------------------------------------------------------------------------------------------------------------------------------
-  bool core_rpc_server::on_rpc_access_pay(const COMMAND_RPC_ACCESS_PAY::request& req, COMMAND_RPC_ACCESS_PAY::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
-  {
-   return false;
-  }
-  //------------------------------------------------------------------------------------------------------------------------------
-  bool core_rpc_server::on_rpc_access_tracking(const COMMAND_RPC_ACCESS_TRACKING::request& req, COMMAND_RPC_ACCESS_TRACKING::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
-  {
-    return true;
-  }
-  //------------------------------------------------------------------------------------------------------------------------------
-  bool core_rpc_server::on_rpc_access_data(const COMMAND_RPC_ACCESS_DATA::request& req, COMMAND_RPC_ACCESS_DATA::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
-  {
-    
-    return true;
-  }
-  //------------------------------------------------------------------------------------------------------------------------------
-  bool core_rpc_server::on_rpc_access_account(const COMMAND_RPC_ACCESS_ACCOUNT::request& req, COMMAND_RPC_ACCESS_ACCOUNT::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
-  {
-   
-    return true;
-  }
+ 
+ 
   //------------------------------------------------------------------------------------------------------------------------------
   const command_line::arg_descriptor<std::string, false, true, 2> core_rpc_server::arg_rpc_bind_port = {
       "rpc-bind-port"

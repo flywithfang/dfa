@@ -495,15 +495,6 @@ namespace cryptonote
      */
     uint64_t get_num_mature_outputs() const;
 
-    /**
-     * @brief get the public key for an output
-     *
-     * @param amount the output amount
-     * @param global_index the output amount-global index
-     *
-     * @return the public key
-     */
-    crypto::public_key get_output_key(uint64_t global_index) const;
 
     /**
      * @brief gets specific outputs to mix with
@@ -520,16 +511,7 @@ namespace cryptonote
      */
     bool get_outs(const COMMAND_RPC_GET_OUTPUTS_BIN::request& req, COMMAND_RPC_GET_OUTPUTS_BIN::response& res) const;
 
-    /**
-     * @brief gets an output's key and unlocked state
-     *
-     * @param amount in - the output amount
-     * @param index in - the output global amount index
-     * @param mask out - the output's RingCT mask
-     * @param key out - the output's key
-     * @param unlocked out - the output's unlocked state
-     */
-    void get_output_key_mask_unlocked( const uint64_t& index, crypto::public_key& key, rct::key& mask, bool& unlocked) const;
+  
 
     /**
      * @brief gets per block distribution of outputs of a given amount
@@ -541,7 +523,7 @@ namespace cryptonote
      * @param return-by-reference distribution the start offset of the first rct output in this block (same as previous if none)
      * @param return-by-reference base how many outputs of that amount are before the stated distribution
      */
-    bool get_output_distribution(uint64_t from_height, uint64_t to_height, uint64_t &start_height, std::vector<uint64_t> &distribution, uint64_t &base) const;
+    bool get_output_distribution(uint64_t from_height, uint64_t to_height, uint64_t &start_height, std::vector<uint64_t> &distribution) const;
 
     /**
      * @brief gets the global indices for outputs from a given transaction
@@ -878,17 +860,6 @@ namespace cryptonote
      */
     bool flush_txes_from_pool(const std::vector<crypto::hash> &txids);
 
-    /**
-     * @brief return a histogram of outputs on the blockchain
-     *
-     * @param amounts optional set of amounts to lookup
-     * @param unlocked whether to restrict instances to unlocked ones
-     * @param recent_cutoff timestamp to consider outputs as recent
-     * @param min_count return only amounts with at least that many instances
-     *
-     * @return a set of amount/instances
-     */
-    std::map<uint64_t, std::tuple<uint64_t, uint64_t, uint64_t>> get_output_histogram( bool unlocked, uint64_t recent_cutoff, uint64_t min_count = 0) const;
 
     /**
      * @brief perform a check on all key images in the blockchain
@@ -920,14 +891,6 @@ namespace cryptonote
      */
     bool for_all_transactions(std::function<bool(const crypto::hash&, const cryptonote::transaction&)>, bool pruned) const;
 
-    /**
-     * @brief perform a check on all outputs in the blockchain
-     *
-     * @param std::function the check to perform, pass/fail
-     *
-     * @return false if any output fails the check, otherwise true
-     */
-    bool for_all_outputs(std::function<bool(const crypto::hash &tx_hash, uint64_t height, size_t tx_idx)>) const;
 
     /**
      * @brief perform a check on all outputs of a given amount in the blockchain
@@ -937,7 +900,7 @@ namespace cryptonote
      *
      * @return false if any output fails the check, otherwise true
      */
-    bool for_all_outputs( std::function<bool(uint64_t height)>) const;
+    bool for_all_outputs(  const uint64_t start_height,std::function<bool(uint64_t,const output_data_t&)>& f) const;
 
     /**
      * @brief get a reference to the BlockchainDB in use by Blockchain
@@ -958,15 +921,6 @@ namespace cryptonote
     {
       return *m_db;
     }
-
-    /**
-     * @brief get a number of outputs of a specific amount
-     *
-     * @param amount the amount
-     * @param offsets the indices (indexed to the amount) of the outputs
-     * @param outputs return-by-reference the outputs collected
-     */
-    void output_scan_worker(const std::vector<uint64_t> &offsets,std::vector<output_data_t> &outputs) const;
 
    
     /**
@@ -1050,90 +1004,12 @@ namespace cryptonote
 #ifndef IN_UNIT_TESTS
   private:
 #endif
-
-    // TODO: evaluate whether or not each of these typedefs are left over from blockchain_storage
+       // TODO: evaluate whether or not each of these typedefs are left over from blockchain_storage
     typedef std::unordered_set<crypto::key_image> key_images_container;
 
     typedef std::vector<block_extended_info> blocks_container;
 
     typedef std::unordered_map<crypto::hash, block_extended_info> blocks_ext_by_hash;
-
-
-    BlockchainDB* m_db;
-
-    tx_memory_pool& m_tx_pool;
-
-    mutable epee::critical_section m_blockchain_lock; // TODO: add here reader/writer lock
-
-    // main chain
-    size_t m_current_block_cumul_weight_limit;
-    size_t m_current_block_cumul_weight_median;
-
-    // Keccak hashes for each block and for fast pow checking
-    std::vector<std::pair<crypto::hash, crypto::hash>> m_blocks_hash_of_hashes;
-    std::vector<std::pair<crypto::hash, uint64_t>> m_blocks_hash_check;
-    std::vector<crypto::hash> m_blocks_txs_check;
-
-    blockchain_db_sync_mode m_db_sync_mode;
-    bool m_fast_sync;
-    bool m_show_time_stats;
-    bool m_db_default_sync;
-    bool m_db_sync_on_blocks;
-    uint64_t m_db_sync_threshold;
-    uint64_t m_max_prepare_blocks_threads;
-    uint64_t m_fake_pow_calc_time;
-    uint64_t m_sync_counter;
-    uint64_t m_bytes_to_sync;
-    uint64_t m_long_term_block_weights_window;
-    uint64_t m_long_term_effective_median_block_weight;
-    mutable crypto::hash m_long_term_block_weights_cache_tip_hash;
-    mutable epee::misc_utils::rolling_median_t<uint64_t> m_long_term_block_weights_cache_rolling_median;
-
-    epee::critical_section m_difficulty_lock;
-    crypto::hash m_diff_top_hash_cache;
-    difficulty_type m_diff_nb;
-
-    boost::asio::io_service m_async_service;
-    boost::thread_group m_async_pool;
-    std::unique_ptr<boost::asio::io_service::work> m_async_work_idle;
-
-    // some invalid blocks
-    blocks_ext_by_hash m_invalid_blocks;     // crypto::hash -> block_extended_info
-
-
-    checkpoints m_checkpoints;
-    bool m_enforce_dns_checkpoints;
-
-    HardFork *m_hardfork;
-
-    network_type m_nettype;
-    bool m_offline;
-    difficulty_type m_fixed_difficulty;
-
-    std::atomic<bool> m_cancel;
-
-    // block template cache
-    block m_btc;
-    account_public_address m_btc_address;
-    blobdata m_btc_nonce;
-    difficulty_type m_btc_difficulty;
-    uint64_t m_btc_height;
-    uint64_t m_btc_pool_cookie;
-    uint64_t m_btc_expected_reward;
-    crypto::hash m_btc_seed_hash;
-    uint64_t m_btc_seed_height;
-    bool m_btc_valid;
-
-
-    bool m_batch_success;
-
-    /* `boost::function` is used because the implementation never allocates if
-       the callable object has a single `std::shared_ptr` or `std::weap_ptr`
-       internally. Whereas, the libstdc++ `std::function` will allocate. */
-
-    std::vector<boost::function<void(std::uint64_t, epee::span<const block>)>> m_block_notifiers;
-    std::shared_ptr<tools::Notify> m_reorg_notify;
-
 
     /**
      * @brief collects the keys for all outputs being "spent" as an input
@@ -1493,5 +1369,89 @@ namespace cryptonote
      * At some point, may be used to push an update to miners
      */
     void cache_block_template(const block &b, const cryptonote::account_public_address &address, const blobdata &nonce, const difficulty_type &diff, uint64_t height, uint64_t expected_reward, uint64_t seed_height, const crypto::hash &seed_hash, uint64_t pool_cookie);
+
+
+#ifndef IN_UNIT_TESTS
+  private:
+#endif
+
+ 
+
+
+    BlockchainDB* m_db;
+
+    tx_memory_pool& m_tx_pool;
+
+    mutable epee::critical_section m_blockchain_lock; // TODO: add here reader/writer lock
+
+    // main chain
+    size_t m_current_block_cumul_weight_limit;
+    size_t m_current_block_cumul_weight_median;
+
+    // Keccak hashes for each block and for fast pow checking
+    std::vector<std::pair<crypto::hash, crypto::hash>> m_blocks_hash_of_hashes;
+    std::vector<std::pair<crypto::hash, uint64_t>> m_blocks_hash_check;
+    std::vector<crypto::hash> m_blocks_txs_check;
+
+    blockchain_db_sync_mode m_db_sync_mode;
+    bool m_fast_sync;
+    bool m_show_time_stats;
+    bool m_db_default_sync;
+    bool m_db_sync_on_blocks;
+    uint64_t m_db_sync_threshold;
+    uint64_t m_max_prepare_blocks_threads;
+    uint64_t m_fake_pow_calc_time;
+    uint64_t m_sync_counter;
+    uint64_t m_bytes_to_sync;
+    uint64_t m_long_term_block_weights_window;
+    uint64_t m_long_term_effective_median_block_weight;
+    mutable crypto::hash m_long_term_block_weights_cache_tip_hash;
+    mutable epee::misc_utils::rolling_median_t<uint64_t> m_long_term_block_weights_cache_rolling_median;
+
+    epee::critical_section m_difficulty_lock;
+    crypto::hash m_diff_top_hash_cache;
+    difficulty_type m_diff_nb;
+
+    boost::asio::io_service m_async_service;
+    boost::thread_group m_async_pool;
+    std::unique_ptr<boost::asio::io_service::work> m_async_work_idle;
+
+    // some invalid blocks
+    blocks_ext_by_hash m_invalid_blocks;     // crypto::hash -> block_extended_info
+
+
+    checkpoints m_checkpoints;
+    bool m_enforce_dns_checkpoints;
+
+    HardFork *m_hardfork;
+
+    network_type m_nettype;
+    bool m_offline;
+    difficulty_type m_fixed_difficulty;
+
+    std::atomic<bool> m_cancel;
+
+    // block template cache
+    block m_btc;
+    account_public_address m_btc_address;
+    blobdata m_btc_nonce;
+    difficulty_type m_btc_difficulty;
+    uint64_t m_btc_height;
+    uint64_t m_btc_pool_cookie;
+    uint64_t m_btc_expected_reward;
+    crypto::hash m_btc_seed_hash;
+    uint64_t m_btc_seed_height;
+    bool m_btc_valid;
+
+
+    bool m_batch_success;
+
+    /* `boost::function` is used because the implementation never allocates if
+       the callable object has a single `std::shared_ptr` or `std::weap_ptr`
+       internally. Whereas, the libstdc++ `std::function` will allocate. */
+
+    std::vector<boost::function<void(std::uint64_t, epee::span<const block>)>> m_block_notifiers;
+    std::shared_ptr<tools::Notify> m_reorg_notify;
+
   };
 }  // namespace cryptonote

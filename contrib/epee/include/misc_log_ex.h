@@ -171,8 +171,8 @@ namespace debug
 #define CATCH_ENTRY_L4(lacation, return_val) CATCH_ENTRY(lacation, return_val)
 
 
-#define ASSERT_MES_AND_THROW(message) {LOG_ERROR(message); std::stringstream ss; ss << message; throw std::runtime_error(ss.str());}
-#define CHECK_AND_ASSERT_THROW_MES(expr, message) do {if(!(expr)) ASSERT_MES_AND_THROW(message);} while(0)
+#define throw_and_log(message) {LOG_ERROR(message); std::stringstream ss; ss << message; throw std::runtime_error(ss.str());}
+#define CHECK_AND_ASSERT_THROW_MES(expr, message) do {if(!(expr)) throw_and_log(message);} while(0)
 
 
 #ifndef CHECK_AND_ASSERT

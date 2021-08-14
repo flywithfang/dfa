@@ -225,7 +225,7 @@ namespace cryptonote
         LOG_ERROR("Key image generation failed!");
         return false;
       }
-      const auto & old_otk=real_input.second.dest;
+      const auto & old_otk=real_input.second.otk;
       //check that derivated key is equal with real output key (if non multisig)
       if( !(in_ephemeral.pub == old_otk) )
       {

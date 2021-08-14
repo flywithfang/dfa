@@ -166,16 +166,15 @@ bool Blockchain::scan_outputkeys_for_indexes(size_t tx_version, const txin_to_ke
       return false;
     }
 
-
   size_t k = 0;
   for (const uint64_t& i : absolute_offsets)
   {
     try
     {
-      const output_data_t output_index = outputs.at(k);
+      const output_data_t out = outputs.at(k);
 
         // call to the passed boost visitor to grab the public key for the output
-        if (!vis.handle_output(output_index.unlock_time, output_index.pubkey, output_index.commitment))
+        if (!vis.handle_output(out.unlock_time, out.otk, out.commitment))
         {
           MERROR_VER("Failed to handle_output for output no = " << k << ", with absolute offset " << i);
           return false;
@@ -184,10 +183,9 @@ bool Blockchain::scan_outputkeys_for_indexes(size_t tx_version, const txin_to_ke
       if(++k == absolute_offsets.size() && pmax_related_block_height)
       {
         // set *pmax_related_block_height to tx block height for this output
-        auto h = output_index.height;
-        if(*pmax_related_block_height < h)
+        if(*pmax_related_block_height < out.height)
         {
-          *pmax_related_block_height = h;
+          *pmax_related_block_height = out.height;
         }
       }
 
@@ -299,12 +297,7 @@ bool Blockchain::init(BlockchainDB* db, const network_type nettype, bool offline
   {
   }
 
-  if (m_nettype != FAKECHAIN)
-  {
-    // ensure we fixup anything we found and fix in the future
-    m_db->fixup();
-  }
-
+ 
   db_rtxn_guard rtxn_guard(m_db);
 
   // check how far behind we are
@@ -1601,32 +1594,7 @@ size_t Blockchain::get_alternative_blocks_count() const
   CRITICAL_REGION_LOCAL(m_blockchain_lock);
   return m_db->get_alt_block_count();
 }
-//------------------------------------------------------------------
-// This function adds the output specified by <amount, i> to the result_outs container
-// unlocked and other such checks should be done by here.
-uint64_t Blockchain::get_num_mature_outputs() const
-{
-  uint64_t num_outs = m_db->get_num_outputs();
-  // ensure we don't include outputs that aren't yet eligible to be used
-  // outpouts are sorted by height
-  const uint64_t blockchain_height = m_db->height();
-  while (num_outs > 0)
-  {
-    const tx_out_index toi = m_db->get_output_tx_and_index( num_outs - 1);
-    const uint64_t height = m_db->get_tx_block_height(toi.first);
-    if (height + CRYPTONOTE_DEFAULT_TX_SPENDABLE_AGE <= blockchain_height)
-      break;
-    --num_outs;
-  }
 
-  return num_outs;
-}
-
-crypto::public_key Blockchain::get_output_key( uint64_t global_index) const
-{
-  output_data_t data = m_db->get_output_key( global_index);
-  return data.pubkey;
-}
 
 //------------------------------------------------------------------
 bool Blockchain::get_outs(const COMMAND_RPC_GET_OUTPUTS_BIN::request& req, COMMAND_RPC_GET_OUTPUTS_BIN::response& res) const
@@ -1637,15 +1605,16 @@ bool Blockchain::get_outs(const COMMAND_RPC_GET_OUTPUTS_BIN::request& req, COMMA
   res.outs.clear();
   res.outs.reserve(req.outputs.size());
 
-  std::vector<cryptonote::output_data_t> data;
+  
   try
   {
     std::vector<uint64_t>  offsets;
     offsets.reserve(req.outputs.size());
-    for (const auto &i: req.outputs)
+    for (const auto &[index]: req.outputs)
     {
-      offsets.push_back(i.index);
+      offsets.push_back(index);
     }
+    std::vector<cryptonote::output_data_t> data;
     m_db->get_output_key( offsets, data);
     if (data.size() != req.outputs.size())
     {
@@ -1653,20 +1622,12 @@ bool Blockchain::get_outs(const COMMAND_RPC_GET_OUTPUTS_BIN::request& req, COMMA
       return false;
     }
     const uint8_t hf_version = m_hardfork->get_current_version();
-    for (const auto &t: data)
+    for (const auto &out: data)
     {
-      const auto & otk=t.pubkey;
-      res.outs.push_back({otk, t.commitment, is_tx_spendtime_unlocked(t.unlock_time, hf_version), t.height, crypto::null_hash});
+      res.outs.push_back({out.otk, out.commitment, is_tx_spendtime_unlocked(out.unlock_time, hf_version), out.height, out.tx_hash});
     }
 
-    if (req.get_txid)
-    {
-      for (size_t i = 0; i < req.outputs.size(); ++i)
-      {
-        tx_out_index toi = m_db->get_output_tx_and_index( req.outputs[i].index);
-        res.outs[i].txid = toi.first;
-      }
-    }
+    
   }
   catch (const std::exception &e)
   {
@@ -1674,22 +1635,12 @@ bool Blockchain::get_outs(const COMMAND_RPC_GET_OUTPUTS_BIN::request& req, COMMA
   }
   return true;
 }
+
 //------------------------------------------------------------------
-void Blockchain::get_output_key_mask_unlocked( const uint64_t& index, crypto::public_key& key, rct::key& mask, bool& unlocked) const
-{
-  const auto o_data = m_db->get_output_key( index);
-  key = o_data.pubkey;
-  mask = o_data.commitment;
-  tx_out_index toi = m_db->get_output_tx_and_index( index);
-  const uint8_t hf_version = m_hardfork->get_current_version();
-  unlocked = is_tx_spendtime_unlocked(m_db->get_tx_unlock_time(toi.first), hf_version);
-}
-//------------------------------------------------------------------
-bool Blockchain::get_output_distribution( uint64_t from_height, uint64_t to_height, uint64_t &start_height, std::vector<uint64_t> &distribution, uint64_t &base) const
+bool Blockchain::get_output_distribution( uint64_t from_height, uint64_t to_height, uint64_t &start_height, std::vector<uint64_t> &distribution) const
 {
  
   start_height = 0;
-  base = 0;
 
   if (to_height > 0 && to_height < from_height)
     return false;
@@ -1697,7 +1648,6 @@ bool Blockchain::get_output_distribution( uint64_t from_height, uint64_t to_heig
   if (from_height > start_height)
     start_height = from_height;
 
-  distribution.clear();
   uint64_t db_height = m_db->height();
   if (db_height == 0)
     return false;
@@ -1712,11 +1662,7 @@ bool Blockchain::get_output_distribution( uint64_t from_height, uint64_t to_heig
       heights.push_back(h);
 
     distribution = m_db->get_block_cumulative_rct_outputs(heights);
-    if (start_height > 0)
-    {
-      base = distribution[0];
-      distribution.erase(distribution.begin());
-    }
+  
     return true;
   }
 
@@ -2242,33 +2188,33 @@ bool Blockchain::check_for_double_spend(const transaction& tx, key_images_contai
   return true;
 }
 //------------------------------------------------------------------
-bool Blockchain::get_tx_outputs_gindexs(const crypto::hash& tx_id, size_t n_txes, std::vector<std::vector<uint64_t>>& indexs) const
+bool Blockchain::get_tx_outputs_gindexs(const crypto::hash& tx_hash, size_t n_txes, std::vector<std::vector<uint64_t>>& indexs) const
 {
   MTRACE("Blockchain::" << __func__);
   CRITICAL_REGION_LOCAL(m_blockchain_lock);
-  uint64_t tx_index;
-  if (!m_db->tx_exists(tx_id, tx_index))
+  uint64_t tx_id;
+  if (!m_db->tx_exists(tx_hash, tx_id))
   {
-    MERROR_VER("get_tx_outputs_gindexs failed to find transaction with id = " << tx_id);
+    MERROR_VER("get_tx_outputs_gindexs failed to find transaction with id = " << tx_hash);
     return false;
   }
-  indexs = m_db->get_tx_amount_output_indices(tx_index, n_txes);
+  indexs = m_db->get_tx_output_indices(tx_id, n_txes);
   CHECK_AND_ASSERT_MES(n_txes == indexs.size(), false, "Wrong indexs size");
 
   return true;
 }
 //------------------------------------------------------------------
-bool Blockchain::get_tx_outputs_gindexs(const crypto::hash& tx_id, std::vector<uint64_t>& indexs) const
+bool Blockchain::get_tx_outputs_gindexs(const crypto::hash& tx_hash, std::vector<uint64_t>& indexs) const
 {
   MTRACE("Blockchain::" << __func__);
   CRITICAL_REGION_LOCAL(m_blockchain_lock);
-  uint64_t tx_index;
-  if (!m_db->tx_exists(tx_id, tx_index))
+  uint64_t tx_id;
+  if (!m_db->tx_exists(tx_hash, tx_id))
   {
-    MERROR_VER("get_tx_outputs_gindexs failed to find transaction with id = " << tx_id);
+    MERROR_VER("get_tx_outputs_gindexs failed to find transaction with id = " << tx_hash);
     return false;
   }
-  std::vector<std::vector<uint64_t>> indices = m_db->get_tx_amount_output_indices(tx_index, 1);
+  std::vector<std::vector<uint64_t>> indices = m_db->get_tx_output_indices(tx_id, 1);
   CHECK_AND_ASSERT_MES(indices.size() == 1, false, "Wrong indices size");
   indexs = indices.front();
   return true;
@@ -2668,7 +2614,7 @@ void Blockchain::check_ring_signature(const crypto::hash &tx_prefix_hash, const 
   for (auto &key : pubkeys)
   {
     // rct::key and crypto::public_key have the same structure, avoid object ctor/memcpy
-    p_output_keys.push_back(&(const crypto::public_key&)key.dest);
+    p_output_keys.push_back(&(const crypto::public_key&)key.otk);
   }
 
   result = crypto::check_ring_signature(tx_prefix_hash, key_image, p_output_keys, sig.data()) ? 1 : 0;
@@ -2803,7 +2749,7 @@ uint64_t Blockchain::get_dynamic_base_fee_estimate(uint64_t grace_blocks) const
 //------------------------------------------------------------------
 // This function checks to see if a tx is unlocked.  unlock_time is either
 // a block index or a unix time.
-bool Blockchain::is_tx_spendtime_unlocked(uint64_t unlock_time, uint8_t hf_version) const
+bool Blockchain::is_tx_spendtime_unlocked(uint64_t unlock_time, uint8_t _) const
 {
   MTRACE("Blockchain::" << __func__);
   if(unlock_time < CRYPTONOTE_MAX_BLOCK_NUMBER)
@@ -3603,24 +3549,6 @@ void Blockchain::set_enforce_dns_checkpoints(bool enforce_checkpoints)
   m_enforce_dns_checkpoints = enforce_checkpoints;
 }
 
-
-//------------------------------------------------------------------
-void Blockchain::output_scan_worker(const std::vector<uint64_t> &offsets, std::vector<output_data_t> &outputs) const
-{
-  try
-  {
-    m_db->get_output_key(offsets, outputs, true);
-  }
-  catch (const std::exception& e)
-  {
-    MERROR_VER("EXCEPTION: " << e.what());
-  }
-  catch (...)
-  {
-
-  }
-}
-
 uint64_t Blockchain::prevalidate_block_hashes(uint64_t height, const std::vector<crypto::hash> &hashes, const std::vector<uint64_t> &weights)
 {
   // new: . . . . . X X X X X . . . . . .
@@ -3999,10 +3927,6 @@ uint64_t Blockchain::get_difficulty_target() const
   return DIFFICULTY_TARGET_V2;
 }
 
-std::map<uint64_t, std::tuple<uint64_t, uint64_t, uint64_t>> Blockchain:: get_output_histogram( bool unlocked, uint64_t recent_cutoff, uint64_t min_count) const
-{
-  return m_db->get_output_histogram( unlocked, recent_cutoff, min_count);
-}
 
 std::vector<std::pair<Blockchain::block_extended_info,std::vector<crypto::hash>>> Blockchain::get_alternative_chains() const
 {
@@ -4099,14 +4023,9 @@ bool Blockchain::for_all_transactions(std::function<bool(const crypto::hash&, co
   return m_db->for_all_transactions(f, pruned);
 }
 
-bool Blockchain::for_all_outputs(std::function<bool(const crypto::hash &tx_hash, uint64_t height, size_t tx_idx)> f) const
+bool Blockchain::for_all_outputs(  const uint64_t start_height,std::function<bool(uint64_t,const output_data_t&)>& f) const
 {
-  return m_db->for_all_outputs(f);
-}
-
-bool Blockchain::for_all_outputs( std::function<bool(uint64_t height)> f) const
-{
-  return m_db->for_all_outputs( f);
+  return m_db->for_all_outputs(start_height, f);
 }
 
 void Blockchain::invalidate_block_template_cache()

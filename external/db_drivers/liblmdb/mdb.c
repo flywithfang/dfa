@@ -6910,8 +6910,7 @@ mdb_cursor_prev(MDB_cursor *mc, MDB_val *key, MDB_val *data, MDB_cursor_op op)
 
 /** Set the cursor on a specific data item. */
 static int
-mdb_cursor_set(MDB_cursor *mc, MDB_val *key, MDB_val *data,
-    MDB_cursor_op op, int *exactp)
+mdb_cursor_set(MDB_cursor *mc, MDB_val *key, MDB_val *data,MDB_cursor_op op, int *exactp)
 {
 	int		 rc;
 	MDB_page	*mp;
@@ -6957,8 +6956,7 @@ mdb_cursor_set(MDB_cursor *mc, MDB_val *key, MDB_val *data,
 			unsigned int nkeys = NUMKEYS(mp);
 			if (nkeys > 1) {
 				if (mp->mp_flags & P_LEAF2) {
-					nodekey.mv_data = LEAF2KEY(mp,
-						 nkeys-1, nodekey.mv_size);
+					nodekey.mv_data = LEAF2KEY(mp,nkeys-1, nodekey.mv_size);
 				} else {
 					leaf = NODEPTR(mp, nkeys-1);
 					MDB_GET_KEY2(leaf, nodekey);
@@ -7200,8 +7198,7 @@ mdb_cursor_last(MDB_cursor *mc, MDB_val *key, MDB_val *data)
 }
 
 int
-mdb_cursor_get(MDB_cursor *mc, MDB_val *key, MDB_val *data,
-    MDB_cursor_op op)
+mdb_cursor_get(MDB_cursor *mc, MDB_val *key, MDB_val *data,MDB_cursor_op op)
 {
 	int		 rc;
 	int		 exact = 0;
@@ -7259,8 +7256,7 @@ mdb_cursor_get(MDB_cursor *mc, MDB_val *key, MDB_val *data,
 		if (key == NULL) {
 			rc = EINVAL;
 		} else {
-			rc = mdb_cursor_set(mc, key, data, op,
-				op == MDB_SET_RANGE ? NULL : &exact);
+			rc = mdb_cursor_set(mc, key, data, op,op == MDB_SET_RANGE ? NULL : &exact);
 		}
 		break;
 	case MDB_GET_MULTIPLE:

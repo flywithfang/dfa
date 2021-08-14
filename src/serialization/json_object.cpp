@@ -663,7 +663,6 @@ void toJsonValue(rapidjson::Writer<epee::byte_stream>& dest, const cryptonote::r
 {
   dest.StartObject();
 
-  INSERT_INTO_JSON_OBJECT(dest, amount_index, out.amount_index);
   INSERT_INTO_JSON_OBJECT(dest, key, out.key);
 
   dest.EndObject();
@@ -677,7 +676,6 @@ void fromJsonValue(const rapidjson::Value& val, cryptonote::rpc::output_key_and_
     throw WRONG_TYPE("json object");
   }
 
-  GET_FROM_JSON_OBJECT(val, out.amount_index, amount_index);
   GET_FROM_JSON_OBJECT(val, out.key, key);
 }
 
@@ -933,7 +931,7 @@ void toJsonValue(rapidjson::Writer<epee::byte_stream>& dest, const rct::rctSig& 
 
   const auto just_mask = [] (rct::ctkey const& key) -> rct::key const&
   {
-    return key.mask;
+    return key.commitment;
   };
 
   INSERT_INTO_JSON_OBJECT(dest, type, sig.type);
@@ -990,7 +988,7 @@ void fromJsonValue(const rapidjson::Value& val, rct::rctSig& sig)
 
 void fromJsonValue(const rapidjson::Value& val, rct::ctkey& key)
 {
-  key.dest = {};
+  key.otk = {};
   fromJsonValue(val, key.commitment);
 }
 
@@ -1218,30 +1216,6 @@ void fromJsonValue(const rapidjson::Value& val, cryptonote::rpc::DaemonInfo& inf
   GET_FROM_JSON_OBJECT(val, info.start_time, start_time);
 }
 
-void toJsonValue(rapidjson::Writer<epee::byte_stream>& dest, const cryptonote::rpc::output_distribution& dist)
-{
-  dest.StartObject();
-
-  INSERT_INTO_JSON_OBJECT(dest, distribution, dist.data.distribution);
-  INSERT_INTO_JSON_OBJECT(dest, amount, dist.amount);
-  INSERT_INTO_JSON_OBJECT(dest, start_height, dist.data.start_height);
-  INSERT_INTO_JSON_OBJECT(dest, base, dist.data.base);
-
-  dest.EndObject();
-}
-
-void fromJsonValue(const rapidjson::Value& val, cryptonote::rpc::output_distribution& dist)
-{
-  if (!val.IsObject())
-  {
-    throw WRONG_TYPE("json object");
-  }
-
-  GET_FROM_JSON_OBJECT(val, dist.data.distribution, distribution);
-  GET_FROM_JSON_OBJECT(val, dist.amount, amount);
-  GET_FROM_JSON_OBJECT(val, dist.data.start_height, start_height);
-  GET_FROM_JSON_OBJECT(val, dist.data.base, base);
-}
 
 }  // namespace json
 
