@@ -439,11 +439,6 @@ public:
     {
         std::cout<<"extra nonce "<<e.nonce.size()<<","<<e.nonce<<std::endl;
     }
-     void operator()(const tx_extra_pub_key & e) const
-    {
-        std::cout<<"extra pub_key "<<e.pub_key<<std::endl;
-    }
-       
      
 };
   void print_extra(const tx_extra_field& extra){
@@ -480,7 +475,6 @@ public:
           return false;
         break;
       }
-      print_extra(field);
       tx_extra_fields.push_back(field);
       processed = iss.tellg();
 
@@ -500,7 +494,6 @@ public:
     binary_archive<true> nar(oss);
 
     // sort by:
-    if (!pick<tx_extra_pub_key>(nar, tx_extra_fields, TX_EXTRA_TAG_PUBKEY)) return false;
     if (!pick<tx_extra_nonce>(nar, tx_extra_fields, TX_EXTRA_NONCE)) return false;
 
     // if not empty, someone added a new type and did not add a case above
@@ -520,46 +513,6 @@ public:
     return true;
   }
   //---------------------------------------------------------------
-  crypto::public_key get_tx_pub_key_from_extra(const std::vector<uint8_t>& tx_extra, size_t pk_index)
-  {
-    std::vector<tx_extra_field> tx_extra_fields;
-    parse_tx_extra(tx_extra, tx_extra_fields);
-
-    tx_extra_pub_key pub_key_field;
-    if(!find_tx_extra_field_by_type(tx_extra_fields, pub_key_field, pk_index))
-      return null_pkey;
-
-    return pub_key_field.pub_key;
-  }
-  //---------------------------------------------------------------
-  crypto::public_key get_tx_pub_key_from_extra(const transaction_prefix& tx_prefix, size_t pk_index)
-  {
-    return get_tx_pub_key_from_extra(tx_prefix.extra, pk_index);
-  }
-  //---------------------------------------------------------------
-  crypto::public_key get_tx_pub_key_from_extra(const transaction& tx, size_t pk_index)
-  {
-    return get_tx_pub_key_from_extra(tx.extra, pk_index);
-  }
-  //---------------------------------------------------------------
-  bool add_tx_pub_key_to_extra(transaction& tx, const crypto::public_key& tx_pub_key)
-  {
-    return add_tx_pub_key_to_extra(tx.extra, tx_pub_key);
-  }
-  //---------------------------------------------------------------
-  bool add_tx_pub_key_to_extra(transaction_prefix& tx, const crypto::public_key& tx_pub_key)
-  {
-    return add_tx_pub_key_to_extra(tx.extra, tx_pub_key);
-  }
-  //---------------------------------------------------------------
-  bool add_tx_pub_key_to_extra(std::vector<uint8_t>& tx_extra, const crypto::public_key& tx_pub_key)
-  {
-    tx_extra.resize(tx_extra.size() + 1 + sizeof(crypto::public_key));
-    tx_extra[tx_extra.size() - 1 - sizeof(crypto::public_key)] = TX_EXTRA_TAG_PUBKEY;
-    *reinterpret_cast<crypto::public_key*>(&tx_extra[tx_extra.size() - sizeof(crypto::public_key)]) = tx_pub_key;
-    return true;
-  }
-
   
   //---------------------------------------------------------------
   bool add_extra_nonce_to_tx_extra(std::vector<uint8_t>& tx_extra, const blobdata& extra_nonce)
@@ -719,7 +672,7 @@ public:
   //---------------------------------------------------------------
   bool lookup_acc_outs(const account_keys& acc, const transaction& tx, std::vector<size_t>& outs, uint64_t& money_transfered)
   {
-    crypto::public_key tx_pub_key = get_tx_pub_key_from_extra(tx);
+    crypto::public_key tx_pub_key = tx.tx_pub_key;
     if(null_pkey == tx_pub_key)
       return false;
     return lookup_acc_outs(acc, tx, tx_pub_key,  outs, money_transfered);

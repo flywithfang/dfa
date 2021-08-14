@@ -73,12 +73,7 @@ public:
     {
         std::cout<<"extra nonce "<<endl<<e.nonce.size()<<","<<e.nonce<<std::endl;
     }
-     void operator()(const tx_extra_pub_key & e) 
-    {
-      tx_key = e.pub_key;
-        std::cout<<"extra pub_key "<<e.pub_key<<std::endl;
-    }
-   
+ 
 };
 
 tuple<public_key> print_extra(const std::vector<uint8_t> & tx_extra){

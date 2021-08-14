@@ -50,7 +50,7 @@ namespace
       m_tx.unlock_time = unlock_time;
 
       m_tx_key = keypair::generate();
-      add_tx_pub_key_to_extra(m_tx, m_tx_key.pub);
+      m_tx.tx_pub_key = m_tx_key.pub;
     }
 
     void step2_fill_inputs(const account_keys& sender_account_keys, const std::vector<tx_source_entry>& sources)

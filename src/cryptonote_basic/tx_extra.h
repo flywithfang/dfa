@@ -34,22 +34,12 @@
 #define TX_EXTRA_PADDING_MAX_COUNT          255
 #define TX_EXTRA_NONCE_MAX_COUNT            255
 
-#define TX_EXTRA_TAG_PADDING                0x00
 #define TX_EXTRA_TAG_PUBKEY                 0x01
 #define TX_EXTRA_NONCE                      0x02
 
 namespace cryptonote
 {
  
-  struct tx_extra_pub_key
-  {
-    crypto::public_key pub_key;
-
-    BEGIN_SERIALIZE()
-      FIELD(pub_key)
-    END_SERIALIZE()
-  };
-
   struct tx_extra_nonce
   {
     std::string nonce;
@@ -109,16 +99,8 @@ namespace cryptonote
   //   varint tag;
   //   varint size;
   //   varint data[];
-  typedef boost::variant<tx_extra_pub_key, tx_extra_nonce> tx_extra_field;
+  typedef boost::variant<tx_extra_nonce> tx_extra_field;
 }
-
-//VARIANT_TAG(binary_archive, cryptonote::tx_extra_pub_key, TX_EXTRA_TAG_PUBKEY);
- template <bool W>              
-  struct variant_serialization_traits<binary_archive<W>, cryptonote::tx_extra_pub_key> {   
-    static inline typename binary_archive<W>::variant_tag_type get_tag() { 
-      return TX_EXTRA_TAG_PUBKEY;             
-    }                 
-  };
 
 VARIANT_TAG(binary_archive, cryptonote::tx_extra_nonce, TX_EXTRA_NONCE);
 

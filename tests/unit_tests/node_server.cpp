@@ -403,7 +403,7 @@ TEST(cryptonote_protocol_handler, race_condition)
     block.miner_tx.version = hardfork >= 4 ? 2 : 1;
     block.miner_tx.unlock_time = height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW;
     block.miner_tx.vin.push_back(cryptonote::txin_gen{height});
-    cryptonote::add_tx_pub_key_to_extra(block.miner_tx, {});
+    
     cryptonote::get_block_reward(
       db.get_block_weight(height - 1),
       {},

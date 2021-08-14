@@ -132,6 +132,7 @@ namespace cryptonote
       VARINT_FIELD(unlock_time)
       FIELD(vin)
       FIELD(vout)
+      FIELD(tx_pub_key)
       FIELD(extra)
     END_SERIALIZE()
 
@@ -144,6 +145,7 @@ namespace cryptonote
       vin.clear();
       vout.clear();
       extra.clear();
+      tx_pub_key=crypto::null_pkey;
     }
   };
 

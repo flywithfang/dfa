@@ -784,12 +784,9 @@ wallet2::tx_cache_data wallet2::cache_tx_data(const cryptonote::transaction& tx)
 
     // if tx.vout is not empty, we loop through all tx pubkeys
     std::vector<bool> rec(rec_size, false);
-    tx_extra_pub_key tx_key{};
-    if(!find_tx_extra_field_by_type(tc.tx_extra_fields, tx_key)){
-      throw std::runtime_error("not found tx pub key");
-    }
+   
     key_derivation kA;
-  if (!crypto::generate_key_derivation(tx_key.pub_key, a, kA))
+  if (!crypto::generate_key_derivation(tx.tx_pub_key, a, kA))
       {
         MWARNING("Failed to generate key derivation from tx pubkey, skipping");
         memcpy(&kA, rct::identity().bytes, sizeof(tc.primary.kA));
@@ -812,7 +809,7 @@ wallet2::tx_cache_data wallet2::cache_tx_data(const cryptonote::transaction& tx)
       }
     }
 
-    tc.primary={tx_key.pub_key, kA, rec};
+    tc.primary={tx.tx_pub_key, kA, rec};
   return tc;
 }
 

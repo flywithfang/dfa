@@ -109,7 +109,7 @@ bool gen_bp_tx_validation_base::generate_with(std::vector<test_event_entry>& eve
       if (m == n)
         real_index_in_tx = index_in_tx;
     }
-    src.real_out_tx_key = cryptonote::get_tx_pub_key_from_extra(blocks[n].miner_tx);
+    src.real_out_tx_key = blocks[n].miner_tx.tx_pub_key;
     src.real_output = n;
     src.real_output_in_tx_index = real_index_in_tx;
     src.mask = rct::identity();

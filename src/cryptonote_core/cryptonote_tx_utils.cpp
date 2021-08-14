@@ -75,7 +75,7 @@ namespace cryptonote
     const  std::tuple<bool, transaction> failed={false,tx};
 
     keypair txkey = keypair::generate();
-    add_tx_pub_key_to_extra(tx, txkey.pub);
+    tx.tx_pub_key = txkey.pub;
     if(!blob_reserve.empty())
       if(!add_extra_nonce_to_tx_extra(tx.extra, blob_reserve))
         return {false,tx};
@@ -269,10 +269,7 @@ namespace cryptonote
     });
 
    
-    remove_field_from_tx_extra(tx.extra, typeid(tx_extra_pub_key));
-    add_tx_pub_key_to_extra(tx, txkey_pub);
-
-    std::vector<crypto::public_key> additional_tx_public_keys;
+    tx.tx_pub_key = txkey_pub;
 
     // we don't need to include additional tx keys if:
     //   - all the destinations are standard addresses

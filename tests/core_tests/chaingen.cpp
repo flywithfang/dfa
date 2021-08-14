@@ -476,7 +476,7 @@ bool init_output_indices(map_output_idx_t& outs, std::map<uint64_t, std::vector<
                     size_t tx_global_idx = outs[out.amount].size() - 1;
                     outs[out.amount][tx_global_idx].idx = tx_global_idx;
                     // Is out to me?
-                    if (is_out_to_acc(from.get_keys(), boost::get<txout_to_key>(out.target), get_tx_pub_key_from_extra(tx),  j)) {
+                    if (is_out_to_acc(from.get_keys(), boost::get<txout_to_key>(out.target), tx.tx_pub_key,j)) {
                         outs_mine[out.amount].push_back(tx_global_idx);
                     }
                 }
@@ -991,7 +991,7 @@ bool construct_miner_tx_manually(size_t height, uint64_t already_generated_coins
 {
   keypair txkey;
   txkey = keypair::generate();
-  add_tx_pub_key_to_extra(tx, txkey.pub);
+  tx.tx_pub_key = txkey.pub;
 
   if (0 != p_txkey)
     *p_txkey = txkey;

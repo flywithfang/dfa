@@ -226,7 +226,7 @@ bool wallet2::check_tx_proof(const cryptonote::transaction &tx, const cryptonote
     memcpy(&sig, sig_decoded.data(), sizeof(crypto::signature));
   }
 
-  crypto::public_key tx_pub_key = get_tx_pub_key_from_extra(tx);
+  crypto::public_key tx_pub_key = tx.tx_pub_key;
   throw_wallet_ex_if(tx_pub_key == null_pkey, error::wallet_internal_error, "Tx pubkey was not found");
 
   const crypto::hash txid = cryptonote::get_transaction_hash(tx);
@@ -374,7 +374,7 @@ std::string wallet2::get_tx_proof(const cryptonote::transaction &tx, const crypt
   else
   {
     rct::key  aP;
-    crypto::public_key tx_pub_key = get_tx_pub_key_from_extra(tx);
+    crypto::public_key tx_pub_key =tx.tx_pub_key;
     throw_wallet_ex_if(tx_pub_key == null_pkey, error::wallet_internal_error, "Tx pubkey was not found");
 
     const crypto::secret_key& a = m_account.get_keys().m_view_secret_key;
