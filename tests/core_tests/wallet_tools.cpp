@@ -256,5 +256,5 @@ bool construct_tx_rct(tools::wallet2 * sender_wallet, std::vector<cryptonote::tx
 {
   crypto::secret_key tx_key;
   std::vector<tx_destination_entry> destinations_copy = destinations;
-  return construct_tx_and_get_tx_key(sender_wallet->get_account().get_keys(),  sources, destinations_copy, change_addr, extra, tx, unlock_time, tx_key);
+  return construct_tx(sender_wallet->get_account().get_keys(),  sources, destinations_copy, change_addr, extra, tx, unlock_time, tx_key);
 }

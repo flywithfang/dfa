@@ -2,7 +2,7 @@ address
 balance
 bc_height
 check_tx_key
-get_tx_key
+get_tx_sec
 help
 incoming_transfers
 integrated_address

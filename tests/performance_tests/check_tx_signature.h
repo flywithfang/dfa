@@ -68,7 +68,7 @@ public:
       destinations.push_back(tx_destination_entry(1, m_alice.get_keys().m_account_address, false));
 
     crypto::secret_key tx_key;
-    if (!construct_tx_and_get_tx_key(this->m_miners[this->real_source_idx].get_keys(),  this->m_sources, destinations, cryptonote::account_public_address{}, std::vector<uint8_t>(), m_tx, 0, tx_key))
+    if (!construct_tx(this->m_miners[this->real_source_idx].get_keys(),  this->m_sources, destinations, cryptonote::account_public_address{}, std::vector<uint8_t>(), m_tx, 0, tx_key))
       return false;
 
     get_transaction_prefix_hash(m_tx, m_tx_prefix_hash);
@@ -129,7 +129,7 @@ public:
     m_txes.resize(a_num_txes + (extra_outs > 0 ? 1 : 0));
     for (size_t n = 0; n < a_num_txes; ++n)
     {
-      if (!construct_tx_and_get_tx_key(this->m_miners[this->real_source_idx].get_keys(),  this->m_sources, destinations, cryptonote::account_public_address{}, std::vector<uint8_t>(), m_txes[n], 0, tx_key))
+      if (!construct_tx(this->m_miners[this->real_source_idx].get_keys(),  this->m_sources, destinations, cryptonote::account_public_address{}, std::vector<uint8_t>(), m_txes[n], 0, tx_key))
         return false;
     }
 

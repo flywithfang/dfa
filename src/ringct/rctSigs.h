@@ -93,17 +93,15 @@ namespace rct {
     //   must know the destination private key to find the correct amount, else will return a random number
    
 
-    rctSig genRctSimple(const key & message, const ctkeyV & inSk, const ctkeyV & inPk, const keyV & destinations, const std::vector<xmr_amount> & inamounts, const std::vector<xmr_amount> & outamounts, const keyV &amount_keys, xmr_amount txnFee, unsigned int mixin, const RCTConfig &rct_config);
-    rctSig genRctSimple(const key & message, const ctkeyV & inSk, const keyV & destinations, const std::vector<xmr_amount> & inamounts, const std::vector<xmr_amount> & outamounts, xmr_amount txnFee, const ctkeyM & mixRing, const keyV &amount_keys,  const std::vector<unsigned int> & index, ctkeyV &outSk, const RCTConfig &rct_config);
+    rctSig genRctSimple(const key & message, const ctkeyV & inSk, const ctkeyV & inPk, const keyV & destinations, const std::vector<xmr_amount> & inamounts, const std::vector<xmr_amount> & outamounts, const keyV &amount_keys, xmr_amount txnFee, unsigned int mixin);
+    rctSig genRctSimple(const key & message, const ctkeyV & inSk, const keyV & destinations, const std::vector<xmr_amount> & inamounts, const std::vector<xmr_amount> & outamounts, xmr_amount txnFee, const ctkeyM & mixRing, const keyV &amount_keys,  const std::vector<unsigned int> & index, ctkeyV &outSk);
     bool verRct(const rctSig & rv, bool semantics);
     static inline bool verRct(const rctSig & rv) { return verRct(rv, true) && verRct(rv, false); }
     bool verRctSemanticsSimple(const rctSig & rv);
     bool verRctSemanticsSimple(const std::vector<const rctSig*> & rv);
     bool verRctNonSemanticsSimple(const rctSig & rv);
     static inline bool verRctSimple(const rctSig & rv) { return verRctSemanticsSimple(rv) && verRctNonSemanticsSimple(rv); }
-    std::tuple<xmr_amount,key> decodeRctSimple(const rctSig & rv, const crypto::key_derivation & kA, unsigned int i);
-     std::tuple<xmr_amount,key> decodeRctSimple(const rctSig & rv, const rct::key & shared_sec, unsigned int i);
-    key get_pre_mlsag_hash(const rctSig &rv);
+     std::tuple<xmr_amount,key> decodeRctSimple(const uint64_t encrypted_amount, const rct::key& commitment,const rct::key & shared_sec);
 }
 #endif  /* RCTSIGS_H */
 

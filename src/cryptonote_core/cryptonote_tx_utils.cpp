@@ -50,11 +50,11 @@ using namespace crypto;
 namespace cryptonote
 {
   //---------------------------------------------------------------
-  void classify_addresses(const std::vector<tx_destination_entry> &destinations, const boost::optional<cryptonote::account_public_address>& change_addr, size_t &num_stdaddresses)
+  void classify_addresses(const std::vector<tx_destination_entry> &dsts, const boost::optional<cryptonote::account_public_address>& change_addr, size_t &num_stdaddresses)
   {
     num_stdaddresses = 0;
     std::unordered_set<cryptonote::account_public_address> unique_dst_addresses;
-    for(const tx_destination_entry& dst_entr: destinations)
+    for(const tx_destination_entry& dst_entr: dsts)
     {
       if (change_addr && dst_entr.addr == change_addr)
         continue;
@@ -66,7 +66,7 @@ namespace cryptonote
         }
       }
     }
-    MINFO("destinations include " << num_stdaddresses << " standard addresses " );
+    MINFO("dsts include " << num_stdaddresses << " standard addresses " );
   }
 
   //---------------------------------------------------------------
@@ -120,11 +120,11 @@ namespace cryptonote
     return std::make_tuple(true,tx);
   }
   //---------------------------------------------------------------
-  crypto::public_key get_destination_view_key_pub(const std::vector<tx_destination_entry> &destinations, const boost::optional<cryptonote::account_public_address>& change_addr)
+  crypto::public_key get_destination_view_key_pub(const std::vector<tx_destination_entry> &dsts, const boost::optional<cryptonote::account_public_address>& change_addr)
   {
     account_public_address addr = {null_pkey, null_pkey};
     size_t count = 0;
-    for (const auto &i : destinations)
+    for (const auto &i : dsts)
     {
       if (i.amount == 0)
         continue;
@@ -164,124 +164,58 @@ namespace cryptonote
 
 
     //---------------------------------------------------------------
-  bool construct_tx_and_get_tx_key(const account_keys& sender_account_keys,  std::vector<tx_source_entry>& sources, std::vector<tx_destination_entry>& destinations, const boost::optional<cryptonote::account_public_address>& change_addr, const std::vector<uint8_t> &extra, transaction& tx, uint64_t unlock_time, crypto::secret_key &tx_sec,  const rct::RCTConfig &rct_config,bool shuffle_outs)
+  bool construct_tx(const account_keys& sender_account_keys,  std::vector<tx_source_entry>& sources, std::vector<tx_destination_entry>& dsts,  const std::vector<uint8_t> &extra, transaction& tx, uint64_t unlock_time, crypto::secret_key &tx_sec)
   {
     tx=transaction{}; //clear everthing
 
     cryptonote::keypair txkey = cryptonote::keypair::generate();
     tx_sec = txkey.sec;
-    const crypto::public_key txkey_pub=txkey.pub;
-   
-
+    tx.tx_pub_key = txkey.pub;
     if (sources.empty())
     {
       LOG_ERROR("Empty sources");
       return false;
     }
 
-    tx.set_null();
-  
-    tx.version = 2;
     tx.unlock_time = unlock_time;
-
     tx.extra = extra;
       // if we have a stealth payment id, find it and encrypt it with the tx key now
     std::vector<tx_extra_field> tx_extra_fields;
-    if (parse_tx_extra(tx.extra, tx_extra_fields))
-    {
-    }
-    else
+    if (!parse_tx_extra(tx.extra, tx_extra_fields))
     {
       MWARNING("Failed to parse tx extra");
-      tx_extra_fields.clear();
+      return false;
     }
+  if (!sort_tx_extra(tx.extra, tx.extra))
+      return false;
 
-    struct input_generation_context_data
-    {
-      keypair in_ephemeral;
-    };
-    std::vector<input_generation_context_data> in_contexts;
-
-    uint64_t summary_inputs_money = 0;
+    //std::sort(sources.begin(),sources.end(),)
     //fill inputs
-    int idx = -1;
-    for(const tx_source_entry& src_entr:  sources)
+    for(const auto& in:  sources)
     {
-      ++idx;
-      if(src_entr.real_output >= src_entr.decoys.size())
+      if(in.real_output >= in.decoys.size())
       {
-        LOG_ERROR("real_output index (" << src_entr.real_output << ")bigger than output_keys.size()=" << src_entr.decoys.size());
-        return false;
-      }
-      summary_inputs_money += src_entr.amount;
-
-      //key_derivation recv_derivation;
-      in_contexts.push_back(input_generation_context_data());
-      keypair& in_ephemeral = in_contexts.back().in_ephemeral;
-      crypto::key_image img;
-      const auto & real_input= src_entr.decoys[src_entr.real_output];
-      if(!generate_key_image_helper(sender_account_keys, src_entr.real_out_tx_key,  src_entr.real_output_in_tx_index, in_ephemeral,img))
-      {
-        LOG_ERROR("Key image generation failed!");
-        return false;
-      }
-      const auto & old_otk=real_input.second.otk;
-      //check that derivated key is equal with real output key (if non multisig)
-      if( !(in_ephemeral.pub == old_otk) )
-      {
-        LOG_ERROR("derived public key mismatch with output public key at index " << idx << ", real out " << src_entr.real_output << "! "<< ENDL << "derived_key:"
-          << string_tools::pod_to_hex(in_ephemeral.pub) << ENDL << "real otk:"
-          << string_tools::pod_to_hex(old_otk) );
-        LOG_ERROR("amount " << src_entr.amount );
-        LOG_ERROR("tx pubkey " << src_entr.real_out_tx_key << ", real_output_in_tx_index " << src_entr.real_output_in_tx_index);
+        LOG_ERROR("real_output index (" << in.real_output << ")bigger than output_keys.size()=" << in.decoys.size());
         return false;
       }
 
       //put key image into tx input
-      txin_to_key txin{0,{},img};
+      txin_to_key txin{0,{},in.ki};
 
       //fill outputs array and use relative offsets
-      for(auto decoy: src_entr.decoys)
-        txin.key_offsets.push_back(decoy.first);
-
-      txin.key_offsets = absolute_output_offsets_to_relative(txin.key_offsets);
+      std::vector<uint64_t> v; 
+      std::transform(in.decoys.begin(),in.decoys.end(),std::back_inserter(v),[&](const auto&d){return d.global_oi;});
+      txin.key_offsets = absolute_output_offsets_to_relative(v);
       tx.vin.push_back(txin);
     }
 
-    if (shuffle_outs)
-    {
-      std::shuffle(destinations.begin(), destinations.end(), crypto::random_device{});
-    }
+    std::shuffle(dsts.begin(), dsts.end(), crypto::random_device{});
 
-    // sort ins by their key image
-    std::vector<size_t> ins_order(sources.size());
-    for (size_t n = 0; n < sources.size(); ++n)
-      ins_order[n] = n;
-    std::sort(ins_order.begin(), ins_order.end(), [&](const size_t i0, const size_t i1) {
-      const txin_to_key &tk0 = boost::get<txin_to_key>(tx.vin[i0]);
-      const txin_to_key &tk1 = boost::get<txin_to_key>(tx.vin[i1]);
-      return memcmp(&tk0.k_image, &tk1.k_image, sizeof(tk0.k_image)) > 0;
-    });
-    tools::apply_permutation(ins_order, [&] (size_t i0, size_t i1) {
-      std::swap(tx.vin[i0], tx.vin[i1]);
-      std::swap(in_contexts[i0], in_contexts[i1]);
-      std::swap(sources[i0], sources[i1]);
-    });
-
-   
-    tx.tx_pub_key = txkey_pub;
-
-    // we don't need to include additional tx keys if:
-    //   - all the destinations are standard addresses
-    //   - there's only one destination which is a subaddress
-
-    uint64_t summary_outs_money = 0;
     //fill outputs
     size_t output_index = 0;
     std::vector<rct::key> shared_secs;
-    for(const tx_destination_entry& dst_entr: destinations)
+    for(const auto& dst_entr: dsts)
     {
-      CHECK_AND_ASSERT_MES(dst_entr.amount==0, false, "Destination with wrong amount: " << dst_entr.amount);
       crypto::public_key otk;
       rct::key shared_sec{};
       auto r = generate_otk(tx_sec,dst_entr,  output_index,shared_sec, otk);
@@ -293,44 +227,20 @@ namespace cryptonote
       tx_out out{0,tk};
       tx.vout.push_back(out);
       output_index++;
-      summary_outs_money += dst_entr.amount;
     }
-
-    MINFO("tx pubkey: " << txkey_pub);
-    if (!sort_tx_extra(tx.extra, tx.extra))
-      return false;
-
-    //check money
-    if(summary_outs_money > summary_inputs_money )
     {
-      LOG_ERROR("Transaction inputs money ("<< summary_inputs_money << ") less than outputs money (" << summary_outs_money << ")");
-      return false;
-    }
-
-    //ver=2
-    {
-
       uint64_t amount_in = 0, amount_out = 0;
       std::vector<rct::ctkey> real_ins;
       real_ins.reserve(sources.size());
     
       std::vector<uint64_t> inamounts, outamounts;
-      std::vector<unsigned int> ring_index;
-      for (size_t i = 0; i < sources.size(); ++i)
+      std::vector<unsigned int> real_in_index;
+      for (const  auto & in : sources)
       {
-        rct::ctkey ctkey;
-        const auto & in=sources[i];
-
         amount_in += in.amount;
         inamounts.push_back(in.amount);
-        ring_index.push_back(in.real_output);
-        // real_ins: (secret key, mask)
-        const auto  & otk_sec =rct::sk2rct(in_contexts[i].in_ephemeral.sec);//b
-        ctkey.otk_sec = otk_sec;
-        ctkey.noise = in.noise;//aG+bH amount commit
-        real_ins.push_back(ctkey);
-        memwipe(&ctkey, sizeof(rct::ctkey));
-       
+        real_in_index.push_back(in.real_output);
+        real_ins.push_back(rct::ctkey{in.otk_sec,in.noise});
       }
        rct::keyV dst_otks;
       for (size_t i = 0; i < tx.vout.size(); ++i)
@@ -338,25 +248,24 @@ namespace cryptonote
         const auto & otk=boost::get<txout_to_key>(tx.vout[i].target).key;
         dst_otks.push_back(rct::pk2rct(otk));
 
-        const auto & dst = destinations[i];
+        const auto & dst = dsts[i];
         outamounts.push_back(dst.amount);
         amount_out += dst.amount;
       }
 
-  // mixRing indexing is done the other way round for simple
-      std::vector<std::vector<rct::ctkey>> mixRing(tx.vin.size());
+  // rings indexing is done the other way round for simple
+      std::vector<std::vector<rct::ctkey>> rings;
       {
-        // mixRing indexing is done the other way round for simple
-        for (size_t i = 0; i < sources.size(); ++i)
+        // rings indexing is done the other way round for simple
+        for (const auto & in : sources)
         {
-          auto & ring=mixRing[i];
-          auto & in = sources[i];
-          ring.resize(in.decoys.size());
-          for (size_t i = 0; i < in.decoys.size(); ++i)
+          std::vector<rct::ctkey> ring;
+          auto & decoys = in.decoys;
+          for (auto & decoy : decoys)
           {
-            auto & decoy= in.decoys[i];
-            ring[i] = decoy.second;//otk,commitment
+            ring.emplace_back(rct::ctkey{decoy.otk,decoy.commitment});//otk,commitment
           }
+          rings.emplace_back(ring);
         }
       }
    
@@ -366,7 +275,7 @@ namespace cryptonote
 
       const auto & message= rct::hash2rct(tx_prefix_hash);
       const auto fee = amount_in - amount_out;
-      tx.rct_signatures = rct::genRctSimple(message, real_ins, dst_otks, inamounts, outamounts,fee , mixRing, shared_secs,   ring_index, outSk, rct_config);
+      tx.rct_signatures = rct::genRctSimple(message, real_ins, dst_otks, inamounts, outamounts,fee , rings, shared_secs,   real_in_index, outSk);
     
       memwipe(real_ins.data(), real_ins.size() * sizeof(rct::ctkey));
 
@@ -380,13 +289,7 @@ namespace cryptonote
     return true;
   }
 
-  //---------------------------------------------------------------
-  bool construct_tx(const account_keys& sender_account_keys, std::vector<tx_source_entry>& sources, const std::vector<tx_destination_entry>& destinations, const boost::optional<cryptonote::account_public_address>& change_addr, const std::vector<uint8_t> &extra, transaction& tx, uint64_t unlock_time)
-  {
-     crypto::secret_key tx_sec;
-     std::vector<tx_destination_entry> destinations_copy = destinations;
-     return construct_tx_and_get_tx_key(sender_account_keys, sources, destinations_copy, change_addr, extra, tx, unlock_time, tx_sec);
-  }
+
   //---------------------------------------------------------------
   bool generate_genesis_block(block& bl, std::string const & genesis_tx , uint32_t nonce    )
   {

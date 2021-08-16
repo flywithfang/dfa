@@ -900,7 +900,7 @@ namespace cryptonote
      *
      * @return false if any output fails the check, otherwise true
      */
-    bool for_all_outputs(  const uint64_t start_height,std::function<bool(uint64_t,const output_data_t&)>& f) const;
+    bool for_all_outputs(  const uint64_t start_height,std::function<bool(uint64_t,const output_data_t&)> f) const;
 
     /**
      * @brief get a reference to the BlockchainDB in use by Blockchain

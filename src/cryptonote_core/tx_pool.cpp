@@ -105,10 +105,7 @@ namespace cryptonote
       return d;
     }
 
-    uint64_t template_accept_threshold(uint64_t amount)
-    {
-      return amount * ACCEPT_THRESHOLD;
-    }
+
 
     uint64_t get_transaction_weight_limit(uint8_t version)
     {

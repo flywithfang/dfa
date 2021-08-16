@@ -110,29 +110,6 @@ namespace cryptonote
     END_KV_SERIALIZE_MAP()
   };
 
-  struct rpc_access_request_base: public rpc_request_base
-  {
-    std::string client;
-
-    BEGIN_KV_SERIALIZE_MAP()
-      KV_SERIALIZE_PARENT(rpc_request_base)
-      KV_SERIALIZE(client)
-    END_KV_SERIALIZE_MAP()
-  };
-
-  struct rpc_access_response_base: public rpc_response_base
-  {
-    uint64_t credits;
-    std::string top_hash;
-
-    rpc_access_response_base(): credits(0) {}
-
-    BEGIN_KV_SERIALIZE_MAP()
-      KV_SERIALIZE_PARENT(rpc_response_base)
-      KV_SERIALIZE(credits)
-      KV_SERIALIZE(top_hash)
-    END_KV_SERIALIZE_MAP()
-  };
 
   struct COMMAND_RPC_GET_HEIGHT
   {
@@ -158,16 +135,72 @@ namespace cryptonote
     typedef epee::misc_utils::struct_init<response_t> response;
   };
 
+  struct  transaction_out
+    {
+      crypto::hash tx_hash;
+      crypto::public_key tx_key;
+      uint64_t block_height;
+      uint64_t unlock_time;
+      crypto::public_key otk;
+      uint64_t local_oi;
+      uint64_t global_oi;
+      rct::key commitment;
+      uint64_t amount;
+
+
+  BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE_VAL_POD_AS_BLOB(tx_hash)
+        KV_SERIALIZE_VAL_POD_AS_BLOB(tx_key)
+        KV_SERIALIZE(block_height)
+        KV_SERIALIZE(unlock_time)
+        KV_SERIALIZE_VAL_POD_AS_BLOB(otk)
+        KV_SERIALIZE(local_oi)
+        KV_SERIALIZE(global_oi)
+        KV_SERIALIZE_VAL_POD_AS_BLOB(commitment)
+        KV_SERIALIZE(amount)
+
+   END_KV_SERIALIZE_MAP()
+  };
+ struct COMMAND_RPC_SYNC_BALANCE
+  {
+    struct request_t: public rpc_request_base
+    {
+       uint64_t   start_height;
+       crypto::public_key a;
+       crypto::public_key B;
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE_PARENT(rpc_request_base)
+        KV_SERIALIZE(start_height)
+        KV_SERIALIZE_VAL_POD_AS_BLOB(a)
+        KV_SERIALIZE_VAL_POD_AS_BLOB(B)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<request_t> request;
+
+    struct response_t: public rpc_response_base
+    {
+      std::vector<transaction_out> v;
+      
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE_PARENT(rpc_response_base)
+        KV_SERIALIZE(v)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<response_t> response;
+  };
+
+
   struct COMMAND_RPC_GET_BLOCKS_FAST
   {
 
-    struct request_t: public rpc_access_request_base
+    struct request_t: public rpc_request_base
     {
       std::list<crypto::hash> block_ids; //*first 10 blocks id goes sequential, next goes in pow(2,n) offset, like 2, 4, 8, 16, 32, 64 and so on, and the last one is always genesis block */
       uint64_t    start_height;
       bool        prune;
       BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE_PARENT(rpc_access_request_base)
+        KV_SERIALIZE_PARENT(rpc_request_base)
         KV_SERIALIZE_CONTAINER_POD_AS_BLOB(block_ids)
         KV_SERIALIZE(start_height)
         KV_SERIALIZE(prune)
@@ -193,7 +226,7 @@ namespace cryptonote
       END_KV_SERIALIZE_MAP()
     };
 
-    struct response_t: public rpc_access_response_base
+    struct response_t: public rpc_response_base
     {
       std::vector<block_complete_entry> blocks;
       uint64_t    start_height;
@@ -201,7 +234,7 @@ namespace cryptonote
       std::vector<block_output_indices> output_indices;
 
       BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE_PARENT(rpc_access_response_base)
+        KV_SERIALIZE_PARENT(rpc_response_base)
         KV_SERIALIZE(blocks)
         KV_SERIALIZE(start_height)
         KV_SERIALIZE(current_height)
@@ -213,22 +246,22 @@ namespace cryptonote
 
   struct COMMAND_RPC_GET_BLOCKS_BY_HEIGHT
   {
-    struct request_t: public rpc_access_request_base
+    struct request_t: public rpc_request_base
     {
       std::vector<uint64_t> heights;
       BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE_PARENT(rpc_access_request_base)
+        KV_SERIALIZE_PARENT(rpc_request_base)
         KV_SERIALIZE(heights)
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<request_t> request;
 
-    struct response_t: public rpc_access_response_base
+    struct response_t: public rpc_response_base
     {
       std::vector<block_complete_entry> blocks;
 
       BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE_PARENT(rpc_access_response_base)
+        KV_SERIALIZE_PARENT(rpc_response_base)
         KV_SERIALIZE(blocks)
       END_KV_SERIALIZE_MAP()
     };
@@ -237,20 +270,20 @@ namespace cryptonote
 
     struct COMMAND_RPC_GET_ALT_BLOCKS_HASHES
     {
-        struct request_t: public rpc_access_request_base
+        struct request_t: public rpc_request_base
         {
             BEGIN_KV_SERIALIZE_MAP()
-                KV_SERIALIZE_PARENT(rpc_access_request_base)
+                KV_SERIALIZE_PARENT(rpc_request_base)
             END_KV_SERIALIZE_MAP()
         };
         typedef epee::misc_utils::struct_init<request_t> request;
 
-        struct response_t: public rpc_access_response_base
+        struct response_t: public rpc_response_base
         {
             std::vector<std::string> blks_hashes;
 
             BEGIN_KV_SERIALIZE_MAP()
-                KV_SERIALIZE_PARENT(rpc_access_response_base)
+                KV_SERIALIZE_PARENT(rpc_response_base)
                 KV_SERIALIZE(blks_hashes)
             END_KV_SERIALIZE_MAP()
         };
@@ -259,26 +292,26 @@ namespace cryptonote
   struct COMMAND_RPC_GET_HASHES_FAST
   {
 
-    struct request_t: public rpc_access_request_base
+    struct request_t: public rpc_request_base
     {
       std::list<crypto::hash> block_ids; //*first 10 blocks id goes sequential, next goes in pow(2,n) offset, like 2, 4, 8, 16, 32, 64 and so on, and the last one is always genesis block */
       uint64_t    start_height;
       BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE_PARENT(rpc_access_request_base)
+        KV_SERIALIZE_PARENT(rpc_request_base)
         KV_SERIALIZE_CONTAINER_POD_AS_BLOB(block_ids)
         KV_SERIALIZE(start_height)
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<request_t> request;
 
-    struct response_t: public rpc_access_response_base
+    struct response_t: public rpc_response_base
     {
       std::vector<crypto::hash> m_block_ids;
       uint64_t    start_height;
       uint64_t    current_height;
 
       BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE_PARENT(rpc_access_response_base)
+        KV_SERIALIZE_PARENT(rpc_response_base)
         KV_SERIALIZE_CONTAINER_POD_AS_BLOB(m_block_ids)
         KV_SERIALIZE(start_height)
         KV_SERIALIZE(current_height)
@@ -319,7 +352,7 @@ namespace cryptonote
   //-----------------------------------------------
   struct COMMAND_RPC_GET_TRANSACTIONS
   {
-    struct request_t: public rpc_access_request_base
+    struct request_t: public rpc_request_base
     {
       std::vector<std::string> txs_hashes;
       bool decode_as_json;
@@ -327,7 +360,7 @@ namespace cryptonote
       bool split;
 
       BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE_PARENT(rpc_access_request_base)
+        KV_SERIALIZE_PARENT(rpc_request_base)
         KV_SERIALIZE(txs_hashes)
         KV_SERIALIZE(decode_as_json)
         KV_SERIALIZE_OPT(prune, false)
@@ -375,7 +408,7 @@ namespace cryptonote
       END_KV_SERIALIZE_MAP()
     };
 
-    struct response_t: public rpc_access_response_base
+    struct response_t: public rpc_response_base
     {
       // older compatibility stuff
       std::vector<std::string> txs_as_hex;  //transactions blobs as hex (old compat)
@@ -388,7 +421,7 @@ namespace cryptonote
       std::vector<entry> txs;
 
       BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE_PARENT(rpc_access_response_base)
+        KV_SERIALIZE_PARENT(rpc_response_base)
         KV_SERIALIZE(txs_as_hex)
         KV_SERIALIZE(txs_as_json)
         KV_SERIALIZE(txs)
@@ -407,24 +440,24 @@ namespace cryptonote
       SPENT_IN_POOL = 2,
     };
 
-    struct request_t: public rpc_access_request_base
+    struct request_t: public rpc_request_base
     {
       std::vector<std::string> key_images;
 
       BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE_PARENT(rpc_access_request_base)
+        KV_SERIALIZE_PARENT(rpc_request_base)
         KV_SERIALIZE(key_images)
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<request_t> request;
 
 
-    struct response_t: public rpc_access_response_base
+    struct response_t: public rpc_response_base
     {
       std::vector<int> spent_status;
 
       BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE_PARENT(rpc_access_response_base)
+        KV_SERIALIZE_PARENT(rpc_response_base)
         KV_SERIALIZE(spent_status)
       END_KV_SERIALIZE_MAP()
     };
@@ -434,23 +467,23 @@ namespace cryptonote
   //-----------------------------------------------
   struct COMMAND_RPC_GET_TX_GLOBAL_OUTPUTS_INDEXES
   {
-    struct request_t: public rpc_access_request_base
+    struct request_t: public rpc_request_base
     {
       crypto::hash txid;
       BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE_PARENT(rpc_access_request_base)
+        KV_SERIALIZE_PARENT(rpc_request_base)
         KV_SERIALIZE_VAL_POD_AS_BLOB(txid)
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<request_t> request;
 
 
-    struct response_t: public rpc_access_response_base
+    struct response_t: public rpc_response_base
     {
       std::vector<uint64_t> o_indexes;
 
       BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE_PARENT(rpc_access_response_base)
+        KV_SERIALIZE_PARENT(rpc_response_base)
         KV_SERIALIZE(o_indexes)
       END_KV_SERIALIZE_MAP()
     };
@@ -468,12 +501,12 @@ namespace cryptonote
 
   struct COMMAND_RPC_GET_OUTPUTS_BIN
   {
-    struct request_t: public rpc_access_request_base
+    struct request_t: public rpc_request_base
     {
       std::vector<get_outputs_out> outputs;
 
       BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE_PARENT(rpc_access_request_base)
+        KV_SERIALIZE_PARENT(rpc_request_base)
         KV_SERIALIZE(outputs)
       END_KV_SERIALIZE_MAP()
     };
@@ -496,12 +529,12 @@ namespace cryptonote
       END_KV_SERIALIZE_MAP()
     };
 
-    struct response_t: public rpc_access_response_base
+    struct response_t: public rpc_response_base
     {
       std::vector<outkey> outs;
 
       BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE_PARENT(rpc_access_response_base)
+        KV_SERIALIZE_PARENT(rpc_response_base)
         KV_SERIALIZE(outs)
       END_KV_SERIALIZE_MAP()
     };
@@ -510,13 +543,13 @@ namespace cryptonote
   //-----------------------------------------------
   struct COMMAND_RPC_GET_OUTPUTS
   {
-    struct request_t: public rpc_access_request_base
+    struct request_t: public rpc_request_base
     {
       std::vector<get_outputs_out> outputs;
       bool get_txid;
 
       BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE_PARENT(rpc_access_request_base)
+        KV_SERIALIZE_PARENT(rpc_request_base)
         KV_SERIALIZE(outputs)
         KV_SERIALIZE(get_txid)
       END_KV_SERIALIZE_MAP()
@@ -540,12 +573,12 @@ namespace cryptonote
       END_KV_SERIALIZE_MAP()
     };
 
-    struct response_t: public rpc_access_response_base
+    struct response_t: public rpc_response_base
     {
       std::vector<outkey> outs;
 
       BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE_PARENT(rpc_access_response_base)
+        KV_SERIALIZE_PARENT(rpc_response_base)
         KV_SERIALIZE(outs)
       END_KV_SERIALIZE_MAP()
     };
@@ -554,23 +587,19 @@ namespace cryptonote
   //-----------------------------------------------
   struct COMMAND_RPC_SEND_RAW_TX
   {
-    struct request_t: public rpc_access_request_base
+    struct request_t: public rpc_request_base
     {
       std::string tx_as_hex;
-      bool do_not_relay;
-      bool do_sanity_checks;
 
       BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE_PARENT(rpc_access_request_base);
+        KV_SERIALIZE_PARENT(rpc_request_base);
         KV_SERIALIZE(tx_as_hex)
-        KV_SERIALIZE_OPT(do_not_relay, false)
-        KV_SERIALIZE_OPT(do_sanity_checks, true)
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<request_t> request;
 
 
-    struct response_t: public rpc_access_response_base
+    struct response_t: public rpc_response_base
     {
       std::string reason;
       bool not_relayed;
@@ -585,7 +614,7 @@ namespace cryptonote
       bool sanity_check_failed;
 
       BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE_PARENT(rpc_access_response_base)
+        KV_SERIALIZE_PARENT(rpc_response_base)
         KV_SERIALIZE(reason)
         KV_SERIALIZE(not_relayed)
         KV_SERIALIZE(low_mixin)
@@ -605,15 +634,15 @@ namespace cryptonote
   //-----------------------------------------------
   struct COMMAND_RPC_GET_INFO
   {
-    struct request_t: public rpc_access_request_base
+    struct request_t: public rpc_request_base
     {
       BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE_PARENT(rpc_access_request_base);
+        KV_SERIALIZE_PARENT(rpc_request_base);
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<request_t> request;
 
-    struct response_t: public rpc_access_response_base
+    struct response_t: public rpc_response_base
     {
       uint64_t height;
       uint64_t target_height;
@@ -645,9 +674,6 @@ namespace cryptonote
       uint64_t start_time;
       uint64_t free_space;
       bool offline;
-      std::string bootstrap_daemon_address;
-      uint64_t height_without_bootstrap;
-      bool was_bootstrap_ever_used;
       uint64_t database_size;
       bool update_available;
       bool busy_syncing;
@@ -655,7 +681,7 @@ namespace cryptonote
       bool synchronized;
 
       BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE_PARENT(rpc_access_response_base)
+        KV_SERIALIZE_PARENT(rpc_response_base)
         KV_SERIALIZE(height)
         KV_SERIALIZE(target_height)
         KV_SERIALIZE(difficulty)
@@ -686,9 +712,6 @@ namespace cryptonote
         KV_SERIALIZE(start_time)
         KV_SERIALIZE(free_space)
         KV_SERIALIZE(offline)
-        KV_SERIALIZE(bootstrap_daemon_address)
-        KV_SERIALIZE(height_without_bootstrap)
-        KV_SERIALIZE(was_bootstrap_ever_used)
         KV_SERIALIZE(database_size)
         KV_SERIALIZE(update_available)
         KV_SERIALIZE(busy_syncing)
@@ -946,23 +969,23 @@ namespace cryptonote
 
   struct COMMAND_RPC_GET_LAST_BLOCK_HEADER
   {
-    struct request_t: public rpc_access_request_base
+    struct request_t: public rpc_request_base
     {
       bool fill_pow_hash;
 
       BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE_PARENT(rpc_access_request_base)
+        KV_SERIALIZE_PARENT(rpc_request_base)
         KV_SERIALIZE_OPT(fill_pow_hash, false);
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<request_t> request;
 
-    struct response_t: public rpc_access_response_base
+    struct response_t: public rpc_response_base
     {
       block_header_response block_header;
       
       BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE_PARENT(rpc_access_response_base)
+        KV_SERIALIZE_PARENT(rpc_response_base)
         KV_SERIALIZE(block_header)
       END_KV_SERIALIZE_MAP()
     };
@@ -972,14 +995,14 @@ namespace cryptonote
   
   struct COMMAND_RPC_GET_BLOCK_HEADER_BY_HASH
   {
-    struct request_t: public rpc_access_request_base
+    struct request_t: public rpc_request_base
     {
       std::string hash;
       std::vector<std::string> hashes;
       bool fill_pow_hash;
 
       BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE_PARENT(rpc_access_request_base)
+        KV_SERIALIZE_PARENT(rpc_request_base)
         KV_SERIALIZE(hash)
         KV_SERIALIZE(hashes)
         KV_SERIALIZE_OPT(fill_pow_hash, false);
@@ -987,13 +1010,13 @@ namespace cryptonote
     };
     typedef epee::misc_utils::struct_init<request_t> request;
 
-    struct response_t: public rpc_access_response_base
+    struct response_t: public rpc_response_base
     {
       block_header_response block_header;
       std::vector<block_header_response> block_headers;
       
       BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE_PARENT(rpc_access_response_base)
+        KV_SERIALIZE_PARENT(rpc_response_base)
         KV_SERIALIZE(block_header)
         KV_SERIALIZE(block_headers)
       END_KV_SERIALIZE_MAP()
@@ -1003,25 +1026,25 @@ namespace cryptonote
 
   struct COMMAND_RPC_GET_BLOCK_HEADER_BY_HEIGHT
   {
-    struct request_t: public rpc_access_request_base
+    struct request_t: public rpc_request_base
     {
       uint64_t height;
       bool fill_pow_hash;
 
       BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE_PARENT(rpc_access_request_base)
+        KV_SERIALIZE_PARENT(rpc_request_base)
         KV_SERIALIZE(height)
         KV_SERIALIZE_OPT(fill_pow_hash, false);
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<request_t> request;
 
-    struct response_t: public rpc_access_response_base
+    struct response_t: public rpc_response_base
     {
       block_header_response block_header;
       
       BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE_PARENT(rpc_access_response_base)
+        KV_SERIALIZE_PARENT(rpc_response_base)
         KV_SERIALIZE(block_header)
       END_KV_SERIALIZE_MAP()
     };
@@ -1030,14 +1053,14 @@ namespace cryptonote
 
   struct COMMAND_RPC_GET_BLOCK
   {
-    struct request_t: public rpc_access_request_base
+    struct request_t: public rpc_request_base
     {
       std::string hash;
       uint64_t height;
       bool fill_pow_hash;
 
       BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE_PARENT(rpc_access_request_base)
+        KV_SERIALIZE_PARENT(rpc_request_base)
         KV_SERIALIZE(hash)
         KV_SERIALIZE(height)
         KV_SERIALIZE_OPT(fill_pow_hash, false);
@@ -1045,7 +1068,7 @@ namespace cryptonote
     };
     typedef epee::misc_utils::struct_init<request_t> request;
 
-    struct response_t: public rpc_access_response_base
+    struct response_t: public rpc_response_base
     {
       block_header_response block_header;
       std::string miner_tx_hash;
@@ -1054,7 +1077,7 @@ namespace cryptonote
       std::string json;
       
       BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE_PARENT(rpc_access_response_base)
+        KV_SERIALIZE_PARENT(rpc_response_base)
         KV_SERIALIZE(block_header)
         KV_SERIALIZE(miner_tx_hash)
         KV_SERIALIZE(tx_hashes)
@@ -1280,21 +1303,21 @@ namespace cryptonote
 
   struct COMMAND_RPC_GET_TRANSACTION_POOL
   {
-    struct request_t: public rpc_access_request_base
+    struct request_t: public rpc_request_base
     {
       BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE_PARENT(rpc_access_request_base)
+        KV_SERIALIZE_PARENT(rpc_request_base)
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<request_t> request;
 
-    struct response_t: public rpc_access_response_base
+    struct response_t: public rpc_response_base
     {
       std::vector<tx_info> transactions;
       std::vector<spent_key_image_info> spent_key_images;
 
       BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE_PARENT(rpc_access_response_base)
+        KV_SERIALIZE_PARENT(rpc_response_base)
         KV_SERIALIZE(transactions)
         KV_SERIALIZE(spent_key_images)
       END_KV_SERIALIZE_MAP()
@@ -1304,20 +1327,20 @@ namespace cryptonote
 
   struct COMMAND_RPC_GET_TRANSACTION_POOL_HASHES_BIN
   {
-    struct request_t: public rpc_access_request_base
+    struct request_t: public rpc_request_base
     {
       BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE_PARENT(rpc_access_request_base)
+        KV_SERIALIZE_PARENT(rpc_request_base)
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<request_t> request;
 
-    struct response_t: public rpc_access_response_base
+    struct response_t: public rpc_response_base
     {
       std::vector<crypto::hash> tx_hashes;
 
       BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE_PARENT(rpc_access_response_base)
+        KV_SERIALIZE_PARENT(rpc_response_base)
         KV_SERIALIZE_CONTAINER_POD_AS_BLOB(tx_hashes)
       END_KV_SERIALIZE_MAP()
     };
@@ -1326,20 +1349,20 @@ namespace cryptonote
 
   struct COMMAND_RPC_GET_TRANSACTION_POOL_HASHES
   {
-    struct request_t: public rpc_access_request_base
+    struct request_t: public rpc_request_base
     {
       BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE_PARENT(rpc_access_request_base)
+        KV_SERIALIZE_PARENT(rpc_request_base)
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<request_t> request;
 
-    struct response_t: public rpc_access_response_base
+    struct response_t: public rpc_response_base
     {
       std::vector<std::string> tx_hashes;
 
       BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE_PARENT(rpc_access_response_base)
+        KV_SERIALIZE_PARENT(rpc_response_base)
         KV_SERIALIZE(tx_hashes)
       END_KV_SERIALIZE_MAP()
     };
@@ -1355,20 +1378,20 @@ namespace cryptonote
 
   struct COMMAND_RPC_GET_TRANSACTION_POOL_BACKLOG
   {
-    struct request_t: public rpc_access_request_base
+    struct request_t: public rpc_request_base
     {
       BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE_PARENT(rpc_access_request_base)
+        KV_SERIALIZE_PARENT(rpc_request_base)
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<request_t> request;
 
-    struct response_t: public rpc_access_response_base
+    struct response_t: public rpc_response_base
     {
       std::vector<tx_backlog_entry> backlog;
 
       BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE_PARENT(rpc_access_response_base)
+        KV_SERIALIZE_PARENT(rpc_response_base)
         KV_SERIALIZE_CONTAINER_POD_AS_BLOB(backlog)
       END_KV_SERIALIZE_MAP()
     };
@@ -1423,20 +1446,20 @@ namespace cryptonote
 
   struct COMMAND_RPC_GET_TRANSACTION_POOL_STATS
   {
-    struct request_t: public rpc_access_request_base
+    struct request_t: public rpc_request_base
     {
       BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE_PARENT(rpc_access_request_base)
+        KV_SERIALIZE_PARENT(rpc_request_base)
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<request_t> request;
 
-    struct response_t: public rpc_access_response_base
+    struct response_t: public rpc_response_base
     {
       txpool_stats pool_stats;
 
       BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE_PARENT(rpc_access_response_base)
+        KV_SERIALIZE_PARENT(rpc_response_base)
         KV_SERIALIZE(pool_stats)
       END_KV_SERIALIZE_MAP()
     };
@@ -1467,14 +1490,14 @@ namespace cryptonote
 
   struct COMMAND_RPC_GET_BLOCK_HEADERS_RANGE
   {
-    struct request_t: public rpc_access_request_base
+    struct request_t: public rpc_request_base
     {
       uint64_t start_height;
       uint64_t end_height;
       bool fill_pow_hash;
 
       BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE_PARENT(rpc_access_request_base)
+        KV_SERIALIZE_PARENT(rpc_request_base)
         KV_SERIALIZE(start_height)
         KV_SERIALIZE(end_height)
         KV_SERIALIZE_OPT(fill_pow_hash, false);
@@ -1482,12 +1505,12 @@ namespace cryptonote
     };
     typedef epee::misc_utils::struct_init<request_t> request;
 
-    struct response_t: public rpc_access_response_base
+    struct response_t: public rpc_response_base
     {
       std::vector<block_header_response> headers;
 
       BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE_PARENT(rpc_access_response_base)
+        KV_SERIALIZE_PARENT(rpc_response_base)
         KV_SERIALIZE(headers)
       END_KV_SERIALIZE_MAP()
     };
@@ -1669,18 +1692,18 @@ namespace cryptonote
     
   struct COMMAND_RPC_HARD_FORK_INFO
   {
-    struct request_t: public rpc_access_request_base
+    struct request_t: public rpc_request_base
     {
       uint8_t version;
 
       BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE_PARENT(rpc_access_request_base)
+        KV_SERIALIZE_PARENT(rpc_request_base)
         KV_SERIALIZE(version)
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<request_t> request;
 
-    struct response_t: public rpc_access_response_base
+    struct response_t: public rpc_response_base
     {
       uint8_t version;
       bool enabled;
@@ -1692,7 +1715,7 @@ namespace cryptonote
       uint64_t earliest_height;
 
       BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE_PARENT(rpc_access_response_base)
+        KV_SERIALIZE_PARENT(rpc_response_base)
         KV_SERIALIZE(version)
         KV_SERIALIZE(enabled)
         KV_SERIALIZE(window)
@@ -1829,7 +1852,7 @@ namespace cryptonote
 
   struct COMMAND_RPC_GET_OUTPUT_HISTOGRAM
   {
-    struct request_t: public rpc_access_request_base
+    struct request_t: public rpc_request_base
     {
       std::vector<uint64_t> amounts;
       uint64_t min_count;
@@ -1838,7 +1861,7 @@ namespace cryptonote
       uint64_t recent_cutoff;
 
       BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE_PARENT(rpc_access_request_base);
+        KV_SERIALIZE_PARENT(rpc_request_base);
         KV_SERIALIZE(amounts);
         KV_SERIALIZE(min_count);
         KV_SERIALIZE(max_count);
@@ -1867,12 +1890,12 @@ namespace cryptonote
       entry() {}
     };
 
-    struct response_t: public rpc_access_response_base
+    struct response_t: public rpc_response_base
     {
       std::vector<entry> histogram;
 
       BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE_PARENT(rpc_access_response_base)
+        KV_SERIALIZE_PARENT(rpc_response_base)
         KV_SERIALIZE(histogram)
       END_KV_SERIALIZE_MAP()
     };
@@ -1905,20 +1928,20 @@ namespace cryptonote
 
   struct COMMAND_RPC_GET_COINBASE_TX_SUM
   {
-    struct request_t: public rpc_access_request_base
+    struct request_t: public rpc_request_base
     {
       uint64_t height;
       uint64_t count;
 
       BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE_PARENT(rpc_access_request_base);
+        KV_SERIALIZE_PARENT(rpc_request_base);
         KV_SERIALIZE(height);
         KV_SERIALIZE(count);
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<request_t> request;
 
-    struct response_t: public rpc_access_response_base
+    struct response_t: public rpc_response_base
     {
       uint64_t emission_amount;
       std::string wide_emission_amount;
@@ -1928,7 +1951,7 @@ namespace cryptonote
       uint64_t fee_amount_top64;
 
       BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE_PARENT(rpc_access_response_base)
+        KV_SERIALIZE_PARENT(rpc_response_base)
         KV_SERIALIZE(emission_amount)
         KV_SERIALIZE(wide_emission_amount)
         KV_SERIALIZE(emission_amount_top64)
@@ -1942,24 +1965,24 @@ namespace cryptonote
 
   struct COMMAND_RPC_GET_BASE_FEE_ESTIMATE
   {
-    struct request_t: public rpc_access_request_base
+    struct request_t: public rpc_request_base
     {
       uint64_t grace_blocks;
 
       BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE_PARENT(rpc_access_request_base)
+        KV_SERIALIZE_PARENT(rpc_request_base)
         KV_SERIALIZE(grace_blocks)
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<request_t> request;
 
-    struct response_t: public rpc_access_response_base
+    struct response_t: public rpc_response_base
     {
       uint64_t fee;
       uint64_t quantization_mask;
 
       BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE_PARENT(rpc_access_response_base)
+        KV_SERIALIZE_PARENT(rpc_response_base)
         KV_SERIALIZE(fee)
         KV_SERIALIZE_OPT(quantization_mask, (uint64_t)1)
       END_KV_SERIALIZE_MAP()
@@ -2051,21 +2074,21 @@ namespace cryptonote
 
   struct COMMAND_RPC_RELAY_TX
   {
-    struct request_t: public rpc_access_request_base
+    struct request_t: public rpc_request_base
     {
       std::vector<std::string> txids;
 
       BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE_PARENT(rpc_access_request_base)
+        KV_SERIALIZE_PARENT(rpc_request_base)
         KV_SERIALIZE(txids)
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<request_t> request;
 
-    struct response_t: public rpc_access_response_base
+    struct response_t: public rpc_response_base
     {
       BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE_PARENT(rpc_access_response_base)
+        KV_SERIALIZE_PARENT(rpc_response_base)
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<response_t> response;
@@ -2073,10 +2096,10 @@ namespace cryptonote
 
   struct COMMAND_RPC_SYNC_INFO
   {
-    struct request_t: public rpc_access_request_base
+    struct request_t: public rpc_request_base
     {
       BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE_PARENT(rpc_access_request_base)
+        KV_SERIALIZE_PARENT(rpc_request_base)
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<request_t> request;
@@ -2111,7 +2134,7 @@ namespace cryptonote
       END_KV_SERIALIZE_MAP()
     };
 
-    struct response_t: public rpc_access_response_base
+    struct response_t: public rpc_response_base
     {
       uint64_t height;
       uint64_t target_height;
@@ -2121,7 +2144,7 @@ namespace cryptonote
       std::string overview;
 
       BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE_PARENT(rpc_access_response_base)
+        KV_SERIALIZE_PARENT(rpc_response_base)
         KV_SERIALIZE(height)
         KV_SERIALIZE(target_height)
         KV_SERIALIZE(next_needed_pruning_seed)
@@ -2142,7 +2165,7 @@ struct output_distribution_data
 
   struct COMMAND_RPC_GET_OUTPUT_DISTRIBUTION
   {
-    struct request_t: public rpc_access_request_base
+    struct request_t: public rpc_request_base
     {
      
       uint64_t from_height;
@@ -2150,7 +2173,7 @@ struct output_distribution_data
       bool binary;
 
       BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE_PARENT(rpc_access_request_base)
+        KV_SERIALIZE_PARENT(rpc_request_base)
         KV_SERIALIZE_OPT(from_height, (uint64_t)0)
         KV_SERIALIZE_OPT(to_height, (uint64_t)0)
         KV_SERIALIZE_OPT(binary, true)
@@ -2183,12 +2206,12 @@ struct output_distribution_data
       END_KV_SERIALIZE_MAP()
     };
 
-    struct response_t: public rpc_access_response_base
+    struct response_t: public rpc_response_base
     {
       distribution dist;
 
       BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE_PARENT(rpc_access_response_base)
+        KV_SERIALIZE_PARENT(rpc_response_base)
         KV_SERIALIZE(dist)
       END_KV_SERIALIZE_MAP()
     };
@@ -2197,15 +2220,15 @@ struct output_distribution_data
 
   struct COMMAND_RPC_ACCESS_INFO
   {
-    struct request_t: public rpc_access_request_base
+    struct request_t: public rpc_request_base
     {
       BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE_PARENT(rpc_access_request_base)
+        KV_SERIALIZE_PARENT(rpc_request_base)
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<request_t> request;
 
-    struct response_t: public rpc_access_response_base
+    struct response_t: public rpc_response_base
     {
       std::string hashing_blob;
       uint64_t seed_height;
@@ -2217,7 +2240,7 @@ struct output_distribution_data
       uint64_t height;
 
       BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE_PARENT(rpc_access_response_base)
+        KV_SERIALIZE_PARENT(rpc_response_base)
         KV_SERIALIZE(hashing_blob)
         KV_SERIALIZE(seed_height)
         KV_SERIALIZE(seed_hash)
@@ -2233,23 +2256,23 @@ struct output_distribution_data
 
   struct COMMAND_RPC_ACCESS_SUBMIT_NONCE
   {
-    struct request_t: public rpc_access_request_base
+    struct request_t: public rpc_request_base
     {
       uint32_t nonce;
       uint32_t cookie;
 
       BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE_PARENT(rpc_access_request_base)
+        KV_SERIALIZE_PARENT(rpc_request_base)
         KV_SERIALIZE(nonce)
         KV_SERIALIZE(cookie)
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<request_t> request;
 
-    struct response_t: public rpc_access_response_base
+    struct response_t: public rpc_response_base
     {
       BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE_PARENT(rpc_access_response_base)
+        KV_SERIALIZE_PARENT(rpc_response_base)
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<response_t> response;
@@ -2257,23 +2280,23 @@ struct output_distribution_data
 
   struct COMMAND_RPC_ACCESS_PAY
   {
-    struct request_t: public rpc_access_request_base
+    struct request_t: public rpc_request_base
     {
       std::string paying_for;
       uint64_t payment;
 
       BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE_PARENT(rpc_access_request_base)
+        KV_SERIALIZE_PARENT(rpc_request_base)
         KV_SERIALIZE(paying_for)
         KV_SERIALIZE(payment)
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<request_t> request;
 
-    struct response_t: public rpc_access_response_base
+    struct response_t: public rpc_response_base
     {
       BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE_PARENT(rpc_access_response_base)
+        KV_SERIALIZE_PARENT(rpc_response_base)
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<response_t> response;

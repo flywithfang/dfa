@@ -40,31 +40,24 @@ namespace cryptonote
     std::tuple<bool, transaction> construct_miner_tx(size_t height, size_t median_weight, uint64_t already_generated_coins, size_t current_block_weight, uint64_t fee, const account_public_address &miner_address,  const blobdata& extra_nonce = blobdata(),  uint8_t hard_fork_version = 1);
   
 
+
   struct tx_source_entry
   {
-    typedef std::pair<uint64_t, rct::ctkey> output_entry;
+      struct  OutAsIn{
+    uint64_t global_oi;
+    rct::key otk;
+    rct::key commitment;
+  };
 
-    std::vector<output_entry> decoys;  //index + key + optional ringct commitment
+    std::vector<OutAsIn> decoys;  //index + key + optional ringct commitment
     uint64_t real_output;               //index in outputs vector of real output_entry
     crypto::public_key real_out_tx_key; //incoming real tx public key
     uint64_t real_output_in_tx_index;   //index in transaction outputs vector
     uint64_t amount;                    //money
     rct::key noise;                      //ringct amount mask
+    rct::key otk_sec;
+    crypto::key_image ki;
 
-    void push_output(uint64_t idx, const crypto::public_key &otk, uint64_t amount) {
-       decoys.push_back(std::make_pair(idx, rct::ctkey({rct::pk2rct(otk), rct::zeroCommit(amount)}))); }
-
-    BEGIN_SERIALIZE_OBJECT()
-      FIELD(decoys)
-      FIELD(real_output)
-      FIELD(real_out_tx_key)
-      FIELD(real_output_in_tx_index)
-      FIELD(amount)
-      FIELD(noise)
-
-      if (real_output >= decoys.size())
-        return false;
-    END_SERIALIZE()
   };
 
   struct tx_destination_entry
@@ -88,9 +81,8 @@ namespace cryptonote
 
   //---------------------------------------------------------------
   crypto::public_key get_destination_view_key_pub(const std::vector<tx_destination_entry> &destinations, const boost::optional<cryptonote::account_public_address>& change_addr);
-  bool construct_tx(const account_keys& sender_account_keys, std::vector<tx_source_entry> &sources, const std::vector<tx_destination_entry>& destinations, const boost::optional<cryptonote::account_public_address>& change_addr, const std::vector<uint8_t> &extra, transaction& tx, uint64_t unlock_time);
 
-  bool construct_tx_and_get_tx_key(const account_keys& sender_account_keys, std::vector<tx_source_entry>& sources, std::vector<tx_destination_entry>& destinations, const boost::optional<cryptonote::account_public_address>& change_addr, const std::vector<uint8_t> &extra, transaction& tx, uint64_t unlock_time, crypto::secret_key &tx_sec,  const rct::RCTConfig &rct_config = { rct::RangeProofPaddedBulletproof, 3 },bool shuffle_outs=true);
+  bool construct_tx(const account_keys& sender_account_keys, std::vector<tx_source_entry>& sources, std::vector<tx_destination_entry>& destinations,  const std::vector<uint8_t> &extra, transaction& tx, uint64_t unlock_time, crypto::secret_key &tx_sec);
 
   bool generate_genesis_block(
       block& bl

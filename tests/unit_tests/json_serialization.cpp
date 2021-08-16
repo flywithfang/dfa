@@ -76,7 +76,7 @@ namespace test
         std::vector<crypto::secret_key> extra_keys{};
 
 
-        if (!cryptonote::construct_tx_and_get_tx_key(from, actual_sources, to, boost::none, {}, tx, 0, tx_key))
+        if (!cryptonote::construct_tx(from, actual_sources, to, boost::none, {}, tx, 0, tx_key))
             throw std::runtime_error{"transaction construction error"};
 
         return tx;

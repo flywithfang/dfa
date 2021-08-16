@@ -577,7 +577,7 @@ namespace rct {
     
     //RCT simple    
     //for post-rct only
-    rctSig genRctSimple(const key &message, const std::vector<ctkey> & inSk, const keyV & destinations, const vector<xmr_amount> &inamounts, const vector<xmr_amount> &outamounts, xmr_amount txnFee, const ctkeyM & mixRing, const std::vector<key> &shared_secs,  const std::vector<unsigned int> & index, std::vector<ctkey> &outSk, const RCTConfig &rct_config) {
+    rctSig genRctSimple(const key &message, const std::vector<ctkey> & inSk, const keyV & destinations, const vector<xmr_amount> &inamounts, const vector<xmr_amount> &outamounts, xmr_amount txnFee, const ctkeyM & mixRing, const std::vector<key> &shared_secs,  const std::vector<unsigned int> & index, std::vector<ctkey> &outSk) {
 //        const bool bulletproof = rct_config.range_proof_type != RangeProofBorromean;
         CHECK_AND_ASSERT_THROW_MES(inamounts.size() > 0, "Empty inamounts");
         CHECK_AND_ASSERT_THROW_MES(inamounts.size() == inSk.size(), "Different number of inamounts/inSk");
@@ -678,7 +678,7 @@ namespace rct {
         return rv;
     }
 
-    rctSig genRctSimple(const key &message, const ctkeyV & inSk, const ctkeyV & inPk, const keyV & destinations, const vector<xmr_amount> &inamounts, const vector<xmr_amount> &outamounts, const keyV &amount_keys, xmr_amount txnFee, unsigned int mixin, const RCTConfig &rct_config) {
+    rctSig genRctSimple(const key &message, const ctkeyV & inSk, const ctkeyV & inPk, const keyV & destinations, const vector<xmr_amount> &inamounts, const vector<xmr_amount> &outamounts, const keyV &amount_keys, xmr_amount txnFee, unsigned int mixin) {
         std::vector<unsigned int> index;
         index.resize(inPk.size());
         ctkeyM mixRing;
@@ -688,7 +688,7 @@ namespace rct {
           mixRing[i].resize(mixin+1);
           index[i] = populateFromBlockchainSimple(mixRing[i], inPk[i], mixin);
         }
-        return genRctSimple(message, inSk, destinations, inamounts, outamounts, txnFee, mixRing, amount_keys,  index, outSk, rct_config);
+        return genRctSimple(message, inSk, destinations, inamounts, outamounts, txnFee, mixRing, amount_keys,  index, outSk);
     }
 
    
@@ -852,19 +852,14 @@ namespace rct {
         return false;
       }
     }
- std::tuple<xmr_amount,key> decodeRctSimple(const rctSig & rv, const rct::key & shared_sec, unsigned int i)
+ std::tuple<xmr_amount,key> decodeRctSimple(const uint64_t encrypted_amount, const rct::key& commitment,const rct::key & shared_sec)
  {
-       CHECK_AND_ASSERT_THROW_MES(rv.type == RCTTypeSimple || rv.type == RCTTypeBulletproof || rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG, "decodeRct called on non simple rctSig");
-        CHECK_AND_ASSERT_THROW_MES(i < rv.ecdhInfo.size(), "Bad index");
-        CHECK_AND_ASSERT_THROW_MES(rv.outPk.size() == rv.ecdhInfo.size(), "Mismatched sizes of rv.outPk and rv.ecdhInfo");
-
-     
+    //crypto::derivation_to_scalar(kA,i,ss);
         //mask amount and mask
-        const auto encrypted_amount = rv.ecdhInfo[i].amount;
         const uint64_t amount = rct::ecdhDecode(encrypted_amount, shared_sec);
 
         const auto noise = rct::genCommitmentMask(shared_sec);
-        key C = rv.outPk[i].commitment;
+        key C = commitment;
         DP("C");DP(C);
 
         key C2;
@@ -880,12 +875,6 @@ namespace rct {
         return {amount,noise};
 
  }
-    std::tuple<xmr_amount,key> decodeRctSimple(const rctSig & rv, const crypto::key_derivation & kA, unsigned int i ) { 
-        crypto::secret_key ss;
-        crypto::derivation_to_scalar(kA,i,ss);
-        const rct::key shared_sec = rct::sk2rct(ss);
-        return decodeRctSimple(rv,shared_sec,i);
-    }
 
 
 }

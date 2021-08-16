@@ -330,7 +330,6 @@ namespace cryptonote
     res.start_time = restricted ? 0 : (uint64_t)m_core.get_start_time();
     res.free_space = restricted ? std::numeric_limits<uint64_t>::max() : m_core.get_free_space();
     res.offline = m_core.offline();
-    res.height_without_bootstrap = restricted ? 0 : res.height;
   
     res.database_size = m_core.get_blockchain_storage().get_db().get_database_size();
     if (restricted)
@@ -531,7 +530,6 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
   bool core_rpc_server::on_get_outs_bin(const COMMAND_RPC_GET_OUTPUTS_BIN::request& req, COMMAND_RPC_GET_OUTPUTS_BIN::response& res, const connection_context *ctx)
   {
     RPC_TRACKER(get_outs_bin);
-    bool r;
 
 
     res.status = "Failed";
@@ -615,7 +613,6 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
   bool core_rpc_server::on_get_transactions(const COMMAND_RPC_GET_TRANSACTIONS::request& req, COMMAND_RPC_GET_TRANSACTIONS::response& res, const connection_context *ctx)
   {
     RPC_TRACKER(get_transactions);
-    bool ok;
   
     const bool restricted = m_restricted && ctx;
     const bool request_has_rpc_origin = ctx != NULL;
@@ -1030,7 +1027,7 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
    // if (!skip_validation)
     {
       tx_verification_context tvc{};
-      if(!m_core.handle_incoming_tx({tx_blob, crypto::null_hash}, tvc, (req.do_not_relay ? relay_method::none : relay_method::local), false) || tvc.m_verifivation_failed)
+      if(!m_core.handle_incoming_tx({tx_blob, crypto::null_hash}, tvc, relay_method::local, false) || tvc.m_verifivation_failed)
       {
         res.status = "Failed";
         std::string reason = "";
@@ -1223,7 +1220,6 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
   bool core_rpc_server::on_get_transaction_pool_hashes_bin(const COMMAND_RPC_GET_TRANSACTION_POOL_HASHES_BIN::request& req, COMMAND_RPC_GET_TRANSACTION_POOL_HASHES_BIN::response& res, const connection_context *ctx)
   {
     RPC_TRACKER(get_transaction_pool_hashes);
-    bool r;
     const bool restricted = m_restricted && ctx;
     const bool request_has_rpc_origin = ctx != NULL;
     const bool allow_sensitive = !request_has_rpc_origin || !restricted;
@@ -2223,6 +2219,53 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
     return true;
   }
  
+  bool core_rpc_server::on_sync_balance(const COMMAND_RPC_SYNC_BALANCE::request& req, COMMAND_RPC_SYNC_BALANCE::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
+  {
+    RPC_TRACKER(prune_blockchain);
+
+    try
+    {
+        const crypto::secret_key & a=*reinterpret_cast<const crypto::secret_key*>(&req.a);
+        const crypto::public_key & B=req.B;
+        const auto start_height = req.start_height;
+        std::vector<transaction_out> v;
+          Blockchain & bc = m_core.get_blockchain_storage();
+         //B+H(kA,i)G=otk
+         bc.for_all_outputs(start_height,[&](auto oid, auto & ot){
+          const auto & tx_pub_key= ot.tx_pub_key;
+           crypto::key_derivation kA;
+            bool r = crypto::generate_key_derivation(tx_pub_key, a, kA);
+            if(!r)
+             throw_and_log( "Failed to generate key derivation");
+            crypto::public_key otk2;
+            r = crypto::derive_public_key(kA, ot.local_index, B, otk2);
+            if (ot.otk==otk2){
+              MDEBUG("found own trans "<<ot.tx_hash);
+              transaction_out td;
+              td.tx_hash = ot.tx_hash;
+              td.tx_key=ot.tx_pub_key;
+              td.unlock_time=ot.unlock_time;
+              td.otk = ot.otk;
+              td.block_height = ot.height;
+              td.local_oi=ot.local_index;
+              td.global_oi = oid;
+              td.commitment = ot.commitment;
+              td.amount = ot.amount;
+              v.emplace_back(td);
+            }
+            return true;
+         });
+         res.v = std::move(v);
+    }
+    catch (const std::exception &e)
+    {
+      error_resp.code = CORE_RPC_ERROR_CODE_INTERNAL_ERROR;
+      error_resp.message = e.what();
+      return false;
+    }
+    res.status = CORE_RPC_STATUS_OK;
+    return true;
+  }
   //------------------------------------------------------------------------------------------------------------------------------
   bool core_rpc_server::on_flush_cache(const COMMAND_RPC_FLUSH_CACHE::request& req, COMMAND_RPC_FLUSH_CACHE::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
   {

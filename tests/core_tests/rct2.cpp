@@ -133,7 +133,7 @@ bool gen_rct2_tx_validation_base::generate_with(std::vector<test_event_entry>& e
 
     crypto::secret_key tx_key;
     rct_txes.resize(rct_txes.size() + 1);
-    bool r = construct_tx_and_get_tx_key(miner_accounts[n].get_keys(),  sources, destinations, cryptonote::account_public_address{}, std::vector<uint8_t>(), rct_txes.back(), 0, tx_key);
+    bool r = construct_tx(miner_accounts[n].get_keys(),  sources, destinations, cryptonote::account_public_address{}, std::vector<uint8_t>(), rct_txes.back(), 0, tx_key);
     CHECK_AND_ASSERT_MES(r, false, "failed to construct transaction");
 
     if (post_tx && !post_tx(rct_txes.back(), n))

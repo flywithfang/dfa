@@ -261,7 +261,7 @@ namespace cryptonote
     return is_v1_tx(blobdata_ref{tx_blob.data(), tx_blob.size()});
   }
   //---------------------------------------------------------------
-  bool generate_key_image_helper(const account_keys& ack,   const crypto::public_key& tx_public_key,  size_t real_output_index, keypair& otk_p, crypto::key_image& ki)
+  bool generate_key_image_helper(const account_keys& ack,   const crypto::public_key& tx_public_key,  size_t oi, keypair& otk_p, crypto::key_image& ki)
   {
     crypto::key_derivation kA{};
     //rGa=rA
@@ -276,7 +276,7 @@ namespace cryptonote
     }
 
  //computes Hs(a*R || idx) + b
-      crypto::derive_secret_key(kA, real_output_index, b, otk_p.sec); // 
+      crypto::derive_secret_key(kA, oi, b, otk_p.sec); // 
     
       CHECK_AND_ASSERT_MES(crypto::secret_key_to_public_key(otk_p.sec, otk_p.pub), false, "Failed to derive public key");
     crypto::generate_key_image(otk_p.pub, otk_p.sec, ki);

@@ -127,6 +127,7 @@ struct output_data_t
   uint64_t           unlock_time;  //!< the output's unlock time (or height)
   uint64_t           height;       //!< the height of the block which created the output
   uint64_t           local_index;
+  uint64_t           amount;
   rct::key           commitment;   //!< the output's amount commitment (for spend verification)
   crypto::hash       tx_hash;
   crypto::public_key tx_pub_key;

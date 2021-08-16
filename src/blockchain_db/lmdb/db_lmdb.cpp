@@ -4166,12 +4166,13 @@ void BlockchainLMDB::__add_transaction(const crypto::hash& blk_hash, const std::
    
       MDB_val_set(k,output_id);
       output_data_t ok;
+      ok.tx_hash=tx_hash;
       ok.otk = otk;
       ok.unlock_time = tx.unlock_time;
       ok.height = m_height;
       ok.commitment = commitment;
-      ok.tx_hash=tx_hash;
       ok.local_index =oi;
+      ok.amount= miner_tx ? vout.amount :tx.rct_signatures.ecdhInfo[oi].amount;
 
       MDB_val_set(v,ok);
 
