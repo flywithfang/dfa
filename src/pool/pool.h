@@ -32,6 +32,20 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifndef POOL_H
 #define POOL_H
 
+
+typedef struct pool_stats_t
+{
+    uint64_t network_difficulty;
+    uint64_t network_hashrate;
+    uint64_t network_height;
+    uint32_t connected_accounts;
+    uint64_t pool_hashrate;
+    uint64_t round_hashes;
+    uint32_t pool_blocks_found;
+    time_t last_block_found;
+    time_t last_template_fetched;
+} pool_stats_t;
+
 void account_hr(double *avg, const char *address);
 uint64_t account_balance(const char *address);
 uint64_t worker_count(const char *address);

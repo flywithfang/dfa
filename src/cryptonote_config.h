@@ -184,7 +184,6 @@ namespace config
 {
 
   uint64_t const CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX = 18;
-  uint64_t const CRYPTONOTE_PUBLIC_INTEGRATED_ADDRESS_BASE58_PREFIX = 19;
 
   uint16_t const P2P_DEFAULT_PORT = 16060;
   uint16_t const RPC_DEFAULT_PORT = 16061;
@@ -210,7 +209,6 @@ namespace config
   namespace testnet
   {
     uint64_t const CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX = 53;
-    uint64_t const CRYPTONOTE_PUBLIC_INTEGRATED_ADDRESS_BASE58_PREFIX = 54;
 
     uint16_t const P2P_DEFAULT_PORT = 26060;
     uint16_t const RPC_DEFAULT_PORT = 26061;
@@ -224,7 +222,6 @@ namespace config
   namespace stagenet
   {
     uint64_t const CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX = 24;
-    uint64_t const CRYPTONOTE_PUBLIC_INTEGRATED_ADDRESS_BASE58_PREFIX = 25;
 
     uint16_t const P2P_DEFAULT_PORT = 36060;
     uint16_t const RPC_DEFAULT_PORT = 36061;
@@ -249,7 +246,6 @@ namespace cryptonote
   struct config_t
   {
     uint64_t const CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX;
-    uint64_t const CRYPTONOTE_PUBLIC_INTEGRATED_ADDRESS_BASE58_PREFIX;
 
     uint16_t const P2P_DEFAULT_PORT;
     uint16_t const RPC_DEFAULT_PORT;
@@ -261,7 +257,6 @@ namespace cryptonote
   {
     static const config_t mainnet = {
       ::config::CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX,
-      ::config::CRYPTONOTE_PUBLIC_INTEGRATED_ADDRESS_BASE58_PREFIX,
 
       ::config::P2P_DEFAULT_PORT,
       ::config::RPC_DEFAULT_PORT,
@@ -271,8 +266,6 @@ namespace cryptonote
     };
     static const config_t testnet = {
       ::config::testnet::CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX,
-      ::config::testnet::CRYPTONOTE_PUBLIC_INTEGRATED_ADDRESS_BASE58_PREFIX,
-
       ::config::testnet::P2P_DEFAULT_PORT,
       ::config::testnet::RPC_DEFAULT_PORT,
       ::config::testnet::NETWORK_ID,
@@ -281,7 +274,6 @@ namespace cryptonote
     };
     static const config_t stagenet = {
       ::config::stagenet::CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX,
-      ::config::stagenet::CRYPTONOTE_PUBLIC_INTEGRATED_ADDRESS_BASE58_PREFIX,
 
       ::config::stagenet::P2P_DEFAULT_PORT,
       ::config::stagenet::RPC_DEFAULT_PORT,

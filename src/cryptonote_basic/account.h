@@ -73,7 +73,6 @@ namespace cryptonote
     crypto::secret_key generate(const crypto::secret_key& recovery_key = crypto::secret_key(), bool recover = false);
     const account_keys& get_keys() const;
     std::string get_public_address_str(network_type nettype) const;
-    std::string get_public_integrated_address_str(const crypto::hash8 &payment_id, network_type nettype) const;
 
     void deinit();
 

@@ -678,11 +678,7 @@ namespace rct {
         cn_fast_hash(hash, data, sizeof(data));
         return hash;
     }
-    static void xor8(key &v, const key &k)
-    {
-        for (int i = 0; i < 8; ++i)
-            v.bytes[i] ^= k.bytes[i];
-    }
+  
     key genCommitmentMask(const key &shared_sec)
     {
         char data[15 + sizeof(key)];

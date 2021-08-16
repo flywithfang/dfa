@@ -56,13 +56,7 @@ namespace cryptonote {
     account_public_address m_address;
     uint8_t check_sum;
   };
-  struct public_integrated_address_outer_blob
-  {
-    uint8_t m_ver;
-    account_public_address m_address;
-    crypto::hash8 payment_id;
-    uint8_t check_sum;
-  };
+
 #pragma pack (pop)
 
   namespace
@@ -89,15 +83,8 @@ namespace cryptonote {
   size_t get_max_tx_size();
   bool get_block_reward(size_t median_weight, size_t current_block_weight, uint64_t already_generated_coins, uint64_t &reward, uint8_t version);
   uint8_t get_account_address_checksum(const public_address_outer_blob& bl);
-  uint8_t get_account_integrated_address_checksum(const public_integrated_address_outer_blob& bl);
 
   std::string get_account_address_as_str(      network_type nettype, const account_public_address& adr    );
-
-  std::string get_account_integrated_address_as_str(
-      network_type nettype
-    , const account_public_address& adr
-    , const crypto::hash8& payment_id
-    );
 
   bool get_account_address_from_str(
       address_parse_info& info
@@ -105,13 +92,7 @@ namespace cryptonote {
     , const std::string& str
     );
 
-  bool get_account_address_from_str_or_url(
-      address_parse_info& info
-    , network_type nettype
-    , const std::string& str_or_url
-    , std::function<std::string(const std::string&, const std::vector<std::string>&, bool)> dns_confirm = return_first_address
-    );
-
+ 
   bool is_coinbase(const transaction& tx);
 
   bool operator ==(const cryptonote::transaction& a, const cryptonote::transaction& b);

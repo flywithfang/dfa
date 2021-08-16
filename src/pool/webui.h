@@ -32,18 +32,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifndef WEBUI_H
 #define WEBUI_H
 
-typedef struct pool_stats_t
-{
-    uint64_t network_difficulty;
-    uint64_t network_hashrate;
-    uint64_t network_height;
-    uint32_t connected_accounts;
-    uint64_t pool_hashrate;
-    uint64_t round_hashes;
-    uint32_t pool_blocks_found;
-    time_t last_block_found;
-    time_t last_template_fetched;
-} pool_stats_t;
+
 
 typedef struct wui_context_t
 {

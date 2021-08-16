@@ -41,6 +41,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "cryptonote_basic/difficulty.h"
 #include "crypto/crypto.h"
 #include "crypto/hash.h"
+#include "crypto/rx-hash.h"
 #include "cryptonote_config.h"
 #include "serialization/binary_utils.h"
 #include "ringct/rctSigs.h"
@@ -59,14 +60,8 @@ static int nettype_from_prefix(uint8_t *nettype, uint64_t prefix)
 {
     static const struct { cryptonote::network_type type; uint64_t prefix; } nettype_prefix[] = {
         { MAINNET, CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX },
-        { MAINNET, CRYPTONOTE_PUBLIC_INTEGRATED_ADDRESS_BASE58_PREFIX },
-        { MAINNET, CRYPTONOTE_PUBLIC_SUBADDRESS_BASE58_PREFIX },
         { TESTNET, testnet::CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX },
-        { TESTNET, testnet::CRYPTONOTE_PUBLIC_INTEGRATED_ADDRESS_BASE58_PREFIX },
-        { TESTNET, testnet::CRYPTONOTE_PUBLIC_SUBADDRESS_BASE58_PREFIX },
         { STAGENET, stagenet::CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX },
-        { STAGENET, stagenet::CRYPTONOTE_PUBLIC_INTEGRATED_ADDRESS_BASE58_PREFIX },
-        { STAGENET, stagenet::CRYPTONOTE_PUBLIC_SUBADDRESS_BASE58_PREFIX }
     };
     int rv = XMR_MISMATCH_ERROR;
     for (auto ntp : nettype_prefix)
@@ -84,12 +79,9 @@ static int nettype_from_prefix(uint8_t *nettype, uint64_t prefix)
 int get_hashing_blob(const unsigned char *input, const size_t in_size,
         unsigned char **output, size_t *out_size)
 {
-    block b = AUTO_VAL_INIT(b);
+  
     blobdata bd = std::string((const char*)input, in_size);
-    if (!parse_and_validate_block_from_blob(bd, b))
-    {
-        return XMR_PARSE_ERROR;
-    }
+    const auto b = parse_and_validate_block_from_blob(bd);
 
     blobdata blob = get_block_hashing_blob(b);
     *out_size = blob.length();
@@ -120,42 +112,24 @@ int parse_address(const char *input, uint64_t *prefix,
     return XMR_NO_ERROR;
 }
 
-int is_integrated(uint64_t prefix)
-{
-    if (prefix == CRYPTONOTE_PUBLIC_INTEGRATED_ADDRESS_BASE58_PREFIX ||
-            prefix == testnet::CRYPTONOTE_PUBLIC_INTEGRATED_ADDRESS_BASE58_PREFIX ||
-            prefix == stagenet::CRYPTONOTE_PUBLIC_INTEGRATED_ADDRESS_BASE58_PREFIX)
-        return 1;
-    return 0;
-}
-
 int get_block_hash(const unsigned char *input, const size_t in_size,
         unsigned char *output)
 {
-    block b = AUTO_VAL_INIT(b);
     blobdata bd = std::string((const char*)input, in_size);
-    bool rv = parse_and_validate_block_from_blob(bd, b,
-            reinterpret_cast<hash&>(*output));
-    return rv ? XMR_NO_ERROR : XMR_PARSE_ERROR;
+    auto b = parse_and_validate_block_from_blob(bd);
+
+    *reinterpret_cast<hash*>(*output)=get_block_hash(b);
+    return  XMR_NO_ERROR ;
 }
 
-void get_hash(const unsigned char *input, const size_t in_size,
-        unsigned char *output, int variant, uint64_t height)
-{
-    cn_slow_hash(input, in_size,
-            reinterpret_cast<hash&>(*output), variant, height);
-}
 
 void get_rx_hash(const unsigned char *input, const size_t in_size,
         unsigned char *output, const unsigned char *seed_hash,
         const uint64_t height)
 {
-#ifdef HAVE_RX
     static unsigned miners = tools::get_max_concurrency();
     uint64_t seed_height = rx_seedheight(height);
-    rx_slow_hash(height, seed_height, (const char*)seed_hash,
-            (const char*)input, in_size, (char*)output, miners, 0);
-#endif
+    rx_slow_hash(height, seed_height, (const char*)seed_hash,(const char*)input, in_size, (char*)output, miners, 0);
 }
 
 int validate_block_from_blob(const char *blob_hex,const unsigned char *sec_view,const unsigned char *pub_spend)
@@ -164,7 +138,6 @@ int validate_block_from_blob(const char *blob_hex,const unsigned char *sec_view,
       The only validation needed is that the data parses to a block and the
       miner tx only pays out to the pool.
     */
-    block b = AUTO_VAL_INIT(b);
     blobdata bd;
     const secret_key &a = *reinterpret_cast<const secret_key*>(sec_view);
     const public_key &B = *reinterpret_cast<const public_key*>(pub_spend);
@@ -172,8 +145,7 @@ int validate_block_from_blob(const char *blob_hex,const unsigned char *sec_view,
     if (!parse_hexstr_to_binbuff(blob_hex, bd))
         return XMR_PARSE_ERROR;
 
-    if (!parse_and_validate_block_from_blob(bd, b))
-        return XMR_PARSE_ERROR;
+    const auto b= parse_and_validate_block_from_blob(bd);
 
     transaction tx = b.miner_tx;
 
@@ -197,13 +169,13 @@ int validate_block_from_blob(const char *blob_hex,const unsigned char *sec_view,
       created miner tx only has one public key in extra. If we can't derive
       from the first (which should be only) found, reject.
     */
-    public_key R = tx.tx_pub_key;
+    const public_key R = tx.tx_pub_key;
     public_key otk = boost::get<txout_to_key>(tx.vout[0].target).key;
     key_derivation derivation;
     generate_key_derivation(R, a, derivation);
     public_key B2;
     derive_subaddress_public_key(otk, derivation, 0, B2);
-    if (derived != B)
+    if (B != B2)
         return XMR_MISMATCH_ERROR;
 
     return XMR_NO_ERROR;

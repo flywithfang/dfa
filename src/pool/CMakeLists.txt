@@ -26,14 +26,14 @@
 # STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 # THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+
 set(pool_sources
   bstack.c
   forkoff.c
   growbag.c
   log.c
-  pool.cpp
+  pool.c
   util.c
-  webui.c
   xmr.cpp)
 
 set(pool_headers)
@@ -49,22 +49,27 @@ monero_add_executable(pool
   ${pool_private_headers})
 target_link_libraries(pool
   PRIVATE
-    wallet
+  cryptonote_basic
+    ringct
     cryptonote_core
     cncrypto
     common
-    mnemonics
     ${EPEE_READLINE}
     version
     ${Boost_CHRONO_LIBRARY}
-    ${Boost_PROGRAM_OPTIONS_LIBRARY}
     ${Boost_FILESYSTEM_LIBRARY}
     ${Boost_LOCALE_LIBRARY}
     ${ICU_LIBRARIES}
     ${Boost_THREAD_LIBRARY}
     ${CMAKE_THREAD_LIBS_INIT}
     ${GNU_READLINE_LIBRARY}
-    ${EXTRA_LIBRARIES})
+    ${EXTRA_LIBRARIES}
+    event
+    json-c
+    uuid
+    lmdb
+    )
+
 set_property(TARGET pool
   PROPERTY
     OUTPUT_NAME "dfa-pool")
