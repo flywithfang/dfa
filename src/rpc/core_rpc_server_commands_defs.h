@@ -378,7 +378,6 @@ namespace cryptonote
       std::string prunable_hash;
       std::string as_json;
       bool in_pool;
-      bool double_spend_seen;
       uint64_t block_height;
       uint64_t block_timestamp;
       uint64_t received_timestamp;
@@ -393,7 +392,6 @@ namespace cryptonote
         KV_SERIALIZE(prunable_hash)
         KV_SERIALIZE(as_json)
         KV_SERIALIZE(in_pool)
-        KV_SERIALIZE(double_spend_seen)
         if (!this_ref.in_pool)
         {
           KV_SERIALIZE(block_height)
@@ -1258,16 +1256,11 @@ namespace cryptonote
     uint64_t blob_size;
     uint64_t weight;
     uint64_t fee;
-    std::string max_used_block_id_hash;
-    uint64_t max_used_block_height;
     bool kept_by_block;
-    uint64_t last_failed_height;
-    std::string last_failed_id_hash;
     uint64_t receive_time;
     bool relayed;
     uint64_t last_relayed_time;
     bool do_not_relay;
-    bool double_spend_seen;
     std::string tx_blob;
 
     BEGIN_KV_SERIALIZE_MAP()
@@ -1276,30 +1269,16 @@ namespace cryptonote
       KV_SERIALIZE(blob_size)
       KV_SERIALIZE_OPT(weight, (uint64_t)0)
       KV_SERIALIZE(fee)
-      KV_SERIALIZE(max_used_block_id_hash)
-      KV_SERIALIZE(max_used_block_height)
       KV_SERIALIZE(kept_by_block)
-      KV_SERIALIZE(last_failed_height)
-      KV_SERIALIZE(last_failed_id_hash)
       KV_SERIALIZE(receive_time)
       KV_SERIALIZE(relayed)
       KV_SERIALIZE(last_relayed_time)
       KV_SERIALIZE(do_not_relay)
-      KV_SERIALIZE(double_spend_seen)
       KV_SERIALIZE(tx_blob)
     END_KV_SERIALIZE_MAP()
   };
 
-  struct spent_key_image_info
-  {
-    std::string id_hash;
-    std::vector<std::string> txs_hashes;
 
-    BEGIN_KV_SERIALIZE_MAP()
-      KV_SERIALIZE(id_hash)
-      KV_SERIALIZE(txs_hashes)
-    END_KV_SERIALIZE_MAP()
-  };
 
   struct COMMAND_RPC_GET_TRANSACTION_POOL
   {
@@ -1314,12 +1293,10 @@ namespace cryptonote
     struct response_t: public rpc_response_base
     {
       std::vector<tx_info> transactions;
-      std::vector<spent_key_image_info> spent_key_images;
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE_PARENT(rpc_response_base)
         KV_SERIALIZE(transactions)
-        KV_SERIALIZE(spent_key_images)
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<response_t> response;

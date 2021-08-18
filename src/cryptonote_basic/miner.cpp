@@ -223,22 +223,7 @@ namespace cryptonote
   bool miner::init(const boost::program_options::variables_map& vm, network_type nettype)
   {
     
-    if(command_line::has_arg(vm, arg_start_mining))
-    {
-      address_parse_info info;
-      if(!cryptonote::get_account_address_from_str(info, nettype, command_line::get_arg(vm, arg_start_mining)))
-      {
-        LOG_ERROR("Target account address " << command_line::get_arg(vm, arg_start_mining) << " has wrong format, starting daemon canceled");
-        return false;
-      }
-      m_mine_address = info.address;
-      m_threads_total = 1;
-      m_do_mining = true;
-      if(command_line::has_arg(vm, arg_mining_threads))
-      {
-        m_threads_total = command_line::get_arg(vm, arg_mining_threads);
-      }
-    }
+ 
 
     return true;
   }

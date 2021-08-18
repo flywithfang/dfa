@@ -84,24 +84,7 @@ namespace rpc
     uint32_t pruning_seed;
   };
 
-  struct tx_in_pool
-  {
-    cryptonote::transaction tx;
-    crypto::hash tx_hash;
-    uint64_t blob_size;
-    uint64_t weight;
-    uint64_t fee;
-    crypto::hash max_used_block_hash;
-    uint64_t max_used_block_height;
-    bool kept_by_block;
-    crypto::hash last_failed_block_hash;
-    uint64_t last_failed_block_height;
-    uint64_t receive_time;
-    uint64_t last_relayed_time;
-    bool relayed;
-    bool do_not_relay;
-    bool double_spend_seen;
-  };
+
 
   typedef std::unordered_map<crypto::key_image, std::vector<crypto::hash> > key_images_with_tx_hashes;
 

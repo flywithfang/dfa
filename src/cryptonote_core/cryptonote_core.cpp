@@ -1058,16 +1058,6 @@ namespace cryptonote
       return false;
     }
  
-
-
-    // for version > 1, ringct signatures check verifies amounts match
-
-    if(!keeped_by_block && get_transaction_weight(tx) >= m_blockchain.get_current_cumulative_block_weight_limit() - CRYPTONOTE_COINBASE_BLOB_RESERVED_SIZE)
-    {
-      MERROR_VER("tx is too large " << get_transaction_weight(tx) << ", expected not bigger than " << m_blockchain.get_current_cumulative_block_weight_limit() - CRYPTONOTE_COINBASE_BLOB_RESERVED_SIZE);
-      return false;
-    }
-
     //check if tx use different key images
     if(!check_tx_inputs_keyimages_diff(tx))
     {
@@ -1270,11 +1260,7 @@ namespace cryptonote
     m_mempool.set_relayed(epee::to_span(tx_hashes), tx_relay);
   }
 
-  //-----------------------------------------------------------------------------------------------
-  bool core::get_block_template(block& b, const crypto::hash *prev_block, const account_public_address& adr, difficulty_type& diffic, uint64_t& height, uint64_t& expected_reward, const blobdata& ex_nonce, uint64_t &seed_height, crypto::hash &seed_hash)
-  {
-    return m_blockchain.create_block_template(b, prev_block, adr, diffic, height, expected_reward, ex_nonce, seed_height, seed_hash);
-  }
+
   //-----------------------------------------------------------------------------------------------
   bool core::find_blockchain_supplement(const std::list<crypto::hash>& qblock_ids, bool clip_pruned, NOTIFY_RESPONSE_CHAIN_ENTRY::request& resp) const
   {
@@ -1388,7 +1374,7 @@ namespace cryptonote
     // blob size against the block weight limit, which acts as a sanity check without
     // having to parse/weigh first; in fact, since the block blob is the block header
     // plus the tx hashes, the weight will typically be much larger than the blob size
-    if(block_blob.size() > m_blockchain.get_current_cumulative_block_weight_limit() + BLOCK_SIZE_SANITY_LEEWAY)
+    if(block_blob.size() > 16*1024*1024)
     {
       LOG_PRINT_L1("WRONG BLOCK BLOB, sanity check failed on size " << block_blob.size() << ", rejected");
       return false;
@@ -1465,16 +1451,17 @@ namespace cryptonote
   {
     return m_mempool.have_tx(id, relay_category::legacy);
   }
+
+   bool core::pool_has_key_image(const crypto::key_image & ki)const
+   {
+    return m_mempool.have_tx_keyimg_as_spent(ki);
+   }
   //-----------------------------------------------------------------------------------------------
-  bool core::get_pool_transactions_and_spent_keys_info(std::vector<tx_info>& tx_infos, std::vector<spent_key_image_info>& key_image_infos, bool include_sensitive_data) const
+  bool core::get_pool_transactions_and_spent_keys_info(std::vector<tx_info>& tx_infos,  bool include_sensitive_data) const
   {
-    return m_mempool.get_transactions_and_spent_keys_info(tx_infos, key_image_infos, include_sensitive_data);
+    return m_mempool.get_transactions_and_spent_keys_info(tx_infos,  include_sensitive_data);
   }
-  //-----------------------------------------------------------------------------------------------
-  bool core::get_pool_for_rpc(std::vector<cryptonote::rpc::tx_in_pool>& tx_infos, cryptonote::rpc::key_images_with_tx_hashes& key_image_infos) const
-  {
-    return m_mempool.get_pool_for_rpc(tx_infos, key_image_infos);
-  }
+ 
   //-----------------------------------------------------------------------------------------------
   bool core::get_short_chain_history(std::list<crypto::hash>& ids) const
   {
@@ -1486,9 +1473,9 @@ namespace cryptonote
     return m_blockchain.handle_get_objects(arg, rsp);
   }
   //-----------------------------------------------------------------------------------------------
-  crypto::hash core::get_block_id_by_height(uint64_t height) const
+  crypto::hash core::get_block_hash_by_height(uint64_t height) const
   {
-    return m_blockchain.get_block_id_by_height(height);
+    return m_blockchain.get_block_hash_by_height(height);
   }
   //-----------------------------------------------------------------------------------------------
   bool core::get_block_by_hash(const crypto::hash &h, block &blk, bool *orphan) const
@@ -1601,4 +1588,9 @@ namespace cryptonote
   {
     raise(SIGTERM);
   }
+
+cryptonote::BlockTemplate core::get_block_template(const crypto::hash *prev_block, const account_public_address& adr, const blobdata& ex_nonce)
+{
+  m_blockchain.create_block_template(prev_block,adr,ex_nonce);
+}
 }

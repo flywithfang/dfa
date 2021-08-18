@@ -52,30 +52,22 @@ namespace cryptonote {
   /* Cryptonote helper functions                                          */
   /************************************************************************/
   //-----------------------------------------------------------------------------------------------
-  size_t get_min_block_weight(uint8_t version)
-  {
-    if (version < 2)
-      return CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE_V1;
-    if (version < 5)
-      return CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE_V2;
-    return CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE_V5;
-  }
+ 
   //-----------------------------------------------------------------------------------------------
   size_t get_max_tx_size()
   {
     return CRYPTONOTE_MAX_TX_SIZE;
   }
   //-----------------------------------------------------------------------------------------------
-  bool get_block_reward(size_t median_weight, size_t current_block_weight, uint64_t already_generated_coins, uint64_t &reward, uint8_t version) {
-    static_assert(DIFFICULTY_TARGET_V2%60==0&&DIFFICULTY_TARGET_V1%60==0,"difficulty targets must be a multiple of 60");
-    const int target =  DIFFICULTY_TARGET_V2;
+  uint64_t get_block_reward() {
+    static_assert(DIFFICULTY_TARGET%60==0,"difficulty targets must be a multiple of 60");
+    const int target =  DIFFICULTY_TARGET;
     const int target_minutes = target / 60;
-    const int emission_speed_factor = EMISSION_SPEED_FACTOR_PER_MINUTE - (target_minutes-1);
+    const int emission_speed_factor = EMISSION_SPEED_FACTOR_PER_MINUTE *target_minutes;
 
-    uint64_t base_reward = (MONEY_SUPPLY - already_generated_coins) >> emission_speed_factor;
-    reward = base_reward;
-
-    return true;
+    uint64_t reward =EMISSION_SPEED_FACTOR_PER_MINUTE *target_minutes;
+    return reward;
+  
   }
   //------------------------------------------------------------------------------------
   uint8_t get_account_address_checksum(const public_address_outer_blob& bl)
@@ -99,71 +91,38 @@ namespace cryptonote {
 
     return true;
   }
+  std::string get_account_address_as_str(network_type nettype, account_public_address const & adr
+    )
+  {
+    uint64_t address_prefix =  get_config(nettype).CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX;
+
+    return tools::base58::encode_addr(address_prefix, t_serializable_object_to_blob(adr));
+  }
   //-----------------------------------------------------------------------
-  bool get_account_address_from_str(address_parse_info& info, network_type nettype
-    , std::string const & str    )
+  account_public_address get_account_address_from_str( network_type nettype, std::string const & str    )
   {
     uint64_t address_prefix = get_config(nettype).CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX;
 
-    if (2 * sizeof(public_address_outer_blob) != str.size())
-    {
+      account_public_address addr{};
       blobdata data;
       uint64_t prefix;
       if (!tools::base58::decode_addr(str, prefix, data))
       {
-        LOG_PRINT_L2("Invalid address format");
-        return false;
+        throw_and_log("Invalid address format");
       }
 
-
+      if (!::serialization::parse_binary(data, addr))
       {
-        if (!::serialization::parse_binary(data, info.address))
-        {
-          LOG_PRINT_L1("Account public address keys can't be parsed");
-          return false;
-        }
+        throw_and_log("Account public address keys can't be parsed");
       }
 
-      if (!crypto::check_key(info.address.m_spend_public_key) || !crypto::check_key(info.address.m_view_public_key))
+      if (!crypto::check_key(addr.m_spend_public_key) || !crypto::check_key(addr.m_view_public_key))
       {
-        LOG_PRINT_L1("Failed to validate address keys");
-        return false;
+        throw_and_log("Failed to validate address keys");
       }
-    }
-    else
-    {
-      // Old address format
-      std::string buff;
-      if(!string_tools::parse_hexstr_to_binbuff(str, buff))
-        return false;
+   
 
-      if(buff.size()!=sizeof(public_address_outer_blob))
-      {
-        LOG_PRINT_L1("Wrong public address size: " << buff.size() << ", expected size: " << sizeof(public_address_outer_blob));
-        return false;
-      }
-
-      public_address_outer_blob blob = *reinterpret_cast<const public_address_outer_blob*>(buff.data());
-
-
-      if(blob.m_ver > CRYPTONOTE_PUBLIC_ADDRESS_TEXTBLOB_VER)
-      {
-        LOG_PRINT_L1("Unknown version of public address: " << blob.m_ver << ", expected " << CRYPTONOTE_PUBLIC_ADDRESS_TEXTBLOB_VER);
-        return false;
-      }
-
-      if(blob.check_sum != get_account_address_checksum(blob))
-      {
-        LOG_PRINT_L1("Wrong public address checksum");
-        return false;
-      }
-
-      //we success
-      info.address = blob.m_address;
-      info.has_payment_id = false;
-    }
-
-    return true;
+    return addr;
   }
   
   //--------------------------------------------------------------------------------

@@ -70,7 +70,7 @@ namespace cryptonote
   }
 
   //---------------------------------------------------------------
-  std::tuple<bool, transaction> construct_miner_tx(size_t height, size_t median_weight, uint64_t already_generated_coins, size_t current_block_weight, uint64_t fee, const account_public_address &miner_address, const blobdata& blob_reserve,  uint8_t hard_fork_version) {
+  std::tuple<bool, transaction> construct_miner_tx(size_t height, uint64_t fee, const account_public_address &miner_address, const blobdata& blob_reserve,  uint8_t hard_fork_version) {
     transaction tx{};
     const  std::tuple<bool, transaction> failed={false,tx};
 
@@ -87,15 +87,10 @@ namespace cryptonote
     tx.unlock_time = height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW;
     tx.vin.push_back(in);
 
-    uint64_t block_reward;
-    if(!get_block_reward(median_weight, current_block_weight, already_generated_coins, block_reward, hard_fork_version))
-    {
-      LOG_PRINT_L0("Block is too big");
-       return {false,tx};
-    }
+    const uint64_t block_reward=get_block_reward();
 
-    MDEBUG("construct_miner_tx: reward " << print_money(block_reward) <<", fee " << fee << ",height "<<height<<",coins"<<already_generated_coins);
-    block_reward += fee;
+    MDEBUG("construct_miner_tx: reward " << print_money(block_reward) <<", fee " << fee << ",height "<<height);
+    const auto total_reward = block_reward + fee;
 
     {
       crypto::key_derivation kA{};
@@ -111,7 +106,7 @@ namespace cryptonote
 
       txout_to_key tk{otk};
 
-      tx_out out{block_reward,tk};
+      tx_out out{total_reward,tk};
       tx.vout.push_back(out);
     }
 

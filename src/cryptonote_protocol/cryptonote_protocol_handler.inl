@@ -2342,7 +2342,7 @@ skip:
                 drop_connection_with_score(context, 5, false);
                 return 1;
               }
-              if (m_core.get_block_id_by_height(arg.start_height + i) != bh)
+              if (m_core.get_block_hash_by_height(arg.start_height + i) != bh)
               {
                 LOG_ERROR_CCONTEXT("Block is on the main chain, but not at the expected height, dropping connection");
                 drop_connection_with_score(context, 5, false);

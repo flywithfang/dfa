@@ -42,45 +42,7 @@
 
 using namespace std;
 
-#define DEFAULT_TEST_DIFFICULTY_TARGET        120
 
-static int test_wide_difficulty(const char *filename)
-{
-    std::vector<uint64_t> timestamps;
-    std::vector<cryptonote::difficulty_type> cumulative_difficulties;
-    fstream data(filename, fstream::in);
-    data.exceptions(fstream::badbit);
-    data.clear(data.rdstate());
-    uint64_t timestamp;
-    cryptonote::difficulty_type difficulty, cum_diff = 0;
-    size_t n = 0;
-    while (data >> timestamp >> difficulty) {
-        size_t begin, end;
-        if (n < DIFFICULTY_WINDOW + DIFFICULTY_LAG) {
-            begin = 0;
-            end = min(n, (size_t) DIFFICULTY_WINDOW);
-        } else {
-            end = n - DIFFICULTY_LAG;
-            begin = end - DIFFICULTY_WINDOW;
-        }
-        cryptonote::difficulty_type res = cryptonote::next_difficulty(
-            std::vector<uint64_t>(timestamps.begin() + begin, timestamps.begin() + end),
-            std::vector<cryptonote::difficulty_type>(cumulative_difficulties.begin() + begin, cumulative_difficulties.begin() + end), DEFAULT_TEST_DIFFICULTY_TARGET);
-        if (res != difficulty) {
-            cerr << "Wrong wide difficulty for block " << n << endl
-                << "Expected: " << difficulty << endl
-                << "Found: " << res << endl;
-            return 1;
-        }
-        timestamps.push_back(timestamp);
-        cumulative_difficulties.push_back(cum_diff += difficulty);
-        ++n;
-    }
-    if (!data.eof()) {
-        data.clear(fstream::badbit);
-    }
-    return 0;
-}
 
 int main(int argc, char *argv[]) {
     return 0;

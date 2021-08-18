@@ -274,7 +274,7 @@
     int64_t diff = static_cast<int64_t>(peer_sync_info.current_height) - static_cast<int64_t>(m_core.get_current_blockchain_height());
     uint64_t abs_diff = std::abs(diff);
     MCLOG(is_inital ? el::Level::Info : el::Level::Debug, "global", el::Color::Yellow, peer_cxt <<  "Sync data returned a new top block candidate: " << m_core.get_current_blockchain_height() << " -> " << peer_sync_info.current_height
-      << " [Your node is " << abs_diff << " blocks (" << tools::get_human_readable_timespan(abs_diff * DIFFICULTY_TARGET_V2) << ") "<< (0 <= diff ? std::string("behind") : std::string("ahead"))<< "] " << ENDL << "SYNCHRONIZATION started");
+      << " [Your node is " << abs_diff << " blocks (" << tools::get_human_readable_timespan(abs_diff * DIFFICULTY_TARGET) << ") "<< (0 <= diff ? std::string("behind") : std::string("ahead"))<< "] " << ENDL << "SYNCHRONIZATION started");
 
       if (peer_sync_info.current_height >= m_core.get_current_blockchain_height() + 5) // don't switch to unsafe mode just for a few blocks
       {

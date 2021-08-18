@@ -210,7 +210,7 @@ namespace cryptonote
       *
       * @note see Blockchain::create_block_template
       */
-     virtual bool get_block_template(block& b, const crypto::hash *prev_block, const account_public_address& adr, difficulty_type& diffic, uint64_t& height, uint64_t& expected_reward, const blobdata& ex_nonce, uint64_t &seed_height, crypto::hash &seed_hash);
+     virtual cryptonote::BlockTemplate get_block_template(const crypto::hash *prev_block, const account_public_address& adr, const blobdata& ex_nonce);
 
      /**
       * @brief called when a transaction is relayed.
@@ -336,11 +336,11 @@ namespace cryptonote
      }
 
      /**
-      * @copydoc Blockchain::get_block_id_by_height
+      * @copydoc Blockchain::get_block_hash_by_height
       *
-      * @note see Blockchain::get_block_id_by_height
+      * @note see Blockchain::get_block_hash_by_height
       */
-     crypto::hash get_block_id_by_height(uint64_t height) const;
+     crypto::hash get_block_hash_by_height(uint64_t height) const;
 
      /**
       * @copydoc Blockchain::get_transactions
@@ -426,6 +426,8 @@ namespace cryptonote
       */
      bool pool_has_tx(const crypto::hash &txid) const;
 
+     bool pool_has_key_image(const crypto::key_image & ki)const;
+
      /**
       * @copydoc tx_memory_pool::get_transactions
       * @param include_sensitive_txes include private transactions
@@ -472,14 +474,7 @@ namespace cryptonote
       *
       * @note see tx_memory_pool::get_pool_transactions_and_spent_keys_info
       */
-     bool get_pool_transactions_and_spent_keys_info(std::vector<tx_info>& tx_infos, std::vector<spent_key_image_info>& key_image_infos, bool include_sensitive_txes = false) const;
-
-     /**
-      * @copydoc tx_memory_pool::get_pool_for_rpc
-      *
-      * @note see tx_memory_pool::get_pool_for_rpc
-      */
-     bool get_pool_for_rpc(std::vector<cryptonote::rpc::tx_in_pool>& tx_infos, cryptonote::rpc::key_images_with_tx_hashes& key_image_infos) const;
+     bool get_pool_transactions_and_spent_keys_info(std::vector<tx_info>& tx_infos, bool include_sensitive_txes = false) const;
 
      /**
       * @copydoc tx_memory_pool::get_transactions_count

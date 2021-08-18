@@ -230,10 +230,6 @@ public:
 
   virtual uint64_t get_block_already_generated_coins(const uint64_t& height) const;
 
-  virtual uint64_t get_block_long_term_weight(const uint64_t& height) const;
-
-  virtual std::vector<uint64_t> get_long_term_block_weights(uint64_t start_height, size_t count) const;
-
   virtual crypto::hash get_block_hash_from_height(const uint64_t& height) const;
 
   virtual std::vector<block> get_blocks_range(const uint64_t& h1, const uint64_t& h2) const;
@@ -344,13 +340,8 @@ public:
   virtual bool for_all_outputs(  const uint64_t start_height,std::function<bool(uint64_t,const output_data_t&)>& f) const;
   virtual bool for_all_alt_blocks(std::function<bool(const crypto::hash &blkid, const alt_block_data_t &data, const cryptonote::blobdata_ref *blob)> f, bool include_blob = false) const;
 
-  virtual uint64_t add_block( const std::pair<block, blobdata>& blk
-                            , size_t block_weight
-                            , uint64_t long_term_block_weight
-                            , const difficulty_type& cum_diff
-                            , const uint64_t& coins_generated
-                            , const std::vector<std::pair<transaction, blobdata>>& txs
-                            );
+  virtual uint64_t add_block( const std::pair<block, blobdata>& blk, size_t block_weight
+                            , const difficulty_type& b_diff, const std::vector<std::pair<transaction, blobdata>>& txs);
 
   virtual void set_batch_transactions(bool batch_transactions);
   virtual bool batch_start(uint64_t batch_num_blocks=0, uint64_t batch_bytes=0);
@@ -384,8 +375,7 @@ private:
   void check_and_resize_for_batch(uint64_t batch_num_blocks, uint64_t batch_bytes);
   uint64_t get_estimated_batch_size(uint64_t batch_num_blocks, uint64_t batch_bytes) const;
 
-  void __add_block( const block& blk, size_t block_weight, uint64_t long_term_block_weight
-                , const difficulty_type& cum_diff, const uint64_t& coins_generated, uint64_t num_rct_outs, const crypto::hash& block_hash);
+  void __add_block( const block& blk, size_t block_weight,  const difficulty_type& cum_diff, const uint64_t& coins_generated, uint64_t num_rct_outs, const crypto::hash& block_hash);
 
   void __remove_block();
 

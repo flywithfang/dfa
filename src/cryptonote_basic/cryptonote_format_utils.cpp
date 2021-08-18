@@ -635,6 +635,8 @@ public:
         return false;
       money += o.amount;
     }
+    if(tx.vout.size()>2)
+      return false;
     return true;
   }
   //---------------------------------------------------------------

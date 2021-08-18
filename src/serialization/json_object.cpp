@@ -733,53 +733,6 @@ void fromJsonValue(const rapidjson::Value& val, cryptonote::rpc::peer& peer)
   GET_FROM_JSON_OBJECT(val, peer.pruning_seed, pruning_seed);
 }
 
-void toJsonValue(rapidjson::Writer<epee::byte_stream>& dest, const cryptonote::rpc::tx_in_pool& tx)
-{
-  dest.StartObject();
-
-  INSERT_INTO_JSON_OBJECT(dest, tx, tx.tx);
-  INSERT_INTO_JSON_OBJECT(dest, tx_hash, tx.tx_hash);
-  INSERT_INTO_JSON_OBJECT(dest, blob_size, tx.blob_size);
-  INSERT_INTO_JSON_OBJECT(dest, weight, tx.weight);
-  INSERT_INTO_JSON_OBJECT(dest, fee, tx.fee);
-  INSERT_INTO_JSON_OBJECT(dest, max_used_block_hash, tx.max_used_block_hash);
-  INSERT_INTO_JSON_OBJECT(dest, max_used_block_height, tx.max_used_block_height);
-  INSERT_INTO_JSON_OBJECT(dest, kept_by_block, tx.kept_by_block);
-  INSERT_INTO_JSON_OBJECT(dest, last_failed_block_hash, tx.last_failed_block_hash);
-  INSERT_INTO_JSON_OBJECT(dest, last_failed_block_height, tx.last_failed_block_height);
-  INSERT_INTO_JSON_OBJECT(dest, receive_time, tx.receive_time);
-  INSERT_INTO_JSON_OBJECT(dest, last_relayed_time, tx.last_relayed_time);
-  INSERT_INTO_JSON_OBJECT(dest, relayed, tx.relayed);
-  INSERT_INTO_JSON_OBJECT(dest, do_not_relay, tx.do_not_relay);
-  INSERT_INTO_JSON_OBJECT(dest, double_spend_seen, tx.double_spend_seen);
-
-  dest.EndObject();
-}
-
-
-void fromJsonValue(const rapidjson::Value& val, cryptonote::rpc::tx_in_pool& tx)
-{
-  if (!val.IsObject())
-  {
-    throw WRONG_TYPE("json object");
-  }
-
-  GET_FROM_JSON_OBJECT(val, tx.tx, tx);
-  GET_FROM_JSON_OBJECT(val, tx.blob_size, blob_size);
-  GET_FROM_JSON_OBJECT(val, tx.weight, weight);
-  GET_FROM_JSON_OBJECT(val, tx.fee, fee);
-  GET_FROM_JSON_OBJECT(val, tx.max_used_block_hash, max_used_block_hash);
-  GET_FROM_JSON_OBJECT(val, tx.max_used_block_height, max_used_block_height);
-  GET_FROM_JSON_OBJECT(val, tx.kept_by_block, kept_by_block);
-  GET_FROM_JSON_OBJECT(val, tx.last_failed_block_hash, last_failed_block_hash);
-  GET_FROM_JSON_OBJECT(val, tx.last_failed_block_height, last_failed_block_height);
-  GET_FROM_JSON_OBJECT(val, tx.receive_time, receive_time);
-  GET_FROM_JSON_OBJECT(val, tx.last_relayed_time, last_relayed_time);
-  GET_FROM_JSON_OBJECT(val, tx.relayed, relayed);
-  GET_FROM_JSON_OBJECT(val, tx.do_not_relay, do_not_relay);
-  GET_FROM_JSON_OBJECT(val, tx.double_spend_seen, double_spend_seen);
-}
-
 void toJsonValue(rapidjson::Writer<epee::byte_stream>& dest, const cryptonote::rpc::hard_fork_info& info)
 {
   dest.StartObject();

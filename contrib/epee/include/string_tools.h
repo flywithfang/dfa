@@ -58,6 +58,13 @@ namespace string_tools
     return from_hex::to_string(res, s);
   }
   
+   inline std::string parse_hexstr_to_binbuff(const boost::string_ref s )
+  {
+    std::string res;
+    auto r = from_hex::to_string(res, s);
+    if(!r) throw std::runtime_error("bad hex str");
+    return res;
+  }
   std::string get_ip_string_from_int32(uint32_t ip);
   bool get_ip_int32_from_string(uint32_t& ip, const std::string& ip_str);
   bool parse_peer_from_string(uint32_t& ip, uint16_t& port, const std::string& addres);

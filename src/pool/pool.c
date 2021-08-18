@@ -172,8 +172,6 @@ typedef struct config_t
     uint16_t pool_ssl_port;
     uint32_t pool_syn_backlog;
     uint32_t log_level;
-    char webui_listen[MAX_HOST];
-    uint16_t webui_port;
     char log_file[MAX_PATH];
     bool block_notified;
     bool disable_self_select;
@@ -506,8 +504,7 @@ unlock:
     return rc;
 }
 
-static int
-database_init(const char* data_dir)
+static int database_init(const char* data_dir)
 {
     int rc = 0;
     char *err = NULL;
@@ -1508,9 +1505,7 @@ clients_free(void)
     pthread_rwlock_unlock(&rwlock_acc);
 }
 
-static void
-response_to_block_template(json_object *result,
-        block_template_t *block_template)
+static void response_to_block_template(json_object *result,block_template_t *block_template)
 {
     JSON_GET_OR_WARN(blockhashing_blob, result, json_type_string);
     JSON_GET_OR_WARN(blocktemplate_blob, result, json_type_string);
@@ -1518,28 +1513,18 @@ response_to_block_template(json_object *result,
     JSON_GET_OR_WARN(height, result, json_type_int);
     JSON_GET_OR_WARN(prev_hash, result, json_type_string);
     JSON_GET_OR_WARN(reserved_offset, result, json_type_int);
-    block_template->blockhashing_blob = strdup(
-            json_object_get_string(blockhashing_blob));
-    block_template->blocktemplate_blob = strdup(
-            json_object_get_string(blocktemplate_blob));
+    block_template->blockhashing_blob = strdup(json_object_get_string(blockhashing_blob));
+    block_template->blocktemplate_blob = strdup(json_object_get_string(blocktemplate_blob));
     block_template->difficulty = json_object_get_int64(difficulty);
     block_template->height = json_object_get_int64(height);
     strncpy(block_template->prev_hash, json_object_get_string(prev_hash), 64);
     block_template->reserved_offset = json_object_get_int(reserved_offset);
 
-    unsigned int major_version = 0;
-    sscanf(block_template->blocktemplate_blob, "%2x", &major_version);
-    uint8_t pow_variant = major_version >= 7 ? major_version - 6 : 0;
-    log_trace("Variant: %u", pow_variant);
-
-    if (pow_variant >= 6)
     {
         JSON_GET_OR_WARN(seed_hash, result, json_type_string);
         JSON_GET_OR_WARN(next_seed_hash, result, json_type_string);
-        strncpy(block_template->seed_hash,
-                json_object_get_string(seed_hash), 64);
-        strncpy(block_template->next_seed_hash,
-                json_object_get_string(next_seed_hash), 64);
+        strncpy(block_template->seed_hash,json_object_get_string(seed_hash), 64);
+        strncpy(block_template->next_seed_hash,json_object_get_string(next_seed_hash), 64);
     }
 }
 
@@ -1624,8 +1609,7 @@ rpc_wallet_request(struct event_base *base, const char *body,
    
 }
 
-static void
-rpc_get_request_body(char *body, const char *method, char *fmt, ...)
+static void rpc_get_request_body(char *body, const char *method, char *fmt, ...)
 {
     char *pb = body;
     char *end = body + RPC_BODY_MAX;
@@ -1741,8 +1725,7 @@ rpc_on_block_headers_range(const char* data, rpc_callback_t *callback)
     json_object_put(root);
 }
 
-static void
-rpc_on_block_template(const char* data, rpc_callback_t *callback)
+static void rpc_on_block_template(const char* data, rpc_callback_t *callback)
 {
     log_trace("Got block template: \n%s", data);
     json_object *root = json_tokener_parse(data);
@@ -1942,8 +1925,7 @@ static void rpc_on_last_block_header(const char* data, rpc_callback_t *callback)
         log_info("Fetching new block template");
         char body[RPC_BODY_MAX] = {0};
         uint64_t reserve = 17;
-        rpc_get_request_body(body, "get_block_template", "sssd",
-                "wallet_address", config.pool_wallet, "reserve_size", reserve);
+        rpc_get_request_body(body, "get_block_template", "sssd","wallet_address", config.pool_wallet, "reserve_size", reserve);
         rpc_callback_t *cb1 = rpc_callback_new(rpc_on_block_template, 0, 0);
         rpc_request(pool_base, body, cb1);
 
@@ -1953,8 +1935,7 @@ static void rpc_on_last_block_header(const char* data, rpc_callback_t *callback)
             uint64_t start = end - BLOCK_HEADERS_RANGE + 1;
             rpc_get_request_body(body, "get_block_headers_range", "sdsd",
                     "start_height", start, "end_height", end);
-            rpc_callback_t *cb2 = rpc_callback_new(
-                    rpc_on_block_headers_range, 0, 0);
+            rpc_callback_t *cb2 = rpc_callback_new(rpc_on_block_headers_range, 0, 0);
             rpc_request(pool_base, body, cb2);
         }
     }
@@ -2613,8 +2594,7 @@ miner_on_block_template(json_object *message, client_t *client)
     evbuffer_add(output, body, strlen(body));
 }
 
-static void
-miner_on_submit(json_object *message, client_t *client)
+static void miner_on_submit(json_object *message, client_t *client)
 {
     struct evbuffer *output = bufferevent_get_output(client->bev);
 
@@ -2766,8 +2746,7 @@ miner_on_submit(json_object *message, client_t *client)
     /* Get hashing blob */
     size_t hashing_blob_size = 0;
     unsigned char *hashing_blob = NULL;
-    if (get_hashing_blob(block, bin_size,
-                &hashing_blob, &hashing_blob_size) != 0)
+    if (get_hashing_blob(block, bin_size,&hashing_blob, &hashing_blob_size) != 0)
     {
         char body[ERROR_BODY_MAX] = {0};
         stratum_get_error_body(body, client->json_id, "Invalid block");
@@ -2796,8 +2775,7 @@ miner_on_submit(json_object *message, client_t *client)
     {
         unsigned char seed_hash[32] = {0};
         hex_to_bin(bt->seed_hash, 64, seed_hash, 32);
-        get_rx_hash(hashing_blob, hashing_blob_size,
-                (unsigned char*)result_hash, seed_hash, bt->height);
+        get_rx_hash(hashing_blob, hashing_blob_size,(unsigned char*)result_hash, seed_hash, bt->height);
     }
 
 
@@ -2839,8 +2817,7 @@ post_hash:
     time_t now = time(NULL);
     bool can_store = true;
     log_trace("Checking hash against block difficulty: "
-            "%lu, job difficulty: %lu",
-            BN_get_word(bd), BN_get_word(jd));
+            "%lu, job difficulty: %lu",BN_get_word(bd), BN_get_word(jd));
 
     if (BN_cmp(hd, bd) >= 0)
     {
@@ -2911,8 +2888,7 @@ post_hash:
     }
 }
 
-static void
-miner_on_read(struct bufferevent *bev, void *ctx)
+static void miner_on_read(struct bufferevent *bev, void *ctx)
 {
     const char *unknown_method = "Removing client. Unknown method called.";
     const char *too_bad = "Removing client. Too many bad shares.";
@@ -3030,8 +3006,7 @@ unlock:
 }
 
 
-static void
-listener_on_error(struct bufferevent *bev, short error, void *ctx)
+static void listener_on_error(struct bufferevent *bev, short error, void *ctx)
 {
     struct event_base *base = (struct event_base*)ctx;
     client_t *client = NULL;
@@ -3083,8 +3058,7 @@ static void listener_on_accept(evutil_socket_t listener, short event, void *arg)
     bufferevent_enable(bev, EV_READ|EV_WRITE);
 }
 
-static void
-log_lock(void *ud, int lock)
+static void log_lock(void *ud, int lock)
 {
     if (lock)
         pthread_mutex_lock(ud);
@@ -3092,8 +3066,7 @@ log_lock(void *ud, int lock)
         pthread_mutex_unlock(ud);
 }
 
-static void
-read_config(const char *config_file)
+static void read_config(const char *config_file)
 {
     char line[1024] = {0};
     char path[MAX_PATH] = {0};
@@ -3116,8 +3089,6 @@ read_config(const char *config_file)
     config.pool_ssl_port = 0;
     config.pool_syn_backlog = 16;
     config.log_level = 5;
-    strcpy(config.webui_listen, "0.0.0.0");
-    config.webui_port = 4243;
     config.block_notified = false;
     config.disable_self_select = false;
     config.disable_hash_check = false;
@@ -3185,14 +3156,6 @@ read_config(const char *config_file)
         else if (strcmp(key, "pool-syn-backlog") == 0)
         {
             config.pool_syn_backlog = atoi(val);
-        }
-        else if (strcmp(key, "webui-listen") == 0)
-        {
-            strncpy(config.webui_listen, val, sizeof(config.webui_listen)-1);
-        }
-        else if (strcmp(key, "webui-port") == 0)
-        {
-            config.webui_port = atoi(val);
         }
         else if (strcmp(key, "rpc-host") == 0)
         {
@@ -3570,8 +3533,7 @@ int main(int argc, char **argv)
     while (1)
     {
         int option_index = 0;
-        c = getopt_long (argc, argv, "c:l:b::d:p:f::m:h",
-                       options, &option_index);
+        c = getopt_long (argc, argv, "c:l:b::d:p:f::m:h",options, &option_index);
         if (c == -1)
             break;
         switch (c)

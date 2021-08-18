@@ -21,7 +21,6 @@
 #include "rpc/core_rpc_server_commands_defs.h"
 
 #include "crypto/crypto.h"  // for crypto::secret_key definition
-#include "mnemonics/electrum-words.h"
 #include "rapidjson/document.h"
 #include "common/json_util.h"
 #include "ringct/rctSigs.h"
@@ -35,8 +34,6 @@
 #include "blockchain_db/blockchain_db.h"
 
 #include "blockchain_db/lmdb/db_lmdb.h"
-
-#include "mnemonics/electrum-words.h"
 
 #ifdef HAVE_READLINE
 #include "readline_buffer.h"
@@ -123,7 +120,7 @@ rct::keyV print_in(const transaction & tx){
           r_o =  last+of;
         }
         last = r_o;
-        output_data_t out = db->get_output_key(r_o,true);
+        output_data_t out = db->get_output_key(r_o);
         cout<<"  "<<out.height<<",o-k "<<out.otk<<","<<out.unlock_time<<",C1="<<out.commitment<<","<<endl;
       }
       const bool spent=db->has_key_image(tk.k_image);
@@ -135,11 +132,6 @@ rct::keyV print_in(const transaction & tx){
    return CC;
 }
 
- static void xor8(rct::key &v, const rct::key &k)
-    {
-        for (int i = 0; i < 8; ++i)
-            v.bytes[i] ^= k.bytes[i];
-    }
 rct::keyV print_out(const public_key & tx_key, const transaction & tx){
 
      ///Ra=rGa
@@ -263,22 +255,17 @@ void check_kimage(const string & ki){
 void construct_genesis_block(){
 
 //    const auto sk="533b55261db0bd3092b19c6ab60aeddb546ed6261757d1fc9d80c6198374a806";
-    const auto seed="rodent wobbly bubble satin among ecstatic desk richly bypass usage listen guest bimonthly narrate renting idols reef quote value leopard nucleus cafe hookup initiate desk";
-    const auto  [recover_key,lang]= ElectrumWords::words_to_bytes(seed);
+   // const auto  [recover_key,lang]= ElectrumWords::words_to_bytes(seed);
     account_base acc;
-    acc.generate(recover_key,true);
+    acc.generate(/*recover_key,true*/);
     const auto spend_key = acc.get_keys().m_spend_secret_key;
     cout<<string_tools::pod_to_hex(spend_key)<<endl;
-    {
-        const auto seed2 = ElectrumWords::bytes_to_words(spend_key);
-        if(!seed2) throw runtime_error("bad seed");
-        cout<<seed2.value().data()<<endl;
-    }
+  
 
     auto addr = acc.get_address();
     const auto addr_str = cryptonote::get_account_address_as_str(cryptonote::network_type::MAINNET,addr);
     cout<<"addr:"<<addr_str<<endl;
-    auto [r,tx]=cryptonote::construct_miner_tx(0,0,0,0,0,addr);
+    auto [r,tx]=cryptonote::construct_miner_tx(0,0,addr);
     if(!r) throw std::runtime_error("generate tx error");
 
     const auto s = to_json_string(tx);

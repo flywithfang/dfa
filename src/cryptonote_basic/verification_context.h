@@ -61,7 +61,6 @@ namespace cryptonote
     bool m_verifivation_failed; //bad block, should drop connection
     bool m_marked_as_orphaned;
     bool m_already_exists;
-    bool m_partial_block_reward;
     bool m_bad_pow; // if bad pow, bad peer outright for DoS protection
   };
 }

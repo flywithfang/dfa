@@ -298,7 +298,6 @@ namespace cryptonote
   uint64_t bi_diff_hi;
   crypto::hash bi_hash;
   uint64_t bi_cum_rct;
-  uint64_t bi_long_term_block_weight;
 };
 
 
@@ -696,13 +695,16 @@ estim:
 
 
 
-uint64_t BlockchainLMDB::add_block(const std::pair<block, blobdata>& blk_p, size_t block_weight, uint64_t long_term_block_weight, const difficulty_type& cum_diff, const uint64_t& coins_generated,
-    const std::vector<std::pair<transaction, blobdata>>& txs)
+uint64_t BlockchainLMDB::add_block(const std::pair<block, blobdata>& blk_p, size_t block_weight, const difficulty_type& block_diff, const std::vector<std::pair<transaction, blobdata>>& txs)
 {
   MVERBOSE("BlockchainLMDB::" << __func__);
   check_open();
+
+  const auto & b = blk_p.first;
   const uint64_t top = height();
 
+  const uint64_t coins_generated =top>0? get_block_already_generated_coins(top-1) +  get_outs_money_amount(b.miner_tx) : get_outs_money_amount(b.miner_tx);
+   const auto cum_diff = top>0 ? block_diff + get_block_cumulative_difficulty(top-1) : block_diff;
   if (top % 1024 == 0)
   {
     // for batch mode, DB resize check is done at start of batch transaction
@@ -730,10 +732,9 @@ uint64_t BlockchainLMDB::add_block(const std::pair<block, blobdata>& blk_p, size
 
       time1 = epee::misc_utils::get_tick_count();
 
-      uint64_t num_rct_outs = 0;
       blobdata miner_bd = tx_to_blob(blk.miner_tx);
       __add_transaction(blk_hash, std::make_pair(blk.miner_tx, blobdata_ref(miner_bd)));
-        num_rct_outs += blk.miner_tx.vout.size();
+      uint64_t num_rct_outs= blk.miner_tx.vout.size();
       int tx_i = 0;
       crypto::hash tx_hash = crypto::null_hash;
       for (const auto & tx : txs)
@@ -749,7 +750,7 @@ uint64_t BlockchainLMDB::add_block(const std::pair<block, blobdata>& blk_p, size
 
       // call out to subclass implementation to add the block & metadata
       time1 = epee::misc_utils::get_tick_count();
-      __add_block(blk, block_weight, long_term_block_weight, cum_diff, coins_generated, num_rct_outs, blk_hash);
+      __add_block(blk, block_weight,  cum_diff, coins_generated, num_rct_outs, blk_hash);
       TIME_MEASURE_FINISH(time1);
       time_add_block1 += time1;
 
@@ -763,7 +764,7 @@ uint64_t BlockchainLMDB::add_block(const std::pair<block, blobdata>& blk_p, size
   return top+1;
 }
 
-void BlockchainLMDB::__add_block(const block& blk, size_t block_weight, uint64_t long_term_block_weight, const difficulty_type& cum_diff, const uint64_t& coins_generated,uint64_t num_rct_outs, const crypto::hash& blk_hash)
+void BlockchainLMDB::__add_block(const block& blk, size_t block_weight,  const difficulty_type& cum_diff, const uint64_t& coins_generated,uint64_t num_rct_outs, const crypto::hash& blk_hash)
 {
   MVERBOSE("BlockchainLMDB::" << __func__);
   check_open();
@@ -824,7 +825,6 @@ void BlockchainLMDB::__add_block(const block& blk, size_t block_weight, uint64_t
     n += bi_prev->bi_cum_rct;
   }
   bi.bi_cum_rct = n+num_rct_outs;
-  bi.bi_long_term_block_weight = long_term_block_weight;
 
   MDB_val_set(val, bi);
   result = mdb_cursor_put(m_cur_block_info, (MDB_val *)&zerokval, &val, MDB_APPENDDUP);
@@ -2233,7 +2233,7 @@ bool BlockchainLMDB::for_all_alt_blocks(std::function<bool(const crypto::hash&, 
       break;
     if (result)
       throw0(DB_ERROR(lmdb_error("Failed to enumerate alt blocks: ", result).c_str()));
-    const crypto::hash &blkid = *(const crypto::hash*)k.mv_data;
+    const crypto::hash &blk_hash = *(const crypto::hash*)k.mv_data;
     if (v.mv_size < sizeof(alt_block_data_t))
       throw0(DB_ERROR("alt_blocks record is too small"));
     const alt_block_data_t *data = (const alt_block_data_t*)v.mv_data;
@@ -2243,7 +2243,7 @@ bool BlockchainLMDB::for_all_alt_blocks(std::function<bool(const crypto::hash&, 
       bd = {reinterpret_cast<const char*>(v.mv_data) + sizeof(alt_block_data_t), v.mv_size - sizeof(alt_block_data_t)};
     }
 
-    if (!f(blkid, *data, &bd)) {
+    if (!f(blk_hash, *data, &bd)) {
       ret = false;
       break;
     }
@@ -2578,10 +2578,7 @@ std::vector<uint64_t> BlockchainLMDB::get_block_weights(uint64_t start_height, s
   return get_block_info_64bit_fields(start_height, count, offsetof(mdb_block_info, bi_weight));
 }
 
-std::vector<uint64_t> BlockchainLMDB::get_long_term_block_weights(uint64_t start_height, size_t count) const
-{
-  return get_block_info_64bit_fields(start_height, count, offsetof(mdb_block_info, bi_long_term_block_weight));
-}
+
 
 difficulty_type BlockchainLMDB::get_block_cumulative_difficulty(const uint64_t& height) const
 {
@@ -2682,29 +2679,6 @@ uint64_t BlockchainLMDB::get_block_already_generated_coins(const uint64_t& heigh
 
   mdb_block_info *bi = (mdb_block_info *)result.mv_data;
   uint64_t ret = bi->bi_coins;
-  TXN_POSTFIX_RDONLY();
-  return ret;
-}
-
-uint64_t BlockchainLMDB::get_block_long_term_weight(const uint64_t& height) const
-{
-  MVERBOSE("BlockchainLMDB::" << __func__);
-  check_open();
-
-  TXN_PREFIX_RDONLY();
-  RCURSOR(block_info);
-
-  MDB_val_set(result, height);
-  auto get_result = mdb_cursor_get(m_cur_block_info, (MDB_val *)&zerokval, &result, MDB_GET_BOTH);
-  if (get_result == MDB_NOTFOUND)
-  {
-    throw0(BLOCK_DNE(std::string("Attempt to get block long term weight from height ").append(boost::lexical_cast<std::string>(height)).append(" failed -- block info not in db").c_str()));
-  }
-  else if (get_result)
-    throw0(DB_ERROR("Error attempting to retrieve a long term block weight from the db"));
-
-  mdb_block_info *bi = (mdb_block_info *)result.mv_data;
-  uint64_t ret = bi->bi_long_term_block_weight;
   TXN_POSTFIX_RDONLY();
   return ret;
 }
@@ -3973,7 +3947,7 @@ uint8_t BlockchainLMDB::get_hard_fork_version(uint64_t height) const
   return ret;
 }
 
-void BlockchainLMDB::add_alt_block(const crypto::hash &blkid, const cryptonote::alt_block_data_t &data, const cryptonote::blobdata_ref &blob)
+void BlockchainLMDB::add_alt_block(const crypto::hash &blk_hash, const cryptonote::alt_block_data_t &data, const cryptonote::blobdata_ref &blob)
 {
   MVERBOSE("BlockchainLMDB::" << __func__);
   check_open();
@@ -3981,7 +3955,7 @@ void BlockchainLMDB::add_alt_block(const crypto::hash &blkid, const cryptonote::
 
   CURSOR(alt_blocks)
 
-  MDB_val k = {sizeof(blkid), (void *)&blkid};
+  MDB_val k = {sizeof(blk_hash), (void *)&blk_hash};
   const size_t val_size = sizeof(alt_block_data_t) + blob.size();
   std::unique_ptr<char[]> val(new char[val_size]);
   memcpy(val.get(), &data, sizeof(alt_block_data_t));
@@ -3995,7 +3969,7 @@ void BlockchainLMDB::add_alt_block(const crypto::hash &blkid, const cryptonote::
   }
 }
 
-bool BlockchainLMDB::get_alt_block(const crypto::hash &blkid, alt_block_data_t *data, cryptonote::blobdata *blob)
+bool BlockchainLMDB::get_alt_block(const crypto::hash &blk_hash, alt_block_data_t *data, cryptonote::blobdata *blob)
 {
   MVERBOSE("BlockchainLMDB:: " << __func__);
   check_open();
@@ -4003,14 +3977,14 @@ bool BlockchainLMDB::get_alt_block(const crypto::hash &blkid, alt_block_data_t *
   TXN_PREFIX_RDONLY();
   RCURSOR(alt_blocks);
 
-  MDB_val_set(k, blkid);
+  MDB_val_set(k, blk_hash);
   MDB_val v;
   int result = mdb_cursor_get(m_cur_alt_blocks, &k, &v, MDB_SET);
   if (result == MDB_NOTFOUND)
     return false;
 
   if (result)
-    throw0(DB_ERROR(lmdb_error("Error attempting to retrieve alternate block " + epee::string_tools::pod_to_hex(blkid) + " from the db: ", result).c_str()));
+    throw0(DB_ERROR(lmdb_error("Error attempting to retrieve alternate block " + epee::string_tools::pod_to_hex(blk_hash) + " from the db: ", result).c_str()));
   if (v.mv_size < sizeof(alt_block_data_t))
     throw0(DB_ERROR("Record size is less than expected"));
 
@@ -4024,7 +3998,7 @@ bool BlockchainLMDB::get_alt_block(const crypto::hash &blkid, alt_block_data_t *
   return true;
 }
 
-void BlockchainLMDB::remove_alt_block(const crypto::hash &blkid)
+void BlockchainLMDB::remove_alt_block(const crypto::hash &blk_hash)
 {
   MVERBOSE("BlockchainLMDB::" << __func__);
   check_open();
@@ -4032,14 +4006,14 @@ void BlockchainLMDB::remove_alt_block(const crypto::hash &blkid)
 
   CURSOR(alt_blocks)
 
-  MDB_val k = {sizeof(blkid), (void *)&blkid};
+  MDB_val k = {sizeof(blk_hash), (void *)&blk_hash};
   MDB_val v;
   int result = mdb_cursor_get(m_cur_alt_blocks, &k, &v, MDB_SET);
   if (result)
-    throw0(DB_ERROR(lmdb_error("Error locating alternate block " + epee::string_tools::pod_to_hex(blkid) + " in the db: ", result).c_str()));
+    throw0(DB_ERROR(lmdb_error("Error locating alternate block " + epee::string_tools::pod_to_hex(blk_hash) + " in the db: ", result).c_str()));
   result = mdb_cursor_del(m_cur_alt_blocks, 0);
   if (result)
-    throw0(DB_ERROR(lmdb_error("Error deleting alternate block " + epee::string_tools::pod_to_hex(blkid) + " from the db: ", result).c_str()));
+    throw0(DB_ERROR(lmdb_error("Error deleting alternate block " + epee::string_tools::pod_to_hex(blk_hash) + " from the db: ", result).c_str()));
 }
 
 uint64_t BlockchainLMDB::get_alt_block_count()

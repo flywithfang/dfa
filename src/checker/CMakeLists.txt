@@ -15,12 +15,11 @@ monero_add_executable(checker
   ${checker_private_headers})
 target_link_libraries(checker
   PRIVATE
-    rpc_base
     blockchain_db
+    cryptonote_basic
     cryptonote_core
     cncrypto
     common
-    mnemonics
     ${EPEE_READLINE}
     version
     ${Boost_CHRONO_LIBRARY}

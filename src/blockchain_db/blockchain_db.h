@@ -162,15 +162,12 @@ struct txpool_tx_meta_t
   crypto::hash last_failed_id;
   uint64_t weight;
   uint64_t fee;
-  uint64_t max_used_block_height;
-  uint64_t last_failed_height;
   uint64_t receive_time;
   uint64_t last_relayed_time; //!< If received over i2p/tor, randomized forward time. If Dandelion++stem, randomized embargo time. Otherwise, last relayed timestamp
   // 112 bytes
   uint8_t kept_by_block;
   uint8_t relayed;
   uint8_t do_not_relay;
-  uint8_t double_spend_seen: 1;
   uint8_t pruned: 1;
   uint8_t is_local: 1;
   uint8_t dandelionpp_stem : 1;
@@ -193,6 +190,20 @@ struct txpool_tx_meta_t
 };
 
 
+  struct BlockTemplate{
+    block b;
+    difficulty_type diff;
+    uint64_t expected_reward;
+    uint64_t height;
+    uint64_t txs_weight;
+    uint64_t fee;
+    uint64_t seed_height;
+    uint64_t n_seed_height;
+    crypto::hash seed_hash;
+    crypto::hash n_seed_hash;
+    uint64_t reserved_offset;
+  };
+  
 #define DBF_SAFE       1
 #define DBF_FAST       2
 #define DBF_FASTEST    4
@@ -671,7 +682,7 @@ public:
    *
    * @return the height of the chain post-addition
    */
-  virtual uint64_t add_block( const std::pair<block, blobdata>& blk, size_t block_weight, uint64_t long_term_block_weight, const difficulty_type& cum_diff, const uint64_t& coins_generated, const std::vector<std::pair<transaction, blobdata>>& txs)=0;
+  virtual uint64_t add_block( const std::pair<block, blobdata>& blk, size_t block_weight,  const difficulty_type& block_diff,  const std::vector<std::pair<transaction, blobdata>>& txs)=0;
 
  /**
    * <!--
@@ -898,27 +909,7 @@ public:
    */
   virtual uint64_t get_block_already_generated_coins(const uint64_t& height) const = 0;
 
-  /**
-   * @brief fetch a block's long term weight
-   *
-   * If the block does not exist, the subclass should throw BLOCK_DNE
-   *
-   * @param height the height requested
-   *
-   * @return the long term weight
-   */
-  virtual uint64_t get_block_long_term_weight(const uint64_t& height) const = 0;
 
-  /**
-   * @brief fetch the last N blocks' long term weights
-   *
-   * If there are fewer than N blocks, the returned array will be smaller than N
-   *
-   * @param count the number of blocks requested
-   *
-   * @return the weights
-   */
-  virtual std::vector<uint64_t> get_long_term_block_weights(uint64_t start_height, size_t count) const = 0;
 
   /**
    * @brief fetch a block's hash

@@ -70,10 +70,7 @@ namespace cryptonote
   class tx_memory_pool;
   struct test_options;
 
-  struct BlockTemplate{
-    block b;
-    difficulty_type diff;
-  };
+
   /** Declares ways in which the BlockchainDB backend should be told to sync
    *
    */
@@ -212,7 +209,7 @@ namespace cryptonote
      *
      * @return the hash of the block at the requested height, or a zeroed hash if there is no such block
      */
-    crypto::hash get_block_id_by_height(uint64_t height) const;
+    crypto::hash get_block_hash_by_height(uint64_t height) const;
 
     /**
      * @brief gets a block's hash given a height
@@ -365,8 +362,8 @@ namespace cryptonote
      *
      * @return true if block template filled in successfully, else false
      */
-    bool create_block_template(block& b, const account_public_address& miner_address, difficulty_type& di, uint64_t& height, uint64_t& expected_reward, const blobdata& ex_nonce, uint64_t &seed_height, crypto::hash &seed_hash);
-    bool create_block_template(block& b, const crypto::hash *from_block, const account_public_address& miner_address, difficulty_type& di, uint64_t& height, uint64_t& expected_reward, const blobdata& ex_nonce, uint64_t &seed_height, crypto::hash &seed_hash);
+
+    cryptonote::BlockTemplate create_block_template(const crypto::hash *from_block, const account_public_address& miner_address, const blobdata& ex_nonc);
 
     /**
      * @brief checks if a block is known about with a given hash
@@ -550,66 +547,8 @@ namespace cryptonote
      */
     bool store_blockchain();
 
-    /**
-     * @brief validates a transaction's inputs
-     *
-     * validates a transaction's inputs as correctly used and not previously
-     * spent.  also returns the hash and height of the most recent block
-     * which contains an output that was used as an input to the transaction.
-     * The transaction's rct signatures, if any, are expanded.
-     *
-     * @param tx the transaction to validate
-     * @param pmax_used_block_height return-by-reference block height of most recent input
-     * @param max_used_block_id return-by-reference block hash of most recent input
-     * @param tvc returned information about tx verification
-     * @param kept_by_block whether or not the transaction is from a previously-verified block
-     *
-     * @return false if any input is invalid, otherwise true
-     */
-    bool check_tx_inputs(transaction& tx, uint64_t& pmax_used_block_height, crypto::hash& max_used_block_id, tx_verification_context &tvc, bool kept_by_block = false) const;
 
-    /**
-     * @brief get fee quantization mask
-     *
-     * The dynamic fee may be quantized, to mask out the last decimal places
-     *
-     * @return the fee quantized mask
-     */
-    static uint64_t get_fee_quantization_mask()
-    {
-      return tools::PowerOf<10, CRYPTONOTE_DISPLAY_DECIMAL_POINT - PER_KB_FEE_QUANTIZATION_DECIMALS>::Value;
-    }
-
-    /**
-     * @brief get dynamic per kB or byte fee for a given block weight
-     *
-     * The dynamic fee is based on the block weight in a past window, and
-     * the current block reward. It is expressed by kB before v8, and
-     * per byte from v8.
-     *
-     * @param block_reward the current block reward
-     * @param median_block_weight the median block weight in the past window
-     * @param version hard fork version for rules and constants to use
-     *
-     * @return the fee
-     */
-    static uint64_t get_dynamic_base_fee(uint64_t block_reward, size_t median_block_weight, uint8_t version);
-
-    /**
-     * @brief get dynamic per kB or byte fee estimate for the next few blocks
-     *
-     * The dynamic fee is based on the block weight in a past window, and
-     * the current block reward. It is expressed by kB before v8, and
-     * per byte from v8.
-     * This function calculates an estimate for a dynamic fee which will be
-     * valid for the next grace_blocks
-     *
-     * @param grace_blocks number of blocks we want the fee to be valid for
-     *
-     * @return the fee estimate
-     */
-    uint64_t get_dynamic_base_fee_estimate(uint64_t grace_blocks) const;
-
+   
     /**
      * @brief validate a transaction's fee
      *
@@ -638,26 +577,6 @@ namespace cryptonote
      */
     bool check_tx_outputs(const transaction& tx, tx_verification_context &tvc) const;
 
-    /**
-     * @brief gets the block weight limit based on recent blocks
-     *
-     * @return the limit
-     */
-    uint64_t get_current_cumulative_block_weight_limit() const;
-
-    /**
-     * @brief gets the long term block weight for a new block
-     *
-     * @return the long term block weight
-     */
-    uint64_t get_next_long_term_block_weight(uint64_t block_weight) const;
-
-    /**
-     * @brief gets the block weight median based on recent blocks (same window as for the limit)
-     *
-     * @return the median
-     */
-    uint64_t get_current_cumulative_block_weight_median() const;
 
     /**
      * @brief gets the difficulty of the block with a given height
@@ -1001,6 +920,27 @@ namespace cryptonote
      */
     uint64_t get_adjusted_time(uint64_t height) const;
 
+ /**
+     * @brief validate a transaction's inputs and their keys
+     *
+     * This function validates transaction inputs and their keys.  Previously
+     * it also performed double spend checking, but that has been moved to its
+     * own function.
+     * The transaction's rct signatures, if any, are expanded.
+     *
+     * If pmax_related_block_height is not NULL, its value is set to the height
+     * of the most recent block which contains an output used in any input set
+     *
+     * Currently this function calls ring signature validation for each
+     * transaction.
+     *
+     * @param tx the transaction to validate
+     * @param tvc returned information about tx verification
+     * @param pmax_related_block_height return-by-pointer the height of the most recent block in the input set
+     *
+     * @return false if any validation step fails, otherwise true
+     */
+    bool check_tx_inputs(transaction& tx, tx_verification_context &tvc) const;
 #ifndef IN_UNIT_TESTS
   private:
 #endif
@@ -1031,7 +971,7 @@ namespace cryptonote
      * @return false if any keys are not found or any inputs are not unlocked, otherwise true
      */
     template<class visitor_t>
-    inline bool scan_outputkeys_for_indexes(size_t tx_version, const txin_to_key& tx_in_to_key, visitor_t &vis, const crypto::hash &tx_prefix_hash, uint64_t* pmax_related_block_height = NULL) const;
+    inline bool scan_outputkeys_for_indexes(size_t tx_version, const txin_to_key& tx_in_to_key, visitor_t &vis, const crypto::hash &tx_prefix_hash) const;
 
     /**
      * @brief collect output public keys of a transaction input set
@@ -1054,29 +994,9 @@ namespace cryptonote
      *
      * @return false if any output is not yet unlocked, or is missing, otherwise true
      */
-    bool check_tx_input(size_t tx_version,const txin_to_key& txin, const crypto::hash& tx_prefix_hash, const rct::rctSig &rct_signatures, std::vector<rct::ctkey> &decoys, uint64_t* pmax_related_block_height, uint8_t hf_version) const;
+    bool check_tx_input(size_t tx_version,const txin_to_key& txin, const crypto::hash& tx_prefix_hash, const rct::rctSig &rct_signatures, std::vector<rct::ctkey> &decoys,  uint8_t hf_version) const;
 
-    /**
-     * @brief validate a transaction's inputs and their keys
-     *
-     * This function validates transaction inputs and their keys.  Previously
-     * it also performed double spend checking, but that has been moved to its
-     * own function.
-     * The transaction's rct signatures, if any, are expanded.
-     *
-     * If pmax_related_block_height is not NULL, its value is set to the height
-     * of the most recent block which contains an output used in any input set
-     *
-     * Currently this function calls ring signature validation for each
-     * transaction.
-     *
-     * @param tx the transaction to validate
-     * @param tvc returned information about tx verification
-     * @param pmax_related_block_height return-by-pointer the height of the most recent block in the input set
-     *
-     * @return false if any validation step fails, otherwise true
-     */
-    bool check_tx_inputs(transaction& tx, tx_verification_context &tvc, uint64_t* pmax_used_block_height = NULL) const;
+   
 
     /**
      * @brief performs a blockchain reorganization according to the longest chain rule
@@ -1182,7 +1102,7 @@ namespace cryptonote
      *
      * @return false if anything is found wrong with the miner transaction, otherwise true
      */
-    bool validate_miner_transaction(const block& b, size_t cumulative_block_weight, uint64_t fee, uint64_t& base_reward, uint64_t already_generated_coins, bool &partial_block_reward, uint8_t version);
+    bool validate_miner_transaction(const block& b,  uint64_t fee, uint64_t& base_reward, uint8_t version);
 
     /**
      * @brief reverts the blockchain to its previous state following a failed switch
@@ -1306,14 +1226,6 @@ namespace cryptonote
      */
     bool complete_timestamps_vector(uint64_t start_height, std::vector<uint64_t>& timestamps) const;
 
-    /**
-     * @brief calculate the block weight limit for the next block to be added
-     *
-     * @param long_term_effective_median_block_weight optionally return that value
-     *
-     * @return true
-     */
-    bool update_next_cumulative_weight_limit(uint64_t *long_term_effective_median_block_weight = NULL);
     void return_tx_to_pool(std::vector<std::pair<transaction, blobdata>> &txs);
 
     /**
@@ -1384,10 +1296,6 @@ namespace cryptonote
 
     mutable epee::critical_section m_blockchain_lock; // TODO: add here reader/writer lock
 
-    // main chain
-    size_t m_current_block_cumul_weight_limit;
-    size_t m_current_block_cumul_weight_median;
-
     // Keccak hashes for each block and for fast pow checking
     std::vector<std::pair<crypto::hash, crypto::hash>> m_blocks_hash_of_hashes;
     std::vector<std::pair<crypto::hash, uint64_t>> m_blocks_hash_check;
@@ -1400,13 +1308,8 @@ namespace cryptonote
     bool m_db_sync_on_blocks;
     uint64_t m_db_sync_threshold;
     uint64_t m_max_prepare_blocks_threads;
-    uint64_t m_fake_pow_calc_time;
     uint64_t m_sync_counter;
     uint64_t m_bytes_to_sync;
-    uint64_t m_long_term_block_weights_window;
-    uint64_t m_long_term_effective_median_block_weight;
-    mutable crypto::hash m_long_term_block_weights_cache_tip_hash;
-    mutable epee::misc_utils::rolling_median_t<uint64_t> m_long_term_block_weights_cache_rolling_median;
 
     epee::critical_section m_difficulty_lock;
     crypto::hash m_diff_top_hash_cache;
@@ -1430,18 +1333,6 @@ namespace cryptonote
     difficulty_type m_fixed_difficulty;
 
     std::atomic<bool> m_cancel;
-
-    // block template cache
-    block m_btc;
-    account_public_address m_btc_address;
-    blobdata m_btc_nonce;
-    difficulty_type m_btc_difficulty;
-    uint64_t m_btc_height;
-    uint64_t m_btc_pool_cookie;
-    uint64_t m_btc_expected_reward;
-    crypto::hash m_btc_seed_hash;
-    uint64_t m_btc_seed_height;
-    bool m_btc_valid;
 
 
     bool m_batch_success;

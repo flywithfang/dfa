@@ -135,9 +135,9 @@ uint64_t rx_seedheight(const uint64_t height) {
   return s_height;
 }
 
-void rx_seedheights(const uint64_t height, uint64_t *seedheight, uint64_t *nextheight) {
+void rx_seedheights(const uint64_t height, uint64_t *seedheight, uint64_t *n_seed_height) {
   *seedheight = rx_seedheight(height);
-  *nextheight = rx_seedheight(height + SEEDHASH_EPOCH_LAG);
+  *n_seed_height = rx_seedheight(height + SEEDHASH_EPOCH_LAG);
 }
 
  struct seedinfo {

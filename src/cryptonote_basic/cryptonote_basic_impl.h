@@ -69,27 +69,17 @@ namespace cryptonote {
     }
   }
 
-  struct address_parse_info
-  {
-    account_public_address address;
-    bool has_payment_id;
-    crypto::hash8 payment_id;
-  };
 
   /************************************************************************/
   /* Cryptonote helper functions                                          */
   /************************************************************************/
-  size_t get_min_block_weight(uint8_t version);
   size_t get_max_tx_size();
-  bool get_block_reward(size_t median_weight, size_t current_block_weight, uint64_t already_generated_coins, uint64_t &reward, uint8_t version);
+  uint64_t get_block_reward();
   uint8_t get_account_address_checksum(const public_address_outer_blob& bl);
 
-  std::string get_account_address_as_str(      network_type nettype, const account_public_address& adr    );
+  std::string get_account_address_as_str(network_type nettype, const account_public_address& adr    );
 
-  bool get_account_address_from_str(
-      address_parse_info& info
-    , network_type nettype
-    , const std::string& str
+  account_public_address get_account_address_from_str(network_type nettype, const std::string& str
     );
 
  
