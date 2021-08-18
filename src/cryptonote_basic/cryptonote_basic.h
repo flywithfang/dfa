@@ -125,7 +125,7 @@ namespace cryptonote
     std::vector<tx_out> vout;
     crypto::public_key tx_pub_key;//kG
     //extra
-    std::vector<uint8_t> extra;
+    varbinary extra;
 
     BEGIN_SERIALIZE()
       VARINT_FIELD(version)
@@ -193,26 +193,27 @@ namespace cryptonote
         set_prunable_hash_valid(false);
         set_blob_size_valid(false);
       }
-
-      const unsigned int start_pos = getpos(ar);
+      [[maybe_unused]] const unsigned int start_pos = getpos(ar);
 
       FIELDS(*static_cast<transaction_prefix *>(this))
 
-      if (std::is_same<Archive<W>, binary_archive<W>>())
+      if  constexpr(Archive<W>::is_binary_protocol::value)
+       {
         prefix_size = getpos(ar) - start_pos;
+      }
 
     
-      {
         ar.tag("rct_signatures");
-        if (!vin.empty())
+      //  if (!vin.empty())
         {
           ar.begin_object();
           bool r = rct_signatures.serialize_rctsig_base(ar, vin.size(), vout.size());
-          if (!r || !ar.stream().good()) return false;
+          if (!r || !ar.stream().good())
+           throw_and_log("bad rctsig_base blob data");
           ar.end_object();
 
-          if (std::is_same<Archive<W>, binary_archive<W>>())
-            unprunable_size = getpos(ar) - start_pos;
+          if  constexpr(Archive<W>::is_binary_protocol::value)
+           { unprunable_size = getpos(ar) - start_pos;}
 
           if (!pruned && rct_signatures.type != rct::RCTTypeNull)
           {
@@ -220,11 +221,11 @@ namespace cryptonote
             ar.begin_object();
             r = rct_signatures.p.serialize_rctsig_prunable(ar, rct_signatures.type, vin.size(), vout.size(),
                 vin.size() > 0 && vin[0].type() == typeid(txin_to_key) ? boost::get<txin_to_key>(vin[0]).key_offsets.size() - 1 : 0);
-            if (!r || !ar.stream().good()) return false;
+            if (!r || !ar.stream().good())
+             throw_and_log("bad rctsig_prunable blob data");
             ar.end_object();
           }
         }
-      }
       if (!typename Archive<W>::is_saving())
         pruned = false;
     END_SERIALIZE()

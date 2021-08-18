@@ -70,17 +70,15 @@ namespace cryptonote
   }
 
   //---------------------------------------------------------------
-  std::tuple<bool, transaction> construct_miner_tx(size_t height, uint64_t fee, const account_public_address &miner_address, const blobdata& blob_reserve,  uint8_t hard_fork_version) {
+  std::tuple<bool, transaction> construct_miner_tx(size_t height, uint64_t fee, const account_public_address &miner_address, const varbinary& blob_reserve,  uint8_t hard_fork_version) {
     transaction tx{};
     const  std::tuple<bool, transaction> failed={false,tx};
 
     keypair txkey = keypair::generate();
     tx.tx_pub_key = txkey.pub;
-    if(!blob_reserve.empty())
-      if(!add_extra_nonce_to_tx_extra(tx.extra, blob_reserve))
-        return {false,tx};
-    if (!sort_tx_extra(tx.extra, tx.extra))
-      return {false,tx};
+    if(blob_reserve.size()> TX_EXTRA_MAX_COUNT)
+       return {false,tx};
+     tx.extra = blob_reserve;
 
     txin_gen in{height};
     //lock
@@ -89,7 +87,7 @@ namespace cryptonote
 
     const uint64_t block_reward=get_block_reward();
 
-    MDEBUG("construct_miner_tx: reward " << print_money(block_reward) <<", fee " << fee << ",height "<<height);
+    
     const auto total_reward = block_reward + fee;
 
     {
@@ -111,7 +109,7 @@ namespace cryptonote
     }
 
     tx.invalidate_hashes();
-
+    MDEBUG("construct_miner_tx: reward " << print_money(block_reward) <<", fee " << fee << ",height "<<height);
     return std::make_tuple(true,tx);
   }
   //---------------------------------------------------------------
@@ -159,7 +157,7 @@ namespace cryptonote
 
 
     //---------------------------------------------------------------
-  bool construct_tx(const account_keys& sender_account_keys,  std::vector<tx_source_entry>& sources, std::vector<tx_destination_entry>& dsts,  const std::vector<uint8_t> &extra, transaction& tx, uint64_t unlock_time, crypto::secret_key &tx_sec)
+  bool construct_tx(const account_keys& sender_account_keys,  std::vector<tx_source_entry>& sources, std::vector<tx_destination_entry>& dsts,  const blobdata &extra, transaction& tx, uint64_t unlock_time, crypto::secret_key &tx_sec)
   {
     tx=transaction{}; //clear everthing
 
@@ -173,16 +171,14 @@ namespace cryptonote
     }
 
     tx.unlock_time = unlock_time;
-    tx.extra = extra;
+    tx.extra =std::move(extra);
       // if we have a stealth payment id, find it and encrypt it with the tx key now
-    std::vector<tx_extra_field> tx_extra_fields;
-    if (!parse_tx_extra(tx.extra, tx_extra_fields))
+    if (extra.size()>TX_EXTRA_MAX_COUNT)
     {
-      MWARNING("Failed to parse tx extra");
+      throw_and_log("Failed to parse tx extra");
       return false;
     }
-  if (!sort_tx_extra(tx.extra, tx.extra))
-      return false;
+
 
     //std::sort(sources.begin(),sources.end(),)
     //fill inputs
@@ -284,25 +280,39 @@ namespace cryptonote
     return true;
   }
 
-
+  bool find_nonce_for_given_block( const Blockchain *pbc,block& bl, const difficulty_type& diffic, uint64_t height)
+  {
+    for(; bl.nonce != std::numeric_limits<uint32_t>::max(); bl.nonce++)
+    {
+      crypto::hash h;
+      cryptonote::get_block_longhash(pbc, bl, h, height);
+      if(cryptonote::check_hash(h, diffic))
+      {
+        bl.invalidate_hashes();
+        MINFO("find_nonce_for_given_block "<<h<<"/"<<diffic<<","<<bl.prev_id<<",n="<<bl.nonce<<",h="<<height);
+        return true;
+      }
+    }
+    bl.invalidate_hashes();
+    return false;
+  }
   //---------------------------------------------------------------
-  bool generate_genesis_block(block& bl, std::string const & genesis_tx , uint32_t nonce    )
+  block make_genesis_block( std::string const & genesis_tx , uint32_t nonce    )
   {
     //genesis block
-    bl = {};
+    block bl = {};
 
-    blobdata tx_bl;
-    bool r = string_tools::parse_hexstr_to_binbuff(genesis_tx, tx_bl);
-    CHECK_AND_ASSERT_MES(r, false, "failed to parse coinbase tx from hard coded blob");
-    r = parse_and_validate_tx_from_blob(tx_bl, bl.miner_tx);
-    CHECK_AND_ASSERT_MES(r, false, "failed to parse coinbase tx from hard coded blob");
+    blobdata tx_bl = string_tools::parse_hexstr_to_binbuff(genesis_tx);
+    auto r = parse_and_validate_tx_from_blob(tx_bl, bl.miner_tx);
+    if(!r)
+      throw_and_log("failed to parse coinbase tx from hard coded blob");
     bl.major_version = CURRENT_BLOCK_MAJOR_VERSION;
     bl.minor_version = CURRENT_BLOCK_MINOR_VERSION;
     bl.timestamp = 0;
     bl.nonce = nonce;
-    miner::find_nonce_for_given_block(nullptr,bl, 1, 0);
+    find_nonce_for_given_block(nullptr,bl, 1, 0);
     bl.invalidate_hashes();
-    return true;
+    return bl;
   }
   //---------------------------------------------------------------
   void get_altblock_longhash(const block& b, crypto::hash& res, const uint64_t main_height, const uint64_t height, const uint64_t seed_height, const crypto::hash& seed_hash)

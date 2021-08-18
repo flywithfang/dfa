@@ -287,6 +287,8 @@ void fromJsonValue(const rapidjson::Value& val, rct::mgSig& sig);
 void toJsonValue(rapidjson::Writer<epee::byte_stream>& dest, const cryptonote::rpc::DaemonInfo& info);
 void fromJsonValue(const rapidjson::Value& val, cryptonote::rpc::DaemonInfo& info);
 
+void toJsonValue(rapidjson::Writer<epee::byte_stream>& dest, const varbinary& src);
+void fromJsonValue(const rapidjson::Value& val, varbinary& dest);
 
 template <typename Map>
 typename std::enable_if<sfinae::is_map_like<Map>::value, void>::type toJsonValue(rapidjson::Writer<epee::byte_stream>& dest, const Map& map);

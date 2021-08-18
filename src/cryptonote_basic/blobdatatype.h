@@ -38,4 +38,5 @@ namespace cryptonote
 {
   typedef std::string blobdata;
   typedef boost::string_ref blobdata_ref;
+ 
 }

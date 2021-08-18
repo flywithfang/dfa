@@ -62,7 +62,7 @@ namespace string_tools
   {
     std::string res;
     auto r = from_hex::to_string(res, s);
-    if(!r) throw std::runtime_error("bad hex str");
+    if(!r) throw std::runtime_error( std::string(s)+"bad hex str");
     return res;
   }
   std::string get_ip_string_from_int32(uint32_t ip);

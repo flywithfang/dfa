@@ -1591,6 +1591,6 @@ namespace cryptonote
 
 cryptonote::BlockTemplate core::get_block_template(const crypto::hash *prev_block, const account_public_address& adr, const blobdata& ex_nonce)
 {
-  m_blockchain.create_block_template(prev_block,adr,ex_nonce);
+  return m_blockchain.create_block_template(prev_block,adr,ex_nonce);
 }
 }

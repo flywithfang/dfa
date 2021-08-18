@@ -37,7 +37,7 @@
 namespace cryptonote
 {
 
-  std::tuple<bool, transaction> construct_miner_tx(size_t height, uint64_t fee, const account_public_address &miner_address,  const blobdata& extra_nonce = blobdata(),  uint8_t hard_fork_version = 1);
+  std::tuple<bool, transaction> construct_miner_tx(size_t height, uint64_t fee, const account_public_address &miner_address,  const varbinary& extra_nonce = varbinary(),  uint8_t hard_fork_version = 1);
   
 
 
@@ -82,13 +82,9 @@ namespace cryptonote
   //---------------------------------------------------------------
   crypto::public_key get_destination_view_key_pub(const std::vector<tx_destination_entry> &destinations, const boost::optional<cryptonote::account_public_address>& change_addr);
 
-  bool construct_tx(const account_keys& sender_account_keys, std::vector<tx_source_entry>& sources, std::vector<tx_destination_entry>& destinations,  const std::vector<uint8_t> &extra, transaction& tx, uint64_t unlock_time, crypto::secret_key &tx_sec);
+  bool construct_tx(const account_keys& sender_account_keys, std::vector<tx_source_entry>& sources, std::vector<tx_destination_entry>& destinations,  const blobdata &extra, transaction& tx, uint64_t unlock_time, crypto::secret_key &tx_sec);
 
-  bool generate_genesis_block(
-      block& bl
-    , std::string const & genesis_tx
-    , uint32_t nonce
-    );
+  block make_genesis_block( std::string const & genesis_tx, uint32_t nonce);
 
   class Blockchain;
   bool get_block_longhash(const Blockchain *pb, const block& b, crypto::hash& res, const uint64_t height);

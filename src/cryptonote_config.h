@@ -52,11 +52,11 @@
 // MONEY_SUPPLY - total number coins to be generated
 #define EMISSION_SPEED_FACTOR_PER_MINUTE                (1)
 
-#define CRYPTONOTE_DISPLAY_DECIMAL_POINT                8
+#define CRYPTONOTE_DISPLAY_DECIMAL_POINT                6
 // COIN - number of smallest units in one coin
-#define COIN                                            ((uint64_t)100000000) // pow(10, 8)
+#define COIN                                            ((uint64_t)1000000) // pow(10, 6)
 
-#define BASE_FEE                                      ((uint64_t)1000000) // 0.01
+#define BASE_FEE                                      ((uint64_t)10000) // 0.01
 
 
 #define DIFFICULTY_TARGET                            (60*10)  // seconds - before first fork
@@ -153,6 +153,7 @@
 #define CRYPTONOTE_PRUNING_TIP_BLOCKS           5500 // the smaller, the more space saved
 
 
+#define TX_EXTRA_MAX_COUNT            255
 // New constants are intended to go here
 namespace config
 {
@@ -164,7 +165,7 @@ namespace config
   boost::uuids::uuid const NETWORK_ID = { {
       0x12 ,0x30, 0xF1, 0x71 , 0x61, 0x04 , 0x41, 0x61, 0x17, 0x31, 0x00, 0x82, 0x16, 0xA1, 0xA1, 0x10
     } }; // Bender's nightmare
-  std::string const GENESIS_TX = "003c01ff0001ffffffffffff07023e0148780b136106beccd1767f8f3e11d3fc5f10ba123130be2bc03245e04944210135c1eab9fe914482bc415ab79b950d00257e45d4c63470ec243e28ef68b4d6bf00";
+  std::string const GENESIS_TX = "000601ff000180ade204025b4ca728007288fd3e02ed07a8b8895ad7c0d7f5426059040c3e6f9ebd46bb1d0a23e46c4815214cc60d8ec12920d84e56354926369a83a422fdbf369de19b3d0000";
   uint32_t const GENESIS_NONCE = 0;
 
   // Hash domain separators

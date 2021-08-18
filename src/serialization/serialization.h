@@ -50,6 +50,15 @@
 #include <boost/type_traits/integral_constant.hpp>
 #include <boost/mpl/bool.hpp>
 
+ class varbinary:public std::string
+  {
+    public:
+      using base=std::string;
+      explicit varbinary(const std::string & s):base(s){}
+      varbinary(){}
+    varbinary& operator=(const std::string &&s){*this=std::move(s);return *this;}
+  };
+
 /*! \struct is_blob_type 
  *
  * \brief a descriptor for dispatching serialize
@@ -89,10 +98,14 @@ struct is_basic_type<std::string> { typedef boost::true_type type; };
  * applied. When the class has neither types, it falls to the
  * overloaded method do_serialize(Archive ar) in T to do the work.
  */
+
 template <class Archive, class T>
 struct serializer{
   static bool serialize(Archive &ar, T &v) {
-    return serialize(ar, v, typename boost::is_integral<T>::type(), typename is_blob_type<T>::type(), typename is_basic_type<T>::type());
+    return serialize(ar, v,
+     typename boost::is_integral<T>::type(), 
+      typename is_blob_type<T>::type(),
+       typename is_basic_type<T>::type());
   }
   template<typename A>
   static bool serialize(Archive &ar, T &v, boost::false_type, boost::true_type, A a) {
@@ -105,15 +118,13 @@ struct serializer{
     return true;
   }
   static bool serialize(Archive &ar, T &v, boost::false_type, boost::false_type, boost::false_type) {
-    //serialize_custom(ar, v, typename has_free_serializer<T>::type());
     return v.do_serialize(ar);
   }
-  static bool serialize(Archive &ar, T &v, boost::false_type, boost::false_type, boost::true_type) {
-    //serialize_custom(ar, v, typename has_free_serializer<T>::type());
+/*  static bool serialize(Archive &ar, T &v, boost::false_type, boost::false_type, boost::true_type) {
     return do_serialize(ar, v);
   }
-  static void serialize_custom(Archive &ar, T &v, boost::true_type) {
-  }
+  */
+ 
 };
 
 
@@ -132,6 +143,22 @@ inline bool do_serialize(Archive &ar, bool &v)
   ar.serialize_blob(&v, sizeof(v));
   return true;
 }
+
+template <class Archive>
+inline bool do_serialize(Archive & ar, varbinary &s){
+  size_t l=s.size();
+  if constexpr(Archive::is_binary_protocol::value){
+  ar.serialize_varint(l);
+}
+  if (!ar.stream().good())
+    return false;
+  s.resize(l);
+  ar.serialize_blob(s.data(),s.size());
+  if (!ar.stream().good())
+    return false;
+  return true;
+}
+
 
 // Never used in the code base
 // #ifndef __GNUC__

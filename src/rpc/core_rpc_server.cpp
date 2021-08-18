@@ -847,7 +847,6 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
     RPC_TRACKER(is_key_image_spent);
 
     const bool restricted = m_restricted && ctx;
-    const bool request_has_rpc_origin = ctx != NULL;
 
     if (restricted && req.key_images.size() > RESTRICTED_SPENT_KEY_IMAGES_COUNT)
     {
@@ -1317,8 +1316,7 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
     const auto bt= m_core.get_block_template(prev_block==crypto::null_hash ? nullptr:&prev_block, miner_addr,blob_reserve);
   
       res.seed_hash = string_tools::pod_to_hex(bt.seed_hash);
-      if (bt.seed_hash != bt.n_seed_hash)
-        res.next_seed_hash = string_tools::pod_to_hex(bt.n_seed_hash);
+      res.next_seed_hash = string_tools::pod_to_hex(bt.n_seed_hash);
 
     res.reserved_offset = bt.reserved_offset;
     store_difficulty(bt.diff, res.difficulty, res.wide_difficulty, res.difficulty_top64);

@@ -38,8 +38,10 @@
 #include <set>
 #include "serialization.h"
 
-template <template <bool> class Archive, class T> bool do_serialize(Archive<false> &ar, std::vector<T> &v);
-template <template <bool> class Archive, class T> bool do_serialize(Archive<true> &ar, std::vector<T> &v);
+template <template <bool> class Archive, class T>
+ bool do_serialize(Archive<false> &ar, std::vector<T> &v);
+template <template <bool> class Archive, class T> 
+ bool do_serialize(Archive<true> &ar, std::vector<T> &v);
 
 template <template <bool> class Archive, class T> bool do_serialize(Archive<false> &ar, std::deque<T> &v);
 template <template <bool> class Archive, class T> bool do_serialize(Archive<true> &ar, std::deque<T> &v);
@@ -63,8 +65,10 @@ public:
   typename std::map<K, V> &parent() { return *this; }
 };
 
-template <template <bool> class Archive, typename K, typename V> bool do_serialize(Archive<false> &ar, serializable_map<K, V> &v);
-template <template <bool> class Archive, typename K, typename V> bool do_serialize(Archive<true> &ar, serializable_map<K, V> &v);
+template <template <bool> class Archive, typename K, typename V> 
+bool do_serialize(Archive<false> &ar, serializable_map<K, V> &v);
+template <template <bool> class Archive, typename K, typename V>
+ bool do_serialize(Archive<true> &ar, serializable_map<K, V> &v);
 
 template<typename K, typename V>
 class serializable_unordered_multimap: public std::unordered_multimap<K, V>
@@ -74,14 +78,20 @@ public:
   typename std::unordered_multimap<K, V> &parent() { return *this; }
 };
 
-template <template <bool> class Archive, typename K, typename V> bool do_serialize(Archive<false> &ar, serializable_unordered_multimap<K, V> &v);
-template <template <bool> class Archive, typename K, typename V> bool do_serialize(Archive<true> &ar, serializable_unordered_multimap<K, V> &v);
+template <template <bool> class Archive, typename K, typename V>
+ bool do_serialize(Archive<false> &ar, serializable_unordered_multimap<K, V> &v);
+template <template <bool> class Archive, typename K, typename V> 
+ bool do_serialize(Archive<true> &ar, serializable_unordered_multimap<K, V> &v);
 
-template <template <bool> class Archive, class T> bool do_serialize(Archive<false> &ar, std::unordered_set<T> &v);
-template <template <bool> class Archive, class T> bool do_serialize(Archive<true> &ar, std::unordered_set<T> &v);
+template <template <bool> class Archive, class T>
+ bool do_serialize(Archive<false> &ar, std::unordered_set<T> &v);
+template <template <bool> class Archive, class T> 
+ bool do_serialize(Archive<true> &ar, std::unordered_set<T> &v);
 
-template <template <bool> class Archive, class T> bool do_serialize(Archive<false> &ar, std::set<T> &v);
-template <template <bool> class Archive, class T> bool do_serialize(Archive<true> &ar, std::set<T> &v);
+template <template <bool> class Archive, class T> 
+ bool do_serialize(Archive<false> &ar, std::set<T> &v);
+template <template <bool> class Archive, class T>
+ bool do_serialize(Archive<true> &ar, std::set<T> &v);
 
 namespace serialization
 {
@@ -106,8 +116,10 @@ namespace serialization
 
 #include "container.h"
 
-template <template <bool> class Archive, class T> bool do_serialize(Archive<false> &ar, std::vector<T> &v) { return do_serialize_container(ar, v); }
-template <template <bool> class Archive, class T> bool do_serialize(Archive<true> &ar, std::vector<T> &v) { return do_serialize_container(ar, v); }
+template <template <bool> class Archive, class T>
+ bool do_serialize(Archive<false> &ar, std::vector<T> &v) { return do_serialize_container(ar, v); }
+template <template <bool> class Archive, class T>
+ bool do_serialize(Archive<true> &ar, std::vector<T> &v) { return do_serialize_container(ar, v); }
 
 template <template <bool> class Archive, class T> bool do_serialize(Archive<false> &ar, std::deque<T> &v) { return do_serialize_container(ar, v); }
 template <template <bool> class Archive, class T> bool do_serialize(Archive<true> &ar, std::deque<T> &v) { return do_serialize_container(ar, v); }

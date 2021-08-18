@@ -40,10 +40,12 @@
 
 #include "common/varint.h"
 #include "warnings.h"
+#include <type_traits>
 
 /* I have no clue what these lines means */
 PUSH_WARNINGS
 DISABLE_VS_WARNINGS(4244)
+
 
 //TODO: fix size_t warning in x32 platform
 
@@ -62,6 +64,7 @@ struct binary_archive_base
   typedef binary_archive_base<Stream, IsSaving> base_type;
   typedef boost::mpl::bool_<IsSaving> is_saving;
 
+  using   is_binary_protocol= std::integral_constant<bool, true>; 
   typedef uint8_t variant_tag_type;
 
   explicit binary_archive_base(stream_type &s) : stream_(s) { }

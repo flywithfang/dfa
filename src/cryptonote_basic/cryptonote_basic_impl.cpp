@@ -63,9 +63,8 @@ namespace cryptonote {
     static_assert(DIFFICULTY_TARGET%60==0,"difficulty targets must be a multiple of 60");
     const int target =  DIFFICULTY_TARGET;
     const int target_minutes = target / 60;
-    const int emission_speed_factor = EMISSION_SPEED_FACTOR_PER_MINUTE *target_minutes;
 
-    uint64_t reward =EMISSION_SPEED_FACTOR_PER_MINUTE *target_minutes;
+    uint64_t reward =(EMISSION_SPEED_FACTOR_PER_MINUTE *target_minutes)*COIN;
     return reward;
   
   }
@@ -101,7 +100,6 @@ namespace cryptonote {
   //-----------------------------------------------------------------------
   account_public_address get_account_address_from_str( network_type nettype, std::string const & str    )
   {
-    uint64_t address_prefix = get_config(nettype).CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX;
 
       account_public_address addr{};
       blobdata data;

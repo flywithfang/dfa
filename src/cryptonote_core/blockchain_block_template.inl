@@ -153,13 +153,11 @@ cryptonote::BlockTemplate Blockchain::create_block_template( const crypto::hash 
   //make blocks coin-base tx looks close to real coinbase tx to get truthful blob weight
   uint8_t hf_version = b.major_version;
   bool r=false;
-   std::tie(r,b.miner_tx)  = construct_miner_tx(height,  bt.fee, miner_address, blob_reserve, hf_version);
+  const varbinary bb(blob_reserve);
+   std::tie(r,b.miner_tx)  = construct_miner_tx(height,  bt.fee, miner_address, bb, hf_version);
    if(!r)
       throw_and_log("Failed to construct miner tx");
 
-
-
- 
     const blobdata block_blob = t_serializable_object_to_blob(bt.b);
     const auto &tx_pub_key =b.miner_tx.tx_pub_key;
     const uint64_t off = slow_memmem((void*)block_blob.data(), block_blob.size(), &tx_pub_key, sizeof(tx_pub_key));
@@ -167,7 +165,7 @@ cryptonote::BlockTemplate Blockchain::create_block_template( const crypto::hash 
     {
       throw_and_log("Failed to find tx pub key in blockblob");
     }
-    bt.reserved_offset = off+ sizeof(tx_pub_key) + 2; //2 bytes: tag for TX_EXTRA_NONCE(1 byte), counter in TX_EXTRA_NONCE(1 byte)
+    bt.reserved_offset = off+ sizeof(tx_pub_key) ; 
     if(bt.reserved_offset + blob_reserve.size() > block_blob.size())
     {
       throw_and_log("Failed to calculate offset for ");

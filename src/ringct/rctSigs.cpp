@@ -46,40 +46,7 @@ using namespace std;
 
 #define CHECK_AND_ASSERT_MES_L1(expr, ret, message) {if(!(expr)) {MCERROR("verify", message); return ret;}}
 
-namespace
-{
-    rct::Bulletproof make_dummy_bulletproof(const std::vector<uint64_t> &outamounts, rct::keyV &C, rct::keyV &masks)
-    {
-        const size_t n_outs = outamounts.size();
-        const rct::key I = rct::identity();
-        size_t nrl = 0;
-        while ((1u << nrl) < n_outs)
-          ++nrl;
-        nrl += 6;
 
-        C.resize(n_outs);
-        masks.resize(n_outs);
-        for (size_t i = 0; i < n_outs; ++i)
-        {
-            masks[i] = I;
-            rct::key sv8, sv;
-            sv = rct::zero();
-            sv.bytes[0] = outamounts[i] & 255;
-            sv.bytes[1] = (outamounts[i] >> 8) & 255;
-            sv.bytes[2] = (outamounts[i] >> 16) & 255;
-            sv.bytes[3] = (outamounts[i] >> 24) & 255;
-            sv.bytes[4] = (outamounts[i] >> 32) & 255;
-            sv.bytes[5] = (outamounts[i] >> 40) & 255;
-            sv.bytes[6] = (outamounts[i] >> 48) & 255;
-            sv.bytes[7] = (outamounts[i] >> 56) & 255;
-            sc_mul(sv8.bytes, sv.bytes, rct::INV_EIGHT.bytes);
-            //
-            rct::addKeys2(C[i], rct::INV_EIGHT, sv8, rct::H);
-        }
-
-        return rct::Bulletproof{rct::keyV(n_outs, I), I, I, I, I, I, I, rct::keyV(nrl, I), rct::keyV(nrl, I), I, I, I};
-    }
-}
 
 namespace rct {
     Bulletproof proveRangeBulletproof(keyV &C, keyV &noises, const std::vector<uint64_t> &amounts, const std::vector<key>& shared_secs)

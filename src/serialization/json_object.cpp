@@ -34,6 +34,7 @@
 #include <type_traits>
 
 #include "cryptonote_basic/cryptonote_basic_impl.h"
+#include "string_tools.h"
 
 // drop macro from windows.h
 #ifdef GetObject
@@ -168,6 +169,23 @@ void fromJsonValue(const rapidjson::Value& val, std::vector<std::uint8_t>& dest)
   }
 }
 
+void toJsonValue(rapidjson::Writer<epee::byte_stream>& dest, const varbinary& src)
+{
+  const std::string hex = epee::string_tools::buff_to_hex_nodelimer(src);
+  dest.String(hex.data(), hex.size());
+}
+
+void fromJsonValue(const rapidjson::Value& val, varbinary& dest)
+{
+  if (!val.IsString())
+  {
+    throw WRONG_TYPE("string");
+  }
+
+  epee::string_tools::parse_hexstr_to_binbuff(val.GetString(),dest);
+
+}
+
 void toJsonValue(rapidjson::Writer<epee::byte_stream>& dest, bool i)
 {
   dest.Bool(i);
@@ -265,8 +283,9 @@ void toJsonValue(rapidjson::Writer<epee::byte_stream>& dest, const cryptonote::t
 
   INSERT_INTO_JSON_OBJECT(dest, version, tx.version);
   INSERT_INTO_JSON_OBJECT(dest, unlock_time, tx.unlock_time);
-  INSERT_INTO_JSON_OBJECT(dest, inputs, tx.vin);
-  INSERT_INTO_JSON_OBJECT(dest, outputs, tx.vout);
+  INSERT_INTO_JSON_OBJECT(dest, vin, tx.vin);
+  INSERT_INTO_JSON_OBJECT(dest, vout, tx.vout);
+  INSERT_INTO_JSON_OBJECT(dest, tx_pub_key, tx.tx_pub_key);
   INSERT_INTO_JSON_OBJECT(dest, extra, tx.extra);
  
   INSERT_INTO_JSON_OBJECT(dest, ringct, tx.rct_signatures);
@@ -284,8 +303,9 @@ void fromJsonValue(const rapidjson::Value& val, cryptonote::transaction& tx)
 
   GET_FROM_JSON_OBJECT(val, tx.version, version);
   GET_FROM_JSON_OBJECT(val, tx.unlock_time, unlock_time);
-  GET_FROM_JSON_OBJECT(val, tx.vin, inputs);
-  GET_FROM_JSON_OBJECT(val, tx.vout, outputs);
+  GET_FROM_JSON_OBJECT(val, tx.vin, vin);
+  GET_FROM_JSON_OBJECT(val, tx.vout, vout);
+  GET_FROM_JSON_OBJECT(val, tx.tx_pub_key, tx_pub_key);
   GET_FROM_JSON_OBJECT(val, tx.extra, extra);
   GET_FROM_JSON_OBJECT(val, tx.rct_signatures, ringct);
 

@@ -34,6 +34,7 @@
 #include "blockchain_db/blockchain_db.h"
 
 #include "blockchain_db/lmdb/db_lmdb.h"
+#include "serialization/binary_utils.h"
 
 #ifdef HAVE_READLINE
 #include "readline_buffer.h"
@@ -61,42 +62,7 @@ template< class T>
   return o;
   }
 
-class print_extra_visitor : public boost::static_visitor<void>
-{
-public:
-     
-     public_key tx_key;
-    void operator()(const tx_extra_nonce & e) 
-    {
-        std::cout<<"extra nonce "<<endl<<e.nonce.size()<<","<<e.nonce<<std::endl;
-    }
- 
-};
 
-tuple<public_key> print_extra(const std::vector<uint8_t> & tx_extra){
-
-
-    std::string extra_str(reinterpret_cast<const char*>(tx_extra.data()), tx_extra.size());
-    std::istringstream iss(extra_str);
-    binary_archive<false> ar(iss);
-
-   cout<<boost::is_integral<tx_extra_field>::type()<<endl;
-   cout<< is_blob_type<tx_extra_field>::type()<<endl;
-   cout<< is_basic_type<tx_extra_field>::type()<<endl;
-    print_extra_visitor v;
-        while (!iss.eof())
-        {
-          tx_extra_field field;
-          //bool r = ::do_serialize(ar, field);
-          bool r = ::serializer<binary_archive<false>,tx_extra_field>::serialize(ar,field);
-          if(!r) break;
-          if(iss.fail()) break;
-           boost::apply_visitor( v, field);
-           cout<<"read extra"<<endl;
-         }
-         cout<<"read over"<<endl;
-    return std::make_tuple(v.tx_key);
-}
 template <class T>
 string to_json_string(const T & tx){
    std::ostringstream ost;
@@ -191,11 +157,10 @@ void print_tx(Blockchain* chain,const string& _tx_hash, bool json){
     throw DB_ERROR("Failed to parse transaction from blob retrieved from the db");
    auto js=to_json_string(tx);
    cout<<js<<endl;
-   auto [tx_key] = print_extra(tx.extra);
-   cout<<"tx_key "<<tx_key<<endl;
+   cout<<"tx_key "<<tx.tx_pub_key<<endl;
 
     print_in(tx);
-    print_out(tx_key,tx);
+    print_out(tx.tx_pub_key,tx);
   
 }
 else{
@@ -254,12 +219,15 @@ void check_kimage(const string & ki){
 }
 void construct_genesis_block(){
 
-//    const auto sk="533b55261db0bd3092b19c6ab60aeddb546ed6261757d1fc9d80c6198374a806";
+   const auto  sk="b518b244a2f17b9e6fdae3b21b8f80e4ceb6f5e367cb892b660a0bd5cc2a6e0a";
    // const auto  [recover_key,lang]= ElectrumWords::words_to_bytes(seed);
+   crypto::secret_key recover_key;
+   ::serialization::parse_binary(string_tools::parse_hexstr_to_binbuff(sk),recover_key);
+
     account_base acc;
-    acc.generate(/*recover_key,true*/);
+    acc.generate(recover_key,true);
     const auto spend_key = acc.get_keys().m_spend_secret_key;
-    cout<<string_tools::pod_to_hex(spend_key)<<endl;
+    cout<<"b "<<string_tools::pod_to_hex(spend_key)<<endl;
   
 
     auto addr = acc.get_address();
@@ -273,17 +241,10 @@ void construct_genesis_block(){
     blobdata bd;
     t_serializable_object_to_blob(tx,bd);
     const auto hx=string_tools::buff_to_hex_nodelimer(bd);
-    cout<<hx<<endl;
+    cout<<"GENESIS_TX "<<hx<<endl;
  //genesis block
-    block bl {};
-
-    bl.miner_tx = tx;
-    bl.major_version = CURRENT_BLOCK_MAJOR_VERSION;
-    bl.minor_version = CURRENT_BLOCK_MINOR_VERSION;
-    bl.timestamp = 0;
-    bl.nonce = 0;
-    miner::find_nonce_for_given_block(nullptr,bl, 1, 0);
-    bl.invalidate_hashes();
+    block bl =   make_genesis_block(hx,0);
+  
     cout<<to_json_string(bl)<<endl;
 
     const auto blob = get_block_hashing_blob(bl);
@@ -308,7 +269,7 @@ int main(int argc, char const * argv[]){
   for(auto p:args){
    cout<<p<<endl; 
   }
- 
+ mlog_set_log_level(6);
 
   auto cmd=args[1];
   if(cmd=="check_image"){
