@@ -1289,19 +1289,9 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
 
     const auto &miner_addr = cryptonote::get_account_address_from_str( nettype(), req.wallet_address);
 
-    block b;
-    cryptonote::blobdata blob_reserve;
-    if(!req.extra_nonce.empty())
-    {
-      if(!string_tools::parse_hexstr_to_binbuff(req.extra_nonce, blob_reserve))
-      {
-        error_resp.code = CORE_RPC_ERROR_CODE_WRONG_PARAM;
-        error_resp.message = "Parameter extra_nonce should be a hex string";
-        return false;
-      }
-    }
-    else
-      blob_reserve.resize(req.reserve_size, 0);
+    const auto blob_reserve= !req.extra_nonce.empty() ?string_tools::parse_hexstr_to_binbuff(req.extra_nonce): blobdata(req.reserve_size, 0);
+   
+
     cryptonote::difficulty_type wdiff;
     crypto::hash prev_block=crypto::null_hash;
     if (!req.prev_block.empty())
@@ -1315,14 +1305,14 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
     }
     const auto bt= m_core.get_block_template(prev_block==crypto::null_hash ? nullptr:&prev_block, miner_addr,blob_reserve);
   
-      res.seed_hash = string_tools::pod_to_hex(bt.seed_hash);
-      res.next_seed_hash = string_tools::pod_to_hex(bt.n_seed_hash);
+    res.seed_hash = string_tools::pod_to_hex(bt.seed_hash);
+    res.next_seed_hash = string_tools::pod_to_hex(bt.n_seed_hash);
 
     res.reserved_offset = bt.reserved_offset;
     store_difficulty(bt.diff, res.difficulty, res.wide_difficulty, res.difficulty_top64);
-    blobdata block_blob = t_serializable_object_to_blob(b);
-    blobdata hashing_blob = get_block_hashing_blob(b);
-    res.prev_hash = string_tools::pod_to_hex(b.prev_id);
+    blobdata block_blob = t_serializable_object_to_blob(bt.b);
+    blobdata hashing_blob = get_block_hashing_blob(bt.b);
+    res.prev_hash = string_tools::pod_to_hex(bt.b.prev_id);
     res.blocktemplate_blob = string_tools::buff_to_hex_nodelimer(block_blob);
     res.blockhashing_blob =  string_tools::buff_to_hex_nodelimer(hashing_blob);
     res.status = CORE_RPC_STATUS_OK;
@@ -1357,7 +1347,7 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
     response.reward = get_outs_money_amount(blk.miner_tx);
     response.block_size = response.block_weight = m_core.get_blockchain_storage().get_db().get_block_weight(height);
     response.num_txes = blk.tx_hashes.size();
-    response.pow_hash = fill_pow_hash ? string_tools::pod_to_hex(get_block_longhash(&(m_core.get_blockchain_storage()), blk, height)) : "";
+    response.pow_hash = fill_pow_hash ? string_tools::pod_to_hex(get_block_pow(&(m_core.get_blockchain_storage()), blk, height)) : "";
     response.long_term_weight = 0;
     response.miner_tx_hash = string_tools::pod_to_hex(cryptonote::get_transaction_hash(blk.miner_tx));
     return true;

@@ -49,6 +49,7 @@
 #include <boost/type_traits/is_integral.hpp>
 #include <boost/type_traits/integral_constant.hpp>
 #include <boost/mpl/bool.hpp>
+#include <iostream>
 
  class varbinary:public std::string
   {
@@ -135,7 +136,8 @@ struct serializer{
 template <class Archive, class T>
 inline bool do_serialize(Archive &ar, T &v)
 {
-  return ::serializer<Archive, T>::serialize(ar, v);
+  const auto r = ::serializer<Archive, T>::serialize(ar, v);
+  return r;
 }
 template <class Archive>
 inline bool do_serialize(Archive &ar, bool &v)
@@ -149,6 +151,7 @@ inline bool do_serialize(Archive & ar, varbinary &s){
   size_t l=s.size();
   if constexpr(Archive::is_binary_protocol::value){
   ar.serialize_varint(l);
+  std::cout<<"varbinary len"<<l<<std::endl;
 }
   if (!ar.stream().good())
     return false;
@@ -383,11 +386,11 @@ namespace serialization {
     {
       bool result = false;
       if (s.good())
-	{
-	  std::ios_base::iostate state = s.rdstate();
-	  result = noeof || EOF == s.peek();
-	  s.clear(state);
-	}
+      	{
+      	  std::ios_base::iostate state = s.rdstate();
+      	  result = noeof || EOF == s.peek();
+      	  s.clear(state);
+      	}
       return result;
     }
   }

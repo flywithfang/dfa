@@ -53,7 +53,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <uuid/uuid.h>
 #include <getopt.h>
 
-#define __STDC_FORMAT_MACROS
+
 #include <inttypes.h>
 
 #include <json-c/json.h>
@@ -61,13 +61,17 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <pthread.h>
 
 #include "pool.h"
-#include "bstack.h"
-#include "util.h"
+
+
 #include "xmr.h"
+extern "C"{
+#include "util.h"
+#include "bstack.h"
 #include "log.h"
 #include "forkoff.h"
 #include "growbag.h"
 #include "uthash.h"
+}
 
 #define MAX_LINE 8192
 #define CLIENTS_INIT 8192
@@ -373,7 +377,7 @@ static void hr_update(hr_stats_t *stats)
 static inline rpc_callback_t *
 rpc_callback_new(rpc_callback_fun cf, void *data, rpc_datafree_fun df)
 {
-    rpc_callback_t *c = calloc(1, sizeof(rpc_callback_t));
+    rpc_callback_t *c = (rpc_callback_t*)calloc(1, sizeof(rpc_callback_t));
     c->cf = cf;
     c->data = data;
     c->df = df;
@@ -472,7 +476,7 @@ database_resize(void)
         log_debug("Database initial size: %"PRIu64, DB_INIT_SIZE);
         goto unlock;
     }
-
+{
     uint64_t used = st.ms_psize * ei.me_last_pgno;
     uint64_t remaining = (uint64_t) ei.me_mapsize - used;
     log_debug("Database (used/free): %"PRIu64"/%"PRIu64, used, remaining);
@@ -498,6 +502,7 @@ database_resize(void)
         goto unlock;
     }
     return 0;
+}
 unlock:
     pthread_mutex_unlock(&mutex_clients);
     pthread_rwlock_unlock(&rwlock_tx);
@@ -698,7 +703,7 @@ uint64_t account_balance(const char *address)
         mdb_txn_abort(txn);
         goto cleanup;
     }
-
+{
     MDB_val key = {ADDRESS_MAX, (void*)address};
     MDB_val val;
 
@@ -713,7 +718,7 @@ uint64_t account_balance(const char *address)
         goto cleanup;
 
     balance = *(uint64_t*)val.mv_data;
-
+}
 cleanup:
     pthread_rwlock_unlock(&rwlock_tx);
     if (cursor)
@@ -751,7 +756,7 @@ worker_list(char *list_start, char *list_end, const char *address)
     HASH_FIND_STR(accounts, address, account);
     if (!account)
         goto bail;
-
+{
     client_t *c = (client_t*)gbag_first(bag_clients);
     while ((c = gbag_next(bag_clients, 0)) && body < (end-MAX_RIG_ID-4))
     {
@@ -767,6 +772,7 @@ worker_list(char *list_start, char *list_end, const char *address)
             body = stecpy(body, "\"", end);
         }
     }
+}
 bail:
     pthread_rwlock_unlock(&rwlock_acc);
 }
@@ -1228,6 +1234,7 @@ stratum_get_job_body_ss(char *body, const client_t *client, bool response)
                 "\"error\":null,\"result\""
                 ":{\"id\":\"%.32s\",\"job\":{"
                 "\"job_id\":\"%.32s\",\"target\":\"%s\","
+                "\"algo\":\"rx\",",
                 "\"extra_nonce\":\"%s\", \"pool_wallet\":\"%s\","
                 "\"seed_hash\":\"%.64s\",\"next_seed_hash\":\"%.64s\"},"
                 "\"status\":\"OK\"}}\n",
@@ -1270,6 +1277,7 @@ stratum_get_job_body(char *body, const client_t *client, bool response)
                 ":{\"id\":\"%.32s\",\"job\":{"
                 "\"blob\":\"%s\",\"job_id\":\"%.32s\",\"target\":\"%s\","
                 "\"height\":%"PRIu64",\"seed_hash\":\"%.64s\","
+                  "\"algo\":\"rx\","
                 "\"next_seed_hash\":\"%.64s\"},"
                 "\"status\":\"OK\"}}\n",
                 json_id, client_id, blob, job_id, target_hex, height,
@@ -1397,8 +1405,7 @@ static void miner_send_job(client_t *client, bool response)
 
     /* Make hex */
     job->blob = calloc((hashing_blob_size << 1) +1, sizeof(char));
-    bin_to_hex(hashing_blob, hashing_blob_size, job->blob,
-            hashing_blob_size << 1);
+    bin_to_hex(hashing_blob, hashing_blob_size, job->blob,hashing_blob_size << 1);
     log_trace("Miner hashing blob: %s", job->blob);
 
     /* Save a job id */
@@ -1581,16 +1588,14 @@ rpc_on_response(struct evhttp_request *req, void *arg)
 }
 
 static void
-rpc_request(struct event_base *base, const char *body,
-        rpc_callback_t *callback)
+rpc_request(struct event_base *base, const char *body,rpc_callback_t *callback)
 {
     struct evhttp_connection *con;
     struct evhttp_request *req;
     struct evkeyvalq *headers;
     struct evbuffer *output;
-
-    con = evhttp_connection_base_new(base, NULL,
-            config.rpc_host, config.rpc_port);
+    log_info("req %s\n", body);
+    con = evhttp_connection_base_new(base, NULL,config.rpc_host, config.rpc_port);
     evhttp_connection_free_on_completion(con);
     evhttp_connection_set_timeout(con, config.rpc_timeout);
     req = evhttp_request_new(rpc_on_response, callback);
@@ -2020,6 +2025,7 @@ rpc_on_wallet_transferred(const char* data, rpc_callback_t *callback)
         mdb_txn_abort(txn);
         goto cleanup;
     }
+    {
     gbag_t *bag_pay = (gbag_t*) callback->data;
     payment_t *p = (payment_t*) gbag_first(bag_pay);
     while((p = gbag_next(bag_pay, 0)))
@@ -2087,6 +2093,7 @@ rpc_on_wallet_transferred(const char* data, rpc_callback_t *callback)
         mdb_txn_abort(txn);
         goto cleanup;
     }
+   {
     time_t now = time(NULL);
     p = (payment_t*) gbag_first(bag_pay);
     while((p = gbag_next(bag_pay, 0)))
@@ -2108,6 +2115,8 @@ rpc_on_wallet_transferred(const char* data, rpc_callback_t *callback)
         mdb_txn_abort(txn);
         goto cleanup;
     }
+}
+}
 
 cleanup:
     json_object_put(root);
@@ -2894,7 +2903,7 @@ static void miner_on_read(struct bufferevent *bev, void *ctx)
     const char *too_bad = "Removing client. Too many bad shares.";
     const char *too_long = "Removing client. Message too long.";
     const char *invalid_json = "Removing client. Invalid JSON.";
-    struct evbuffer *input, *output;
+    //struct evbuffer *input, *output;
     char *line = NULL;
     size_t n = 0;
     client_t *client = NULL;
@@ -2906,9 +2915,9 @@ static void miner_on_read(struct bufferevent *bev, void *ctx)
     client_find(bev, &client);
     if (!client)
         goto unlock;
-
-    input = bufferevent_get_input(bev);
-    output = bufferevent_get_output(bev);
+{
+    auto input = bufferevent_get_input(bev);
+    auto output = bufferevent_get_output(bev);
 
     size_t len = evbuffer_get_length(input);
     if (len > MAX_LINE)
@@ -2936,6 +2945,7 @@ static void miner_on_read(struct bufferevent *bev, void *ctx)
             client_clear(bev);
             goto unlock;
         }
+   {
         JSON_GET_OR_WARN(method, message, json_type_string);
         JSON_GET_OR_WARN(id, message, json_type_int);
         const char *method_name = json_object_get_string(method);
@@ -2987,6 +2997,7 @@ static void miner_on_read(struct bufferevent *bev, void *ctx)
             client_clear(bev);
             goto unlock;
         }
+    }
         if (client->bad_shares > MAX_BAD_SHARES)
         {
             char body[ERROR_BODY_MAX] = {0};
@@ -2998,6 +3009,7 @@ static void miner_on_read(struct bufferevent *bev, void *ctx)
             goto unlock;
         }
     }
+}
 unlock:
     pthread_mutex_lock(&mutex_clients);
     clients_reading--;

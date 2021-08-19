@@ -45,10 +45,15 @@ using namespace epee;
 using namespace cryptonote;
 using namespace crypto;
 
-Blockchain* chain;
+struct Core{
+tx_memory_pool mempool;
+Blockchain chain ;
+Core():mempool(chain),chain(mempool){}
+};
+Core m_core;
 BlockchainDB* db ;
-
-   secret_key a,b;
+account_base acc;
+secret_key a,b; 
 
 template< class T>
     inline std::ostream &operator <<(std::ostream &o, const std::vector<T> &v) {
@@ -181,14 +186,14 @@ bool initChain(){
   }
   LOG_PRINT_L0("database: LMDB");
 
-  filesystem::path folder("/monerod");
+  filesystem::path folder("/home/winston/.dfa");
   folder /= db->get_db_name();
   const std::string filename = folder.string();
 
   LOG_PRINT_L0("Loading blockchain from folder " << filename << " ...");
   try
   {
-    db->open(filename, DBF_RDONLY);
+    db->open(filename, DBF_RDONLY);//
   }
   catch (const std::exception& e)
   {
@@ -196,10 +201,8 @@ bool initChain(){
     return false;
   }
 
-  tx_memory_pool m_mempool(*chain);
-  chain = new Blockchain(m_mempool);
   auto opt_testnet=false, opt_stagenet=false;
-  auto r = chain->init(db, opt_testnet ? cryptonote::TESTNET : opt_stagenet ? cryptonote::STAGENET : cryptonote::MAINNET);
+  auto r = m_core.chain.init(db, opt_testnet ? cryptonote::TESTNET : opt_stagenet ? cryptonote::STAGENET : cryptonote::MAINNET);
   if(!r){
     throw new runtime_error("fail to init chain");
   }
@@ -210,6 +213,13 @@ bool initChain(){
 
   return true;
 }
+void init_account(){
+   const auto  sk="b518b244a2f17b9e6fdae3b21b8f80e4ceb6f5e367cb892b660a0bd5cc2a6e0a";
+    crypto::secret_key recover_key;
+   ::serialization::parse_binary(string_tools::parse_hexstr_to_binbuff(sk),recover_key);
+    acc.generate(recover_key,true);
+
+}
 
 void check_kimage(const string & ki){
  crypto::key_image  k_image;
@@ -219,17 +229,8 @@ void check_kimage(const string & ki){
 }
 void construct_genesis_block(){
 
-   const auto  sk="b518b244a2f17b9e6fdae3b21b8f80e4ceb6f5e367cb892b660a0bd5cc2a6e0a";
-   // const auto  [recover_key,lang]= ElectrumWords::words_to_bytes(seed);
-   crypto::secret_key recover_key;
-   ::serialization::parse_binary(string_tools::parse_hexstr_to_binbuff(sk),recover_key);
-
-    account_base acc;
-    acc.generate(recover_key,true);
     const auto spend_key = acc.get_keys().m_spend_secret_key;
     cout<<"b "<<string_tools::pod_to_hex(spend_key)<<endl;
-  
-
     auto addr = acc.get_address();
     const auto addr_str = cryptonote::get_account_address_as_str(cryptonote::network_type::MAINNET,addr);
     cout<<"addr:"<<addr_str<<endl;
@@ -263,6 +264,23 @@ void cal_block_hash(const string & hex){
     cout<<"hash "<<hash<<endl;
     cout<<to_json_string(bl)<<endl;
 }
+void check_block(const string &hex){
+
+  const auto buf = string_tools::parse_hexstr_to_binbuff(hex);
+  const auto b = cryptonote::parse_and_validate_block_from_blob(buf);
+    cout<<to_json_string(b)<<endl;
+}
+void test_block_template(const string &arg){
+
+  const auto addr = acc.get_address();
+  blobdata b(17,0);
+  const auto bt=m_core.chain.create_block_template(nullptr,addr,b);
+  const auto & bd= t_serializable_object_to_blob(bt.b);
+  cout<<string_tools::buff_to_hex_nodelimer(bd);
+  const auto b2 = parse_and_validate_block_from_blob(bd);
+   cout<<to_json_string(b2)<<endl;
+
+}
 int main(int argc, char const * argv[]){
 
   std::vector<std::string> args(argv, argv+argc);
@@ -271,6 +289,7 @@ int main(int argc, char const * argv[]){
   }
  mlog_set_log_level(6);
 
+ init_account();
   auto cmd=args[1];
   if(cmd=="check_image"){
     const auto kimage=args[2];
@@ -285,22 +304,19 @@ int main(int argc, char const * argv[]){
   else if(cmd=="block_hash"){
     cal_block_hash(args[2]); return 0;
   }
+  else if(cmd=="check_block"){
+    check_block(args[2]); return 0;
+  }
 
    initChain();
-  auto tx_hash=args[2];
-  auto json= argc<4 || args[3]=="json";
-
-
-   string_tools::hex_to_pod("b60580c073a2679186fd99bf2fb75c86b550e39ef39f376711b7a3a2eae90a05",a);
-   string_tools::hex_to_pod("1520ee4190e2a54832387ae398e7b15f36e5d11c82089bbeaf8619a7ea07f708",b);
-   cout<<"a "<<a<<endl;
-   cout<<"b "<<b<<endl;
+  
 
 try{
-
-  
-  ((BlockchainLMDB*)db)->print_databases();
-  print_tx(chain,tx_hash,json);
+   ((BlockchainLMDB*)db)->print_databases();
+   std::cout<<cmd<<std::endl;
+  if(cmd=="test_b_template"){
+    test_block_template(args[2]); return 0;
+  }
 
 }
 catch(std::runtime_error& e)

@@ -38,17 +38,17 @@
 
 #include "randomx.h"
 #include "c_threads.h"
-#include "hash-ops.h"
 #include "misc_log_ex.h"
 #include <thread>
 #include <vector>
 #include "rx-hash.h"
+
 #define RX_LOGCAT	"randomx"
 
 
 typedef struct rx_state {
   CTHR_MUTEX_TYPE rs_mutex;
-  char rs_hash[HASH_SIZE];
+  char rs_hash[crypto::HASH_SIZE];
   uint64_t  rs_height;
   randomx_cache *rs_cache;
 } rx_state;
@@ -164,11 +164,11 @@ static void rx_init_cache(randomx_flags flags,rx_state *rx_sp, const uint64_t se
       }
     }
 
-    if (rx_sp->rs_height != seedheight || rx_sp->rs_cache == NULL || memcmp(seedhash, rx_sp->rs_hash, HASH_SIZE)) {
-      randomx_init_cache(cache, seedhash, HASH_SIZE);
+    if (rx_sp->rs_height != seedheight || rx_sp->rs_cache == NULL || memcmp(seedhash, rx_sp->rs_hash, crypto::HASH_SIZE)) {
+      randomx_init_cache(cache, seedhash, crypto::HASH_SIZE);
       rx_sp->rs_cache = cache;
       rx_sp->rs_height = seedheight;
-      memcpy(rx_sp->rs_hash, seedhash, HASH_SIZE);
+      memcpy(rx_sp->rs_hash, seedhash, crypto::HASH_SIZE);
     }
   }
 
@@ -260,7 +260,7 @@ static void rx_init_vm(randomx_flags flags,randomx_cache *rs_cache){
 
 }
 
-void rx_slow_hash(const uint64_t mainheight, const uint64_t seedheight, const char *seedhash, const void *data, size_t length,  char *hash, bool miner, int is_alt) {
+crypto::hash rx_slow_hash(const uint64_t mainheight, const uint64_t seedheight, const char *seedhash, const void *data, size_t length,   bool miner, int is_alt) {
   const uint64_t s_height = rx_seedheight(mainheight);
   int toggle = (s_height & SEEDHASH_EPOCH_BLOCKS) != 0;
   const randomx_flags flags = randomx_flags(enabled_flags() & ~disabled_flags());
@@ -269,7 +269,7 @@ void rx_slow_hash(const uint64_t mainheight, const uint64_t seedheight, const ch
 
   /* if alt block but with same seed as mainchain, no need for alt cache */
   if (is_alt) {
-    if (s_height == seedheight && !memcmp(rx_s[toggle].rs_hash, seedhash, HASH_SIZE))
+    if (s_height == seedheight && !memcmp(rx_s[toggle].rs_hash, seedhash, crypto::HASH_SIZE))
       is_alt = 0;
   } else {
   /* RPC could request an earlier block on mainchain */
@@ -302,10 +302,13 @@ void rx_slow_hash(const uint64_t mainheight, const uint64_t seedheight, const ch
   if (!is_alt)
     CTHR_MUTEX_UNLOCK(rx_sp->rs_mutex);
 
-  randomx_calculate_hash(rx_vm, data, length, hash);
+  crypto::hash pow;
+  randomx_calculate_hash(rx_vm, data, length, pow.data);
   /* altchain slot users always get fully serialized */
   if (is_alt)
     CTHR_MUTEX_UNLOCK(rx_sp->rs_mutex);
+
+  return pow;
 }
 
 void rx_slow_hash_allocate_state(void) {

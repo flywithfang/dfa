@@ -60,13 +60,13 @@ namespace crypto {
     Cryptonight hash functions
   */
 
-  inline void cn_fast_hash(const void *data, std::size_t length, hash &hash) {
-    cn_fast_hash(data, length, reinterpret_cast<char *>(&hash));
+  inline void cn_fast_hash(const void *data, std::size_t length, hash &h) {
+    cn_fast_hash(data, length, reinterpret_cast<char *>(h.data));
   }
 
   inline hash cn_fast_hash(const void *data, std::size_t length) {
     hash h;
-    cn_fast_hash(data, length, reinterpret_cast<char *>(&h));
+    cn_fast_hash(data, length, reinterpret_cast<char *>(h.data));
     return h;
   }
 

@@ -1003,7 +1003,6 @@ namespace cryptonote
 
     MINFO("Filling block template, median weight " << m_txs_by_fee_and_time.size() << " txes in the pool");
 
-    LockedTXN lock(m_blockchain.get_db());
 
     uint64_t total_weight =0;
     for (auto & e: m_txs_by_fee_and_time)
@@ -1021,23 +1020,19 @@ namespace cryptonote
         throw_and_log(" tx is pruned"<<tx_hash);
         continue;
       }
-
       // Can not exceed maximum block weight
       if (max_total_weight < total_weight + meta.weight)
       {
         MINFO("  would exceed maximum block weight");
         continue;
       }
-
       // "local" and "stem" txes are filtered above
-
       bl.tx_hashes.push_back(tx_hash);
       total_weight += meta.weight;
       fee += meta.fee;
       MDEBUG("  added, new block weight " << total_weight << "/" << max_total_weight );
     }
     
-    lock.commit();
     bt.fee = fee;
     bt.expected_reward = block_reward + fee;
     bt.txs_weight = total_weight;

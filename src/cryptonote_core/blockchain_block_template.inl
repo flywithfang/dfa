@@ -165,7 +165,7 @@ cryptonote::BlockTemplate Blockchain::create_block_template( const crypto::hash 
     {
       throw_and_log("Failed to find tx pub key in blockblob");
     }
-    bt.reserved_offset = off+ sizeof(tx_pub_key) ; 
+    bt.reserved_offset = off+ sizeof(tx_pub_key)+ (bb.size()>127 ? 2:1) ; 
     if(bt.reserved_offset + blob_reserve.size() > block_blob.size())
     {
       throw_and_log("Failed to calculate offset for ");

@@ -2755,7 +2755,7 @@ leave:
 
   TIME_MEASURE_FINISH(target_calculating_time);TIME_MEASURE_START(pow_cal_time);
 
-  const auto pow = get_block_longhash(this, bl, new_b_height);
+  const auto pow = get_block_pow(this, bl, new_b_height);
   // validate pow versus difficulty target
   if(!check_hash(pow, block_diff))
   {

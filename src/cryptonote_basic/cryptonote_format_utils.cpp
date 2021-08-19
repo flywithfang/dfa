@@ -781,6 +781,7 @@ namespace cryptonote
   //---------------------------------------------------------------
   blobdata get_block_hashing_blob(const block& b)
   {
+    //header+tx
     const block_header & header=b;
     blobdata blob = t_serializable_object_to_blob(header);
     crypto::hash tree_root_hash = get_tx_tree_hash(b);

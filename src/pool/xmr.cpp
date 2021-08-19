@@ -76,8 +76,7 @@ static int nettype_from_prefix(uint8_t *nettype, uint64_t prefix)
     return rv;
 }
 
-int get_hashing_blob(const unsigned char *input, const size_t in_size,
-        unsigned char **output, size_t *out_size)
+int get_hashing_blob(const unsigned char *input, const size_t in_size,unsigned char **output, size_t *out_size)
 {
   
     blobdata bd = std::string((const char*)input, in_size);
@@ -90,8 +89,7 @@ int get_hashing_blob(const unsigned char *input, const size_t in_size,
     return XMR_NO_ERROR;
 }
 
-int parse_address(const char *input, uint64_t *prefix,
-        uint8_t *nettype, unsigned char *pub_spend)
+int parse_address(const char *input, uint64_t *prefix,uint8_t *nettype, unsigned char *pub_spend)
 {
     uint64_t tag;
     std::string decoded;
@@ -123,13 +121,12 @@ int get_block_hash(const unsigned char *input, const size_t in_size,
 }
 
 
-void get_rx_hash(const unsigned char *input, const size_t in_size,
-        unsigned char *output, const unsigned char *seed_hash,
-        const uint64_t height)
+void get_rx_hash(const unsigned char *input, const size_t in_size,unsigned char *output, const unsigned char *seed_hash,const uint64_t height)
 {
     static unsigned miners = tools::get_max_concurrency();
     uint64_t seed_height = rx_seedheight(height);
-    rx_slow_hash(height, seed_height, (const char*)seed_hash,(const char*)input, in_size, (char*)output, miners, 0);
+    const auto pow = rx_slow_hash(height, seed_height, (const char*)seed_hash,(const char*)input, in_size,  miners, 0);
+    memcpy(output,pow.data,sizeof(pow));
 }
 
 int validate_block_from_blob(const char *blob_hex,const unsigned char *sec_view,const unsigned char *pub_spend)

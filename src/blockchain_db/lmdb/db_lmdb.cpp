@@ -223,7 +223,6 @@ const char* const LMDB_BLOCKS = "blocks";
 const char* const LMDB_BLOCK_HEIGHTS = "block_heights";
 const char* const LMDB_BLOCK_INFO = "block_info";
 
-const char* const LMDB_TXS = "txs";
 const char* const LMDB_TXS_PRUNED = "txs_pruned";
 const char* const LMDB_TXS_PRUNABLE = "txs_prunable";
 const char* const LMDB_TXS_PRUNABLE_HASH = "txs_prunable_hash";
@@ -1247,7 +1246,7 @@ void BlockchainLMDB::open(const std::string& filename, const int db_flags)
     mdb_flags |= MDB_PREVSNAPSHOT;
 
   if (auto result = mdb_env_open(m_env, filename.c_str(), mdb_flags, 0644))
-    throw0(DB_ERROR(lmdb_error("Failed to open lmdb environment: ", result).c_str()));
+    throw0(DB_ERROR(lmdb_error( filename + " Failed to open lmdb environment: ", result).c_str()));
 
   MDB_envinfo mei;
   mdb_env_info(m_env, &mei);
@@ -1285,7 +1284,6 @@ void BlockchainLMDB::open(const std::string& filename, const int db_flags)
   lmdb_db_open(txn, LMDB_BLOCK_INFO, MDB_INTEGERKEY | MDB_CREATE | MDB_DUPSORT | MDB_DUPFIXED, m_block_info, "Failed to open db handle for m_block_info");
   lmdb_db_open(txn, LMDB_BLOCK_HEIGHTS, MDB_INTEGERKEY | MDB_CREATE | MDB_DUPSORT | MDB_DUPFIXED, m_block_heights, "Failed to open db handle for m_block_heights");
 
-  lmdb_db_open(txn, LMDB_TXS, MDB_INTEGERKEY | MDB_CREATE, m_txs, "Failed to open db handle for m_txs");
   lmdb_db_open(txn, LMDB_TXS_PRUNED, MDB_INTEGERKEY | MDB_CREATE, m_txs_pruned, "Failed to open db handle for m_txs_pruned");
   lmdb_db_open(txn, LMDB_TXS_PRUNABLE, MDB_INTEGERKEY | MDB_CREATE, m_txs_prunable, "Failed to open db handle for m_txs_prunable");
   lmdb_db_open(txn, LMDB_TXS_PRUNABLE_HASH, MDB_INTEGERKEY | MDB_DUPSORT | MDB_DUPFIXED | MDB_CREATE, m_txs_prunable_hash, "Failed to open db handle for m_txs_prunable_hash");
@@ -4183,6 +4181,7 @@ void BlockchainLMDB::print_databases(){
  if(r){
   throw new runtime_error("fail begin tx");
  }
+
  MDB_dbi db;
  r = mdb_dbi_open(txn,nullptr,0,&db);
  if(r){
@@ -4199,11 +4198,11 @@ void BlockchainLMDB::print_databases(){
     r = mdb_cursor_get(cursor,&key,&val,op);
     if(r==0){
       const char * name =(const char*) key.mv_data;
-      cout<<name<<","<<key.mv_size<<"/"<<val.mv_size<<endl;
+      cout<<name<<endl;
    }
   }
-  std::vector<MDB_dbi> ids={m_blocks,m_block_heights,m_block_info,m_txs_pruned,m_txs_prunable,m_txs_prunable_hash,m_txs_prunable_tip,m_tx_indices,m_tx_o_indices,m_tx_outputs,m_txs,m_spent_keys,m_txpool_meta,m_txpool_blob,m_alt_blocks,m_hf_starting_heights,m_hf_versions,m_properties};
-  std::vector<string> names={"blocks","block_heights","block_info","txs_pruned","txs_prunable","txs_prunable_hash","txs_prunable_tip","tx_indices","tx_outputs","tx_outputs","txs","spent_keys","txpool_meta","txpool_blob","alt_blocks","hf_starting_heights","hf_versions","properties"};
+  std::vector<MDB_dbi> ids={m_blocks,m_block_heights,m_block_info,m_txs_pruned,m_txs_prunable,m_txs_prunable_hash,m_txs_prunable_tip,m_tx_indices,m_tx_o_indices,m_tx_outputs,m_spent_keys,m_txpool_meta,m_txpool_blob,m_alt_blocks,m_hf_starting_heights,m_hf_versions,m_properties};
+  std::vector<string> names={"blocks","block_heights","block_info","txs_pruned","txs_prunable","txs_prunable_hash","txs_prunable_tip","tx_indices","tx_outputs","tx_outputs","spent_keys","txpool_meta","txpool_blob","alt_blocks","hf_starting_heights","hf_versions","properties"};
   auto i=0;
   for(auto db : ids){
          MDB_stat st;
@@ -4214,7 +4213,7 @@ void BlockchainLMDB::print_databases(){
   }
   cout<<"r="<<r<<endl;
   mdb_cursor_close(cursor);
-  mdb_txn_abort(txn);
+  mdb_txn_commit(txn);
   mdb_dbi_close(m_env,db);
 }
 

@@ -97,7 +97,7 @@ namespace tools {
     write = 0;
     for (int shift = 0;; shift += 7) {
       if (first == last) {
-	return read; 
+	       return read; 
       }
       unsigned char byte = *first;
       ++first;

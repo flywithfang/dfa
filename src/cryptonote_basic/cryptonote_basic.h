@@ -133,7 +133,9 @@ namespace cryptonote
       FIELD(vin)
       FIELD(vout)
       FIELD(tx_pub_key)
+      MDEBUG("tx_pub_key"<<tx_pub_key);
       FIELD(extra)
+       MDEBUG("extra"<<extra);
     END_SERIALIZE()
 
   public:
@@ -403,8 +405,6 @@ namespace cryptonote
       FIELDS(*static_cast<block_header *>(this))
       FIELD(miner_tx)
       FIELD(tx_hashes)
-      if (tx_hashes.size() > CRYPTONOTE_MAX_TX_PER_BLOCK)
-        return false;
     END_SERIALIZE()
   };
 

@@ -26,13 +26,15 @@
 # STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 # THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+add_definitions(-D__STDC_FORMAT_MACROS)
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fpermissive -Wno-literal-suffix")
 
 set(pool_sources
   bstack.c
   forkoff.c
   growbag.c
   log.c
-  pool.c
+  pool.cpp
   util.c
   xmr.cpp)
 

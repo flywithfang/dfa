@@ -53,8 +53,7 @@ is_hex_string(const char *str)
 }
 
 void
-hex_to_bin(const char *hex, const size_t hex_len,
-        unsigned char *bin, const size_t bin_size)
+hex_to_bin(const char *hex, const size_t hex_len,unsigned char *bin, const size_t bin_size)
 {
     const char *ph = hex;
     unsigned char *end = bin + bin_size;

@@ -210,7 +210,7 @@ struct binary_archive<true> : public binary_archive_base<std::ostream, true>
   }
 
   template <class T>
-  void serialize_varint(T &v)
+  void  serialize_varint(T &v)
   {
     serialize_uvarint(*(typename boost::make_unsigned<T>::type *)(&v));
   }

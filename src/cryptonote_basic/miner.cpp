@@ -321,12 +321,11 @@ namespace cryptonote
   {
     for(; bl.nonce != std::numeric_limits<uint32_t>::max(); bl.nonce++)
     {
-      crypto::hash h;
-      cryptonote::get_block_longhash(pbc, bl, h, height);
-      if(cryptonote::check_hash(h, diffic))
+      crypto::hash pow=cryptonote::get_block_pow(pbc, bl, height);
+      if(cryptonote::check_hash(pow, diffic))
       {
         bl.invalidate_hashes();
-        MINFO("find_nonce_for_given_block "<<h<<"/"<<diffic<<","<<bl.prev_id<<","<<get_block_hash(bl)<<","<<bl.nonce<<",h="<<height);
+        MINFO("pow "<<pow<<"/"<<diffic<<","<<bl.prev_id<<","<<get_block_hash(bl)<<","<<bl.nonce<<",h="<<height);
         return true;
       }
     }
@@ -409,8 +408,7 @@ namespace cryptonote
         continue;
       }
 
-      crypto::hash h;
-      rx_slow_hash(height, seed_height, seed_hash.data, bd.data(), bd.size(), (char*) h.data,  true, false);
+      crypto::hash h=rx_slow_hash(height, seed_height, seed_hash.data, bd.data(), bd.size(),true, false);
 
       if(cryptonote::check_hash(h, local_diff))
       {
