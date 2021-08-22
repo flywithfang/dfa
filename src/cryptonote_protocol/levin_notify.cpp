@@ -100,7 +100,7 @@ namespace levin
         p2p.foreach_connection([&remote_heights] (detail::p2p_context& context) {
           if (!context.m_is_income)
           {
-            remote_heights.emplace_back(context.m_remote_blockchain_height);
+            remote_heights.emplace_back(context.m_remote_chain_height);
           }
           return true;
         });
@@ -140,7 +140,7 @@ namespace levin
          of waiting in here. */
 
       p2p.foreach_connection([&outs, blockchain_height] (detail::p2p_context& context) {
-        if (!context.m_is_income && context.m_remote_blockchain_height >= blockchain_height)
+        if (!context.m_is_income && context.m_remote_chain_height >= blockchain_height)
           outs.emplace_back(context.m_connection_id);
         return true;
       });

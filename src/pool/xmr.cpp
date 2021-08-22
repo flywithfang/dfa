@@ -80,7 +80,7 @@ int get_hashing_blob(const unsigned char *input, const size_t in_size,unsigned c
 {
   
     blobdata bd = std::string((const char*)input, in_size);
-    const auto b = parse_and_validate_block_from_blob(bd);
+    const auto b = parse_block_from_blob(bd);
 
     blobdata blob = get_block_hashing_blob(b);
     *out_size = blob.length();
@@ -110,14 +110,14 @@ int parse_address(const char *input, uint64_t *prefix,uint8_t *nettype, unsigned
     return XMR_NO_ERROR;
 }
 
-int get_block_hash(const unsigned char *input, const size_t in_size,
-        unsigned char *output)
+crypto::hash get_block_hash(const unsigned char *input, const size_t in_size)
 {
     blobdata bd = std::string((const char*)input, in_size);
-    auto b = parse_and_validate_block_from_blob(bd);
-
-    *reinterpret_cast<hash*>(*output)=get_block_hash(b);
-    return  XMR_NO_ERROR ;
+    auto b = parse_block_from_blob(bd);
+    std::cout<<"parse block"<<std::endl;
+    const auto h=get_block_hash(b);
+    std::cout<<"get_block_hash"<<h<<std::endl;
+    return  h;
 }
 
 
@@ -142,7 +142,7 @@ int validate_block_from_blob(const char *blob_hex,const unsigned char *sec_view,
     if (!parse_hexstr_to_binbuff(blob_hex, bd))
         return XMR_PARSE_ERROR;
 
-    const auto b= parse_and_validate_block_from_blob(bd);
+    const auto b= parse_block_from_blob(bd);
 
     transaction tx = b.miner_tx;
 

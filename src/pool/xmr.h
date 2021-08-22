@@ -31,10 +31,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #ifndef XMR_H
 #define XMR_H
-
-#ifdef __cplusplus
-extern "C" {
-#endif
+#include "crypto/hash.h"
 
 enum xmr_error
 {
@@ -51,8 +48,7 @@ int get_hashing_blob(const unsigned char *input, const size_t in_size,
         unsigned char **output, size_t *out_size);
 int parse_address(const char *input, uint64_t *prefix,
         uint8_t *nettype, unsigned char *pub_spend);
-int get_block_hash(const unsigned char *input, const size_t in_size,
-        unsigned char *output);
+crypto::hash get_block_hash(const unsigned char *input, const size_t in_size);
 void get_hash(const unsigned char *input, const size_t in_size,
         unsigned char *output, int variant, uint64_t height);
 void get_rx_hash(const unsigned char *input, const size_t in_size,
@@ -62,8 +58,5 @@ int validate_block_from_blob(const char *blob_hex,
         const unsigned char *sec_view,
         const unsigned char *pub_spend);
 
-#ifdef __cplusplus
-}
-#endif
 
 #endif

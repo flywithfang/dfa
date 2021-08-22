@@ -52,6 +52,10 @@ namespace string_tools
   {
     return to_hex::string(to_byte_span(to_span(src)));
   }
+   inline std::string buff_to_hex(const boost::string_ref src)
+  {
+    return to_hex::string(to_byte_span(to_span(src)));
+  }
   //----------------------------------------------------------------------------
   inline bool parse_hexstr_to_binbuff(const boost::string_ref s, std::string& res)
   {

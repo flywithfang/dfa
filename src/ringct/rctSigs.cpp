@@ -314,7 +314,7 @@ namespace rct {
         kv.reserve((6*2+9) * rv.p.bulletproofs.size());
         for (const auto &p: rv.p.bulletproofs)
         {
-          // V are not hashed as they're expanded from outPk.mask
+          // V are not hashed as they're expanded from outCommitments.mask
           // (and thus hashed as part of rctSigBase above)
           kv.push_back(p.A);
           kv.push_back(p.S);
@@ -561,7 +561,7 @@ namespace rct {
         rv.type = RCTTypeCLSAG;
         
         rv.message = message;
-        rv.outPk.resize(destinations.size());
+        rv.outCommitments.resize(destinations.size());
         rv.ecdhInfo.resize(destinations.size());
 
         size_t i;
@@ -570,7 +570,7 @@ namespace rct {
         for (i = 0; i < destinations.size(); i++) {
 
             //add destination to sig
-            rv.outPk[i].otk = copy(destinations[i]);
+            rv.outCommitments[i].otk = copy(destinations[i]);
         }
 
         rv.p.bulletproofs.clear();
@@ -586,7 +586,7 @@ namespace rct {
                 }
                 for (i = 0; i < outamounts.size(); ++i)
                 {
-                    rv.outPk[i].commitment = rct::scalarmult8(C[i]);
+                    rv.outCommitments[i].commitment = rct::scalarmult8(C[i]);
                     outSk[i].noise = noises[i];
                 }
             }
@@ -680,7 +680,7 @@ namespace rct {
               false, "verRctSemanticsSimple called on non simple rctSig");
 //          const bool bulletproof = is_rct_bulletproof(rv.type);
           {
-            CHECK_AND_ASSERT_MES(rv.outPk.size() == n_bulletproof_amounts(rv.p.bulletproofs), false, "Mismatched sizes of outPk and bulletproofs");
+            CHECK_AND_ASSERT_MES(rv.outCommitments.size() == n_bulletproof_amounts(rv.p.bulletproofs), false, "Mismatched sizes of outCommitments and bulletproofs");
             if (rv.type == RCTTypeCLSAG)
             {
               CHECK_AND_ASSERT_MES(rv.p.pseudoOuts.size() == rv.p.CLSAGs.size(), false, "Mismatched sizes of rv.p.pseudoOuts and rv.p.CLSAGs");
@@ -688,7 +688,7 @@ namespace rct {
        
           }
         
-          CHECK_AND_ASSERT_MES(rv.outPk.size() == rv.ecdhInfo.size(), false, "Mismatched sizes of outPk and rv.ecdhInfo");
+          CHECK_AND_ASSERT_MES(rv.outCommitments.size() == rv.ecdhInfo.size(), false, "Mismatched sizes of outCommitments and rv.ecdhInfo");
 
         }
 
@@ -700,9 +700,9 @@ namespace rct {
           const bool bulletproof = true;
           const keyV &pseudoOuts = rv.p.pseudoOuts ;
 
-          rct::keyV masks(rv.outPk.size());
-          for (size_t i = 0; i < rv.outPk.size(); i++) {
-            masks[i] = rv.outPk[i].commitment;
+          rct::keyV masks(rv.outCommitments.size());
+          for (size_t i = 0; i < rv.outCommitments.size(); i++) {
+            masks[i] = rv.outCommitments[i].commitment;
           }
           key sumOutpks = addKeys(masks);
           DP(sumOutpks);
@@ -774,7 +774,7 @@ namespace rct {
         if (bulletproof)
           CHECK_AND_ASSERT_MES(rv.p.pseudoOuts.size() == rv.mixRing.size(), false, "Mismatched sizes of rv.p.pseudoOuts and mixRing");
 
-        const size_t threads = std::max(rv.outPk.size(), rv.mixRing.size());
+        const size_t threads = std::max(rv.outCommitments.size(), rv.mixRing.size());
 
         std::deque<bool> results(threads);
         tools::threadpool& tpool = tools::threadpool::getInstance();

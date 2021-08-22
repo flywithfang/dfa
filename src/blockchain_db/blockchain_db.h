@@ -204,6 +204,20 @@ struct txpool_tx_meta_t
     uint64_t reserved_offset;
   };
   
+  struct BlobBlock{
+    blobdata blob;
+    block b;
+  };
+  struct BlobTx{
+    blobdata blob;
+    transaction tx;
+  };
+
+  struct ChainSyncInfo{
+    uint64_t split_height;
+    uint64_t top_height;
+    std::vector<crypto::hash> hashes;
+  };
 #define DBF_SAFE       1
 #define DBF_FAST       2
 #define DBF_FASTEST    4
@@ -493,13 +507,7 @@ public:
    */
   virtual void sync() = 0;
 
-  /**
-   * @brief toggle safe syncs for the DB
-   *
-   * Used to switch DBF_SAFE on or off after starting up with DBF_FAST.
-   */
-  virtual void safesyncmode(const bool onoff) = 0;
-
+ 
   /**
    * @brief Remove everything from the BlockchainDB
    *
@@ -602,7 +610,7 @@ public:
    *
    * @return true if we started the batch, false if already started
    */
-  virtual bool batch_start(uint64_t batch_num_blocks=0, uint64_t batch_bytes=0) = 0;
+  virtual bool batch_start() = 0;
 
   /**
    * @brief ends a batch transaction
@@ -682,7 +690,7 @@ public:
    *
    * @return the height of the chain post-addition
    */
-  virtual uint64_t add_block( const std::pair<block, blobdata>& blk, size_t block_weight,  const difficulty_type& block_diff,  const std::vector<std::pair<transaction, blobdata>>& txs)=0;
+  virtual uint64_t add_block( const std::pair<block, blobdata>& blk,  const difficulty_type& block_diff,  const std::vector<std::pair<transaction, blobdata>>& txs)=0;
 
  /**
    * <!--
@@ -832,30 +840,6 @@ public:
    */
   virtual uint64_t get_top_block_timestamp() const = 0;
 
-  /**
-   * @brief fetch a block's weight
-   *
-   * The subclass should return the weight of the block with the
-   * given height.
-   *
-   * If the block does not exist, the subclass should throw BLOCK_DNE
-   *
-   * @param height the height requested
-   *
-   * @return the weight
-   */
-  virtual size_t get_block_weight(const uint64_t& height) const = 0;
-
-  /**
-   * @brief fetch the last N blocks' weights
-   *
-   * If there are fewer than N blocks, the returned array will be smaller than N
-   *
-   * @param count the number of blocks requested
-   *
-   * @return the weights
-   */
-  virtual std::vector<uint64_t> get_block_weights(uint64_t start_height, size_t count) const = 0;
 
   /**
    * @brief fetch a block's cumulative difficulty
@@ -1509,7 +1493,7 @@ public:
    *
    * @return false if the function returns false for any transaction, otherwise true
    */
-  virtual bool for_all_transactions(std::function<bool(const crypto::hash&, const cryptonote::transaction&)>, bool pruned) const = 0;
+  virtual bool for_all_transactions(std::function<bool(const crypto::hash&, const cryptonote::transaction&)>) const = 0;
 
   /**
    * @brief runs a function over all outputs stored
@@ -1654,7 +1638,8 @@ private:
   bool active;
 };
 
-class db_rtxn_guard: public db_txn_guard { public: db_rtxn_guard(BlockchainDB *db): db_txn_guard(db, true) {} };
+class db_rtxn_guard: public db_txn_guard {
+ public: db_rtxn_guard(BlockchainDB *db): db_txn_guard(db, true) {} };
 class db_wtxn_guard: public db_txn_guard { public: db_wtxn_guard(BlockchainDB *db): db_txn_guard(db, false) {} };
 
 BlockchainDB *new_db();

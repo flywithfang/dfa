@@ -177,7 +177,7 @@ bool gen_rct_tx_validation_base::generate_with_full(std::vector<test_event_entry
       for (int m = 0; m <= mixin; ++m) {
         rct::ctkey ctkey;
         ctkey.dest = rct::pk2rct(boost::get<txout_to_key>(rct_txes[rct_idx/4].vout[rct_idx&3].target).key);
-        ctkey.mask = rct_txes[rct_idx/4].rct_signatures.outPk[rct_idx&3].mask;
+        ctkey.mask = rct_txes[rct_idx/4].rct_signatures.outCommitments[rct_idx&3].mask;
         src.outputs.push_back(std::make_pair(global_rct_idx, ctkey));
         ++rct_idx;
         ++global_rct_idx;

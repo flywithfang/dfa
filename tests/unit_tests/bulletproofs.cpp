@@ -246,7 +246,7 @@ TEST(bulletproof, weight_equal)
   ASSERT_TRUE(epee::string_tools::parse_hexstr_to_binbuff(std::string(tx_hex), bd));
   cryptonote::transaction tx;
   crypto::hash tx_hash, tx_prefix_hash;
-  ASSERT_TRUE(parse_and_validate_tx_from_blob(bd, tx, tx_hash, tx_prefix_hash));
+  ASSERT_TRUE(parse_tx_from_blob(bd, tx, tx_hash, tx_prefix_hash));
   ASSERT_TRUE(tx.version == 2);
   ASSERT_TRUE(rct::is_rct_bulletproof(tx.rct_signatures.type));
   const uint64_t tx_size = bd.size();
@@ -261,7 +261,7 @@ TEST(bulletproof, weight_more)
   ASSERT_TRUE(epee::string_tools::parse_hexstr_to_binbuff(std::string(tx_hex), bd));
   cryptonote::transaction tx;
   crypto::hash tx_hash, tx_prefix_hash;
-  ASSERT_TRUE(parse_and_validate_tx_from_blob(bd, tx, tx_hash, tx_prefix_hash));
+  ASSERT_TRUE(parse_tx_from_blob(bd, tx, tx_hash, tx_prefix_hash));
   ASSERT_TRUE(tx.version == 2);
   ASSERT_TRUE(rct::is_rct_bulletproof(tx.rct_signatures.type));
   const uint64_t tx_size = bd.size();
@@ -292,15 +292,15 @@ TEST(bulletproof, weight_pruned)
     ASSERT_TRUE(epee::string_tools::parse_hexstr_to_binbuff(std::string(tx_hex), bd));
     cryptonote::transaction tx, pruned_tx;
     crypto::hash tx_hash, tx_prefix_hash;
-    ASSERT_TRUE(parse_and_validate_tx_from_blob(bd, tx, tx_hash, tx_prefix_hash));
+    ASSERT_TRUE(parse_tx_from_blob(bd, tx, tx_hash, tx_prefix_hash));
     ASSERT_TRUE(tx.version == 2);
     ASSERT_FALSE(tx.pruned);
     ASSERT_TRUE(rct::is_rct_bulletproof(tx.rct_signatures.type));
     const uint64_t tx_weight = cryptonote::get_transaction_weight(tx);
-    ASSERT_TRUE(parse_and_validate_tx_base_from_blob(bd, pruned_tx));
+    ASSERT_TRUE(parse_tx_base_from_blob(bd, pruned_tx));
     ASSERT_TRUE(pruned_tx.version == 2);
     ASSERT_TRUE(pruned_tx.pruned);
-    const uint64_t pruned_tx_weight = cryptonote::get_pruned_transaction_weight(pruned_tx);
+    const uint64_t pruned_tx_weight = cryptonote::get_transaction_weight(pruned_tx);
     ASSERT_EQ(tx_weight, pruned_tx_weight);
   }
 }

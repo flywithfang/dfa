@@ -228,23 +228,23 @@ namespace boost
   template <class Archive>
   inline typename std::enable_if<Archive::is_loading::value, void>::type serializeOutPk(Archive &a, rct::ctkeyV &outPk_, const boost::serialization::version_type ver)
   {
-    rct::keyV outPk;
-    a & outPk;
-    outPk_.resize(outPk.size());
+    rct::keyV outCommitments;
+    a & outCommitments;
+    outPk_.resize(outCommitments.size());
     for (size_t n = 0; n < outPk_.size(); ++n)
     {
       outPk_[n].otk = rct::identity();
-      outPk_[n].commitment = outPk[n];
+      outPk_[n].commitment = outCommitments[n];
     }
   }
 
   template <class Archive>
   inline typename std::enable_if<Archive::is_saving::value, void>::type serializeOutPk(Archive &a, rct::ctkeyV &outPk_, const boost::serialization::version_type ver)
   {
-    rct::keyV outPk(outPk_.size());
+    rct::keyV outCommitments(outPk_.size());
     for (size_t n = 0; n < outPk_.size(); ++n)
-      outPk[n] = outPk_[n].commitment;
-    a & outPk;
+      outCommitments[n] = outPk_[n].commitment;
+    a & outCommitments;
   }
 
   template <class Archive>
@@ -257,7 +257,7 @@ namespace boost
       throw boost::archive::archive_exception(boost::archive::archive_exception::other_exception, "Unsupported rct type");
  
     a & x.ecdhInfo;
-    serializeOutPk(a, x.outPk, ver);
+    serializeOutPk(a, x.outCommitments, ver);
     a & x.txnFee;
   }
 
@@ -280,7 +280,7 @@ namespace boost
     // a & x.message; message is not serialized, as it can be reconstructed from the tx data
     // a & x.mixRing; mixRing is not serialized, as it can be reconstructed from the offsets
     a & x.ecdhInfo;
-    serializeOutPk(a, x.outPk, ver);
+    serializeOutPk(a, x.outCommitments, ver);
     a & x.txnFee;
     //--------------
     a & x.p.bulletproofs;

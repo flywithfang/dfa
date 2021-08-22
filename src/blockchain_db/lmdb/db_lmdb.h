@@ -188,8 +188,6 @@ public:
 
   virtual void sync();
 
-  virtual void safesyncmode(const bool onoff);
-
   virtual void reset();
 
   virtual std::vector<std::string> get_filenames() const;
@@ -218,9 +216,6 @@ public:
 
   virtual uint64_t get_top_block_timestamp() const;
 
-  virtual size_t get_block_weight(const uint64_t& height) const;
-
-  virtual std::vector<uint64_t> get_block_weights(uint64_t start_height, size_t count) const;
 
   virtual difficulty_type get_block_cumulative_difficulty(const uint64_t& height) const;
 
@@ -260,8 +255,6 @@ public:
    */
   virtual transaction get_tx(const crypto::hash& h) const;
 
-  virtual bool get_tx(const crypto::hash& h, transaction &tx) const;
-
   /**
    * @brief fetches the transaction base with the given hash
    *
@@ -272,7 +265,6 @@ public:
    * @return the transaction with the given hash
    */
   virtual transaction get_pruned_tx(const crypto::hash& h) const;
-  virtual bool        get_pruned_tx(const crypto::hash& h, transaction &tx) const;
 
   virtual bool get_tx_blob(const crypto::hash& h, cryptonote::blobdata &tx) const;
   virtual bool get_pruned_tx_blob(const crypto::hash& h, cryptonote::blobdata &tx) const;
@@ -336,15 +328,14 @@ public:
 
   virtual bool for_all_key_images(std::function<bool(const crypto::key_image&)>) const;
   virtual bool for_blocks_range(const uint64_t& h1, const uint64_t& h2, std::function<bool(uint64_t, const crypto::hash&, const cryptonote::block&)>) const;
-  virtual bool for_all_transactions(std::function<bool(const crypto::hash&, const cryptonote::transaction&)>, bool pruned) const;
+  virtual bool for_all_transactions(std::function<bool(const crypto::hash&, const cryptonote::transaction&)>) const;
   virtual bool for_all_outputs(  const uint64_t start_height,std::function<bool(uint64_t,const output_data_t&)>& f) const;
   virtual bool for_all_alt_blocks(std::function<bool(const crypto::hash &blkid, const alt_block_data_t &data, const cryptonote::blobdata_ref *blob)> f, bool include_blob = false) const;
 
-  virtual uint64_t add_block( const std::pair<block, blobdata>& blk, size_t block_weight
-                            , const difficulty_type& b_diff, const std::vector<std::pair<transaction, blobdata>>& txs);
+  virtual uint64_t add_block( const std::pair<block, blobdata>& blk, const difficulty_type& b_diff, const std::vector<std::pair<transaction, blobdata>>& txs);
 
   virtual void set_batch_transactions(bool batch_transactions);
-  virtual bool batch_start(uint64_t batch_num_blocks=0, uint64_t batch_bytes=0);
+  virtual bool batch_start();
   virtual void batch_commit();
   virtual void batch_stop();
   virtual void batch_abort();
@@ -372,10 +363,8 @@ private:
   void do_resize(uint64_t size_increase=0);
 
   bool need_resize(uint64_t threshold_size=0) const;
-  void check_and_resize_for_batch(uint64_t batch_num_blocks, uint64_t batch_bytes);
-  uint64_t get_estimated_batch_size(uint64_t batch_num_blocks, uint64_t batch_bytes) const;
 
-  void __add_block( const block& blk, size_t block_weight,  const difficulty_type& cum_diff, const uint64_t& coins_generated, uint64_t num_rct_outs, const crypto::hash& block_hash);
+  void __add_block( const block& blk,  const difficulty_type& cum_diff, const uint64_t& coins_generated, uint64_t num_rct_outs, const crypto::hash& block_hash);
 
   void __remove_block();
 

@@ -193,11 +193,9 @@
 
     if(peer_cxt.m_state == cryptonote_peer_context::state_synchronizing && peer_cxt.m_last_request_time == boost::posix_time::not_a_date_time)
     {
-      NOTIFY_REQUEST_CHAIN::request r = {};
-      peer_cxt.m_needed_objects.clear();
+      NOTIFY_REQUEST_CHAIN::request r = {m_core.get_blockchain().get_short_chain_history()};
+      peer_cxt.m_needed_blocks.clear();
       peer_cxt.m_expect_height = m_core.get_current_blockchain_height();
-      m_core.get_short_chain_history(r.block_ids);
-      r.prune = m_sync_pruned_blocks;
       peer_cxt.m_last_request_time = boost::posix_time::microsec_clock::universal_time();
       peer_cxt.m_expect_response = NOTIFY_RESPONSE_CHAIN_ENTRY::ID;
       MDEBUG(peer_cxt<<"-->>NOTIFY_REQUEST_CHAIN: m_block_ids.size()=" << r.block_ids.size() );
@@ -247,12 +245,12 @@
       }
     }
 
-    if (peer_sync_info.current_height < peer_cxt.m_remote_blockchain_height)
+    if (peer_sync_info.current_height < peer_cxt.m_remote_chain_height)
     {
-      MINFO(peer_cxt << "Claims " << peer_sync_info.current_height << ", claimed " << peer_cxt.m_remote_blockchain_height << " before");
+      MINFO(peer_cxt << "Claims " << peer_sync_info.current_height << ", claimed " << peer_cxt.m_remote_chain_height << " before");
       hit_score(peer_cxt, 1);
     }
-    peer_cxt.m_remote_blockchain_height = peer_sync_info.current_height;
+    peer_cxt.m_remote_chain_height = peer_sync_info.current_height;
     peer_cxt.m_pruning_seed = peer_sync_info.pruning_seed;
 
     const uint64_t target = m_core.get_target_blockchain_height()|| m_core.get_current_blockchain_height();
@@ -276,10 +274,7 @@
     MCLOG(is_inital ? el::Level::Info : el::Level::Debug, "global", el::Color::Yellow, peer_cxt <<  "Sync data returned a new top block candidate: " << m_core.get_current_blockchain_height() << " -> " << peer_sync_info.current_height
       << " [Your node is " << abs_diff << " blocks (" << tools::get_human_readable_timespan(abs_diff * DIFFICULTY_TARGET) << ") "<< (0 <= diff ? std::string("behind") : std::string("ahead"))<< "] " << ENDL << "SYNCHRONIZATION started");
 
-      if (peer_sync_info.current_height >= m_core.get_current_blockchain_height() + 5) // don't switch to unsafe mode just for a few blocks
-      {
-        m_core.safesyncmode(false);
-      }
+    
       if (m_core.get_target_blockchain_height() == 0) // only when sync starts
       {
         m_sync_timer.resume();

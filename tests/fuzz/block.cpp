@@ -37,5 +37,5 @@ BEGIN_INIT_SIMPLE_FUZZER()
 END_INIT_SIMPLE_FUZZER()
 
 BEGIN_SIMPLE_FUZZER()
-  cryptonote::block b = parse_and_validate_block_from_blob(std::string((const char*)buf, len));
+  cryptonote::block b = parse_block_from_blob(std::string((const char*)buf, len));
 END_SIMPLE_FUZZER()

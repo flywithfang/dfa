@@ -190,7 +190,7 @@ bool BlockchainDB::is_open() const
 block BlockchainDB::get_block_from_height(const uint64_t& height) const
 {
   blobdata bd = get_block_blob_from_height(height);
-  const block b=parse_and_validate_block_from_blob(bd);
+  const block b=parse_block_from_blob(bd);
 
   return b;
 }
@@ -198,7 +198,7 @@ block BlockchainDB::get_block_from_height(const uint64_t& height) const
 block BlockchainDB::get_block(const crypto::hash& h) const
 {
   blobdata bd = get_block_blob(h);
-  const block b=parse_and_validate_block_from_blob(bd);
+  const block b=parse_block_from_blob(bd);
 
   return b;
 }

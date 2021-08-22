@@ -416,11 +416,7 @@ namespace cryptonote
         b.nonce = *pnonce;
         //we lucky!
         MGINFO_GREEN("Found block " << get_block_hash(b) << " at height " << height << " diff: " << local_diff<<",small hash="<<h<<",nonce="<<*pnonce);
-        cryptonote::block_verification_context bvc;
-        if(!m_phandler->handle_block_found(b, bvc) || !bvc.m_added_to_main_chain)
-        {
-          MWARNING("block not added main chain! "<<bvc.m_added_to_main_chain);
-        }
+       
       }
 
       *pnonce +=m_threads_total;

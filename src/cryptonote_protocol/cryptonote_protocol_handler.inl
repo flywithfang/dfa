@@ -104,7 +104,6 @@ namespace cryptonote
     m_sync_download_objects_size = 0;
 
     m_block_download_max_size = command_line::get_arg(vm, cryptonote::arg_block_download_max_size);
-    m_sync_pruned_blocks = command_line::get_arg(vm, cryptonote::arg_sync_pruned_blocks);
 
     return true;
   }
@@ -250,7 +249,7 @@ namespace cryptonote
       cnx.connection_id = epee::string_tools::pod_to_hex(cntxt.m_connection_id);
       cnx.ssl = cntxt.m_ssl;
 
-      cnx.height = cntxt.m_remote_blockchain_height;
+      cnx.height = cntxt.m_remote_chain_height;
       cnx.pruning_seed = cntxt.m_pruning_seed;
       cnx.address_type = (uint8_t)cntxt.m_remote_address.get_type_id();
 
@@ -284,85 +283,7 @@ namespace cryptonote
     epee::serialization::store_t_to_binary(hsd, data);
     return true;
   }
-  //------------------------------------------------------------------------------------------------------------------------
-    template<class t_core>
-    int t_cryptonote_protocol_handler<t_core>::handle_notify_new_block(int command, NOTIFY_NEW_BLOCK::request& arg, cryptonote_peer_context& context)
-  {
-
-
-
-    if(context.m_state != cryptonote_peer_context::state_normal)
-      return 1;
-    if(!is_synchronized()) // can happen if a peer connection goes to normal but another thread still hasn't finished adding queued blocks
-    {
-      LOG_DEBUG_CC(context, "Received new block while syncing, ignored");
-      return 1;
-    }
-    std::vector<block_complete_entry> blocks;
-    blocks.push_back(arg.b);
-    std::vector<block> pblocks;
-    if (!m_core.prepare_handle_incoming_blocks(blocks, pblocks))
-    {
-      LOG_PRINT_CCONTEXT_L1("Block verification failed: prepare_handle_incoming_blocks failed, dropping connection");
-      drop_connection(context, false, false);
-      return 1;
-    }
-
-
-    for(auto  tx_data: arg.b.txs)
-    {
-      cryptonote::tx_verification_context tvc = AUTO_VAL_INIT(tvc);
-      m_core.handle_incoming_tx(tx_data, tvc, relay_method::block, true);
-      if(tvc.m_verifivation_failed)
-      {
-        LOG_PRINT_CCONTEXT_L1("Block verification failed: transaction verification failed, dropping connection");
-        drop_connection(context, false, false);
-        m_core.cleanup_handle_incoming_blocks();
-        return 1;
-      }
-    }
-
-    const auto & b = pblocks[0];
-    const auto hash = get_block_hash(b);
-    MDEBUG("Received NOTIFY_NEW_BLOCK " << hash << " (height " << arg.current_blockchain_height << ", " << arg.b.txs.size() << " txes)");
-
-
-    block_verification_context bvc = {};
-    m_core.get_blockchain_storage().add_new_block(b, bvc); // got block from handle_notify_new_block
-    if (!m_core.cleanup_handle_incoming_blocks(true))
-    {
-      MERROR("Failure in cleanup_handle_incoming_blocks");
-      return 1;
-    }
-    if(bvc.m_verifivation_failed)
-    {
-      MERROR("Block verification failed, dropping connection");
-      drop_connection_with_score(context, bvc.m_bad_pow ? P2P_IP_FAILS_BEFORE_BLOCK : 1, false);
-      return 1;
-    }
-    if(bvc.m_added_to_main_chain)
-    {
-      //TODO: Add here announce protocol usage
-      relay_block(arg, context);
-    }else if(bvc.m_marked_as_orphaned)
-    {
-      context.m_needed_objects.clear();
-      context.m_state = cryptonote_peer_context::state_synchronizing;
-      NOTIFY_REQUEST_CHAIN::request r = {};
-      context.m_expect_height = m_core.get_current_blockchain_height();
-      m_core.get_short_chain_history(r.block_ids);
-      r.prune = m_sync_pruned_blocks;
-      context.m_last_request_time = boost::posix_time::microsec_clock::universal_time();
-      context.m_expect_response = NOTIFY_RESPONSE_CHAIN_ENTRY::ID;
-      MLOG_P2P_MESSAGE("-->>NOTIFY_REQUEST_CHAIN: m_block_ids.size()=" << r.block_ids.size() );
-
-      post_notify<NOTIFY_REQUEST_CHAIN>(r, context);
-
-      MLOG_PEER_STATE("requesting chain");
-    }
-
-    return 1;
-  }
+  
   //------------------------------------------------------------------------------------------------------------------------
   template<class t_core>
   int t_cryptonote_protocol_handler<t_core>::handle_notify_new_fluffy_block(int command, NOTIFY_NEW_FLUFFY_BLOCK::request& arg, cryptonote_peer_context& context)
@@ -377,7 +298,7 @@ namespace cryptonote
     }
     
     try{
-    const auto & new_block =parse_and_validate_block_from_blob(arg.b.block);
+    const auto & new_block =parse_block_from_blob(arg.b.block);
     
       // This is a second notification, we must have asked for some missing tx
       if(!context.m_requested_objects.empty())
@@ -385,13 +306,10 @@ namespace cryptonote
         // What we asked for != to what we received ..
         if(context.m_requested_objects.size() != arg.b.txs.size())
         {
-          LOG_ERROR_CCONTEXT
-          (
-            "NOTIFY_NEW_FLUFFY_BLOCK -> request/response mismatch, " 
+          MERROR(context<<"NOTIFY_NEW_FLUFFY_BLOCK -> request/response mismatch, " 
             << "block = " << epee::string_tools::pod_to_hex(get_blob_hash(arg.b.block))
             << ", requested = " << context.m_requested_objects.size() 
-            << ", received = " << new_block.tx_hashes.size()
-            << ", dropping connection"
+            << ", received = " << new_block.tx_hashes.size()<< ", dropping connection"
           );
           
           drop_connection(context, false, false);
@@ -416,35 +334,10 @@ namespace cryptonote
 
       for(auto& tx_blob: arg.b.txs)
       {
-        if(parse_and_validate_tx_from_blob(tx_blob.blob, tx))
-        {
-          try
-          {
-            if(!get_transaction_hash(tx, tx_hash))
-            {
-              LOG_PRINT_CCONTEXT_L1
-              (
-                  "NOTIFY_NEW_FLUFFY_BLOCK: get_transaction_hash failed"
-                  << ", dropping connection"
-              );
-              
-              drop_connection(context, false, false);
-              return 1;
-            }
-          }
-          catch(...)
-          {
-            LOG_PRINT_CCONTEXT_L1
-            (
-                "NOTIFY_NEW_FLUFFY_BLOCK: get_transaction_hash failed"
-                << ", exception thrown"
-                << ", dropping connection"
-            );
-                        
-            drop_connection(context, false, false);
-            return 1;
-          }
-          
+        try{
+        tx = parse_tx_frxom_blob(tx_blob.blob);
+        tx_hash =get_transaction_hash(tx);
+         
           // hijacking m_requested objects in connection context to patch up
           // a possible DOS vector pointed out by @monero-moo where peers keep
           // sending (0...n-1) transactions.
@@ -476,8 +369,8 @@ namespace cryptonote
           if(!m_core.pool_has_tx(tx_hash))
           {
             MDEBUG("Incoming tx " << tx_hash << " not in pool, adding");
-            cryptonote::tx_verification_context tvc = AUTO_VAL_INIT(tvc);                        
-            if(!m_core.handle_incoming_tx(tx_blob, tvc, relay_method::block, true) || tvc.m_verifivation_failed)
+            cryptonote::tx_verification_context tvc = m_core.handle_incoming_tx(tx_blob,  relay_method::block, true);                  
+            if(tvc.m_verifivation_failed)
             {
               LOG_PRINT_CCONTEXT_L1("Block verification failed: transaction verification failed, dropping connection");
               drop_connection(context, false, false);
@@ -492,7 +385,7 @@ namespace cryptonote
             //
           }
         }
-        else
+        catch(std::exception ex)
         {
           LOG_ERROR_CCONTEXT
           (
@@ -569,7 +462,7 @@ namespace cryptonote
         
         NOTIFY_REQUEST_FLUFFY_MISSING_TX::request missing_tx_req;
         missing_tx_req.block_hash = get_block_hash(new_block);
-        missing_tx_req.current_blockchain_height = arg.current_blockchain_height;
+        missing_tx_req.cur_chain_height = arg.cur_chain_height;
         missing_tx_req.missing_tx_indices = std::move(need_tx_indices);
         
         MLOG_P2P_MESSAGE("-->>NOTIFY_REQUEST_FLUFFY_MISSING_TX: missing_tx_indices.size()=" << missing_tx_req.missing_tx_indices.size() );
@@ -578,27 +471,8 @@ namespace cryptonote
       else // whoo-hoo we've got em all ..
       {
         MDEBUG("We have all needed txes for this fluffy block");
-
-        block_complete_entry b;
-        b.block = arg.b.block;
-        b.txs = have_tx;
-
-        std::vector<block_complete_entry> blocks;
-        blocks.push_back(b);
-        std::vector<block> pblocks;
-        if (!m_core.prepare_handle_incoming_blocks(blocks, pblocks))
-        {
-          MERROR("Failure in prepare_handle_incoming_blocks");
-          return 1;
-        }
-          
-        block_verification_context bvc = {};
-        m_core.get_blockchain_storage().add_new_block(pblocks[0], bvc); // got block from handle_notify_new_block
-        if (!m_core.cleanup_handle_incoming_blocks(true))
-        {
-          MERROR("Failure in cleanup_handle_incoming_blocks");
-          return 1;
-        }
+        const auto & b = parse_block_from_blob(arg.b.block);
+        block_verification_context bvc = m_core.get_blockchain().add_new_block(b); 
         
         if( bvc.m_verifivation_failed )
         {
@@ -609,19 +483,14 @@ namespace cryptonote
         if( bvc.m_added_to_main_chain )
         {
           //TODO: Add here announce protocol usage
-          NOTIFY_NEW_BLOCK::request reg_arg {};
-          reg_arg.current_blockchain_height = arg.current_blockchain_height;
-          reg_arg.b = b;
-          relay_block(reg_arg, context);
+          relay_block(arg.b.block,arg.cur_chain_height, context);
         }
         else if( bvc.m_marked_as_orphaned )
         {
-          context.m_needed_objects.clear();
+          context.m_needed_blocks.clear();
           context.m_state = cryptonote_peer_context::state_synchronizing;
-          NOTIFY_REQUEST_CHAIN::request r = {};
+          NOTIFY_REQUEST_CHAIN::request r {m_core.get_blockchain().get_short_chain_history()};
           context.m_expect_height = m_core.get_current_blockchain_height();
-          m_core.get_short_chain_history(r.block_ids);
-          r.prune = m_sync_pruned_blocks;
           context.m_last_request_time = boost::posix_time::microsec_clock::universal_time();
           context.m_expect_response = NOTIFY_RESPONSE_CHAIN_ENTRY::ID;
           MLOG_P2P_MESSAGE("-->>NOTIFY_REQUEST_CHAIN: m_block_ids.size()=" << r.block_ids.size() );
@@ -674,7 +543,7 @@ namespace cryptonote
     txids.reserve(b.tx_hashes.size());
     NOTIFY_NEW_FLUFFY_BLOCK::request fluffy_response;
     fluffy_response.b.block = t_serializable_object_to_blob(b);
-    fluffy_response.current_blockchain_height = arg.current_blockchain_height;
+    fluffy_response.cur_chain_height = arg.cur_chain_height;
     std::vector<bool> seen(b.tx_hashes.size(), false);
     for(auto& tx_idx: arg.missing_tx_indices)
     {
@@ -688,7 +557,7 @@ namespace cryptonote
             "Failed to handle request NOTIFY_REQUEST_FLUFFY_MISSING_TX"
             << ", request is asking for duplicate tx "
             << ", tx index = " << tx_idx << ", block tx count " << b.tx_hashes.size()
-            << ", block_height = " << arg.current_blockchain_height
+            << ", block_height = " << arg.cur_chain_height
             << ", dropping connection"
           );
           drop_connection(context, true, false);
@@ -704,7 +573,7 @@ namespace cryptonote
           "Failed to handle request NOTIFY_REQUEST_FLUFFY_MISSING_TX"
           << ", request is asking for a tx whose index is out of bounds "
           << ", tx index = " << tx_idx << ", block tx count " << b.tx_hashes.size()
-          << ", block_height = " << arg.current_blockchain_height
+          << ", block_height = " << arg.cur_chain_height
           << ", dropping connection"
         );
         
@@ -739,7 +608,7 @@ namespace cryptonote
     (
         "-->>NOTIFY_RESPONSE_FLUFFY_MISSING_TX: " 
         << ", txs.size()=" << fluffy_response.b.txs.size()
-        << ", rsp.current_blockchain_height=" << fluffy_response.current_blockchain_height
+        << ", rsp.cur_chain_height=" << fluffy_response.cur_chain_height
     );
            
     post_notify<NOTIFY_NEW_FLUFFY_BLOCK>(fluffy_response, context);    
@@ -781,7 +650,7 @@ namespace cryptonote
   {
     MLOG_P2P_MESSAGE("Received NOTIFY_NEW_TRANSACTIONS (" << arg.txs.size() << " txes)");
     for (const auto &blob: arg.txs)
-      MLOGIF_P2P_MESSAGE(cryptonote::transaction tx; crypto::hash hash; bool ret = cryptonote::parse_and_validate_tx_from_blob(blob, tx, hash);, ret, "Including transaction " << hash);
+      MLOGIF_P2P_MESSAGE(cryptonote::transaction tx; crypto::hash hash; bool ret = cryptonote::parse_tx_from_blob(blob, tx, hash);, ret, "Including transaction " << hash);
 
     if(context.m_state != cryptonote_peer_context::state_normal)
       return 1;
@@ -818,8 +687,8 @@ namespace cryptonote
 
     for (auto& tx : arg.txs)
     {
-      tx_verification_context tvc{};
-      if (!m_core.handle_incoming_tx({tx, crypto::null_hash}, tvc, tx_relay, true))
+      tx_verification_context tvc=m_core.handle_incoming_tx({tx, crypto::null_hash}, tx_relay, true);
+      if (tvc.m_verifivation_failed)
       {
         LOG_PRINT_CCONTEXT_L1("Tx verification failed, dropping connection");
         drop_connection(context, false, false);
@@ -889,7 +758,7 @@ namespace cryptonote
     }
     context.m_last_request_time = boost::posix_time::microsec_clock::universal_time();
     MLOG_P2P_MESSAGE("-->>NOTIFY_RESPONSE_GET_OBJECTS: blocks.size()="
-                     << rsp.blocks.size() << ", rsp.m_current_blockchain_height=" << rsp.current_blockchain_height
+                     << rsp.blocks.size() << ", rsp.m_current_blockchain_height=" << rsp.cur_chain_height
                      << ", missed_ids.size()=" << rsp.missed_ids.size());
     post_notify<NOTIFY_RESPONSE_GET_OBJECTS>(rsp, context);
     //handler_response_blocks_now(sizeof(rsp)); // XXX
@@ -932,8 +801,8 @@ namespace cryptonote
     // calculate size of request
     size_t size = 0;
     size_t blocks_size = 0;
-    for (const auto &element : arg.blocks) {
-      blocks_size += element.block.size();
+    for (const auto &element : arg.bces) {
+      blocks_size += element.blob.size();
       for (const auto &tx : element.txs)
         blocks_size += tx.blob.size();
     }
@@ -942,7 +811,7 @@ namespace cryptonote
     for (const auto &element : arg.missed_ids)
       size += sizeof(element.data);
 
-    size += sizeof(arg.current_blockchain_height);
+    size += sizeof(arg.cur_chain_height);
     {
       CRITICAL_REGION_LOCAL(m_buffer_mutex);
       m_avg_buffer.push_back(size);
@@ -951,13 +820,6 @@ namespace cryptonote
     m_sync_download_objects_size += size;
     MDEBUG(context << " downloaded " << size << " bytes worth of blocks");
 
-    /*using namespace boost::chrono;
-      auto point = steady_clock::now();
-      auto time_from_epoh = point.time_since_epoch();
-      auto sec = duration_cast< seconds >( time_from_epoh ).count();*/
-
-    //epee::net_utils::network_throttle_manager::get_global_throttle_inreq().logger_handle_net("log/dr-monero/net/req-all.data", sec, get_avg_block_size());
-
     if(arg.blocks.empty())
     {
       LOG_ERROR_CCONTEXT("sent wrong NOTIFY_HAVE_OBJECTS: no blocks");
@@ -965,30 +827,30 @@ namespace cryptonote
       ++m_sync_bad_spans_downloaded;
       return 1;
     }
-    if(context.m_last_response_height > arg.current_blockchain_height)
+    if(context.m_last_response_height > arg.cur_chain_height)
     {
-      LOG_ERROR_CCONTEXT("sent wrong NOTIFY_HAVE_OBJECTS: arg.m_current_blockchain_height=" << arg.current_blockchain_height
+      LOG_ERROR_CCONTEXT("sent wrong NOTIFY_HAVE_OBJECTS: arg.m_current_blockchain_height=" << arg.cur_chain_height
         << " < m_last_response_height=" << context.m_last_response_height << ", dropping connection");
       drop_connection(context, false, false);
       ++m_sync_bad_spans_downloaded;
       return 1;
     }
 
-    if (arg.current_blockchain_height < context.m_remote_blockchain_height)
+    if (arg.cur_chain_height < context.m_remote_chain_height)
     {
-      MINFO(context << "Claims " << arg.current_blockchain_height << ", claimed " << context.m_remote_blockchain_height << " before");
+      MINFO(context << "Claims " << arg.cur_chain_height << ", claimed " << context.m_remote_chain_height << " before");
       hit_score(context, 1);
     }
-    context.m_remote_blockchain_height = arg.current_blockchain_height;
-    if (context.m_remote_blockchain_height > m_core.get_target_blockchain_height())
-      m_core.set_target_blockchain_height(context.m_remote_blockchain_height);
+    context.m_remote_chain_height = arg.cur_chain_height;
+    if (context.m_remote_chain_height > m_core.get_target_blockchain_height())
+      m_core.set_target_blockchain_height(context.m_remote_chain_height);
 
     std::vector<crypto::hash> block_hashes;
     block_hashes.reserve(arg.blocks.size());
     const boost::posix_time::ptime now = boost::posix_time::microsec_clock::universal_time();
     uint64_t start_height = std::numeric_limits<uint64_t>::max();
     cryptonote::block b;
-    for(const auto & block_entry: arg.blocks)
+    for(const auto & sync_b_data: arg.bces)
     {
       if (m_stopping)
       {
@@ -997,25 +859,17 @@ namespace cryptonote
 
       crypto::hash block_hash;
       try{
-      b = parse_and_validate_block_from_blob(block_entry.block);
+      b = parse_block_from_blob(sync_b_data.blob);
       block_hash = get_block_hash(b);
     }catch(const std::exception & ex)
       {
         LOG_ERROR_CCONTEXT("sent wrong block: failed to parse and validate block: "
-          << epee::string_tools::buff_to_hex_nodelimer(block_entry.block) << ", dropping connection");
+          << epee::string_tools::buff_to_hex_nodelimer(sync_b_data.block) << ", dropping connection");
         drop_connection(context, false, false);
         ++m_sync_bad_spans_downloaded;
         return 1;
       }
 
-      if (b.miner_tx.vin.size() != 1 || b.miner_tx.vin.front().type() != typeid(txin_gen))
-      {
-        LOG_ERROR_CCONTEXT("sent wrong block: block: miner tx does not have exactly one txin_gen input"
-          << epee::string_tools::buff_to_hex_nodelimer(block_entry.block) << ", dropping connection");
-        drop_connection(context, false, false);
-        ++m_sync_bad_spans_downloaded;
-        return 1;
-      }
       if (start_height == std::numeric_limits<uint64_t>::max())
       {
         start_height = boost::get<txin_gen>(b.miner_tx.vin[0]).height;
@@ -1027,26 +881,11 @@ namespace cryptonote
           return 1;
         }
       }
-
-      auto req_it = context.m_requested_objects.find(block_hash);
-      if(req_it == context.m_requested_objects.end())
-      {
-        LOG_ERROR_CCONTEXT("sent wrong NOTIFY_RESPONSE_GET_OBJECTS: block with id=" << epee::string_tools::pod_to_hex(get_blob_hash(block_entry.block))<< " wasn't requested, dropping connection");
-        drop_connection(context, false, false);
-        ++m_sync_bad_spans_downloaded;
-        return 1;
-      }
-      if(b.tx_hashes.size() != block_entry.txs.size())
-      {
-        LOG_ERROR_CCONTEXT("sent wrong NOTIFY_RESPONSE_GET_OBJECTS: block with id=" << epee::string_tools::pod_to_hex(get_blob_hash(block_entry.block))<< ", tx_hashes.size()=" << b.tx_hashes.size() << " mismatch with block_complete_entry.m_txs.size()=" << block_entry.txs.size() << ", dropping connection");
-        drop_connection(context, false, false);
-        ++m_sync_bad_spans_downloaded;
-        return 1;
-      }
-
-      context.m_requested_objects.erase(req_it);
+      context.m_requested_objects.erase(block_hash);
       block_hashes.push_back(block_hash);
     }
+
+    context.m_requested_objects.clear();
 
     if(!context.m_requested_objects.empty())
     {
@@ -1057,66 +896,18 @@ namespace cryptonote
       return 1;
     }
 
-    const bool pruned_ok = should_ask_for_pruned_data(context, start_height, arg.blocks.size(), true);
-    if (!pruned_ok)
     {
-      // if we don't want pruned data, check we did not get any
-      for (block_complete_entry& block_entry: arg.blocks)
-      {
-        if (block_entry.pruned)
-        {
-          MERROR(context << "returned a pruned block, dropping connection");
-          drop_connection(context, false, false);
-          ++m_sync_bad_spans_downloaded;
-          return 1;
-        }
-        if (block_entry.block_weight)
-        {
-          MERROR(context << "returned a block weight for a non pruned block, dropping connection");
-          drop_connection(context, false, false);
-          ++m_sync_bad_spans_downloaded;
-          return 1;
-        }
-        for (const tx_blob_entry &tx_entry: block_entry.txs)
-        {
-          if (tx_entry.prunable_hash != crypto::null_hash)
-          {
-            MERROR(context << "returned at least one pruned object which we did not expect, dropping connection");
-            drop_connection(context, false, false);
-            ++m_sync_bad_spans_downloaded;
-            return 1;
-          }
-        }
-      }
-    }
-    else
-    {
-      // we accept pruned data, check that if we got some, then no weights are zero
-      for (block_complete_entry& block_entry: arg.blocks)
-      {
-        if (block_entry.block_weight == 0 && block_entry.pruned)
-        {
-          MERROR(context << "returned at least one pruned block with 0 weight, dropping connection");
-          drop_connection(context, false, false);
-          ++m_sync_bad_spans_downloaded;
-          return 1;
-        }
-      }
-    }
-
-    {
-      MLOG_YELLOW(el::Level::Debug, context << " Got NEW BLOCKS inside of " << __FUNCTION__ << ": size: " << arg.blocks.size()<< ", blocks: " << start_height << " - " << (start_height + arg.blocks.size() - 1) <<
+      MLOG_YELLOW(el::Level::Debug, context << " Got NEW BLOCKS inside of " << __FUNCTION__ << ": size: " << arg.blocks.size()<< ", blocks: " << start_height << " - " << (start_height + arg.bces.size() - 1) <<
           " (pruning seed " << epee::string_tools::to_string_hex(context.m_pruning_seed) << ")");
 
       // add that new span to the block queue
       const boost::posix_time::time_duration dt = now - request_time;
       const float rate = size * 1e6 / (dt.total_microseconds() + 1);
-      MDEBUG(context << " adding span: " << arg.blocks.size() << " at height " << start_height << ", " << dt.total_microseconds()/1e6 << " seconds, " << (rate/1024) << " kB/s, size now " << (m_block_queue.get_data_size() + blocks_size) / 1048576.f << " MB");
+      MDEBUG(context << " adding span: " << arg.bces.size() << " at height " << start_height << ", " << dt.total_microseconds()/1e6 << " seconds, " << (rate/1024) << " kB/s, size now " << (m_block_queue.get_data_size() + blocks_size) / 1048576.f << " MB");
 
-      m_block_queue.add_blocks(start_height, arg.blocks, context.m_connection_id, context.m_remote_address, rate, blocks_size);
+      m_block_queue.add_blocks(start_height, arg.bces, context.m_connection_id, context.m_remote_address, rate, blocks_size);
 
-      const crypto::hash last_block_hash = cryptonote::get_block_hash(b);
-      context.m_last_known_hash = last_block_hash;
+      context.m_last_known_hash = cryptonote::get_block_hash(b);
 
       if (!m_core.get_test_drop_download() || !m_core.get_test_drop_download_height()) { // DISCARD BLOCKS for testing
         return 1;
@@ -1129,7 +920,7 @@ namespace cryptonote
 
   // Get an estimate for the remaining sync time from given current to target blockchain height, in seconds
   template<class t_core>
-  uint64_t t_cryptonote_protocol_handler<t_core>::get_estimated_remaining_sync_seconds(uint64_t current_blockchain_height, uint64_t target_blockchain_height)
+  uint64_t t_cryptonote_protocol_handler<t_core>::get_estimated_remaining_sync_seconds(uint64_t cur_chain_height, uint64_t target_blockchain_height)
   {
     // The average sync speed varies so much, even averaged over quite long time periods like 10 minutes,
     // that using some sliding window would be difficult to implement without often leading to bad estimates.
@@ -1138,7 +929,7 @@ namespace cryptonote
     // and seems to be quite robust. Some quite special cases like "Internet connection suddenly becoming
     // much faster after syncing already a long time, and staying fast" are not well supported however.
 
-    if (target_blockchain_height <= current_blockchain_height)
+    if (target_blockchain_height <= cur_chain_height)
     {
       // Syncing stuck, or other special circumstance: Avoid errors, simply give back 0
       return 0;
@@ -1150,16 +941,16 @@ namespace cryptonote
 
     // Don't simply use remaining number of blocks for the estimate but "sync weight" as provided by
     // "cumulative_block_sync_weight" which knows about strongly varying Monero mainnet block sizes
-    uint64_t synced_weight = tools::cumulative_block_sync_weight(nettype, m_sync_start_height, current_blockchain_height - m_sync_start_height);
+    uint64_t synced_weight = tools::cumulative_block_sync_weight(nettype, m_sync_start_height, cur_chain_height - m_sync_start_height);
     float us_per_weight = (float)sync_time.total_microseconds() / (float)synced_weight;
-    uint64_t remaining_weight = tools::cumulative_block_sync_weight(nettype, current_blockchain_height, target_blockchain_height - current_blockchain_height);
+    uint64_t remaining_weight = tools::cumulative_block_sync_weight(nettype, cur_chain_height, target_blockchain_height - cur_chain_height);
     float remaining_us = us_per_weight * (float)remaining_weight;
     return (uint64_t)(remaining_us / 1e6);
   }
 
   // Return a textual remaining sync time estimate, or the empty string if waiting period not yet over
   template<class t_core>
-  std::string t_cryptonote_protocol_handler<t_core>::get_periodic_sync_estimate(uint64_t current_blockchain_height, uint64_t target_blockchain_height)
+  std::string t_cryptonote_protocol_handler<t_core>::get_periodic_sync_estimate(uint64_t cur_chain_height, uint64_t target_blockchain_height)
   {
     std::string text = "";
     const boost::posix_time::ptime now = boost::posix_time::microsec_clock::universal_time();
@@ -1167,7 +958,7 @@ namespace cryptonote
     if (period_sync_time > boost::posix_time::minutes(2))
     {
       // Period is over, time to report another estimate
-      uint64_t remaining_seconds = get_estimated_remaining_sync_seconds(current_blockchain_height, target_blockchain_height);
+      uint64_t remaining_seconds = get_estimated_remaining_sync_seconds(cur_chain_height, target_blockchain_height);
       text = tools::get_human_readable_timespan(remaining_seconds);
 
       // Start the new period
@@ -1206,39 +997,39 @@ namespace cryptonote
 
         while (1)
         {
-          const uint64_t previous_height = m_core.get_current_blockchain_height();
+          const uint64_t local_height = m_core.get_current_blockchain_height();
           uint64_t start_height;
-          std::vector<cryptonote::block_complete_entry> blocks;
-          boost::uuids::uuid span_connection_id;
+          std::vector<cryptonote::block_complete_entry> v_sync_b_data;
+          boost::uuids::uuid span_con_id;
           epee::net_utils::network_address span_origin;
-          if (!m_block_queue.get_next_span(start_height, blocks, span_connection_id, span_origin))
+          if (!m_block_queue.get_next_span(start_height, v_sync_b_data, span_con_id, span_origin))
           {
             MDEBUG(context << " no next span found, going back to download");
             break;
           }
 
-          if (blocks.empty())
+          if (v_sync_b_data.empty())
           {
-            MERROR(context << "Next span has no blocks");
-            m_block_queue.remove_spans(span_connection_id, start_height);
+            MERROR(context << "Next span has no v_sync_b_data");
+            m_block_queue.remove_spans(span_con_id, start_height);
             continue;
           }
 
-          MDEBUG(context << " next span in the queue has blocks " << start_height << "-" << (start_height + blocks.size() - 1)<< ", we need " << previous_height);
+          MDEBUG(context << " next span in the queue has v_sync_b_data " << start_height << "-" << (start_height + v_sync_b_data.size() - 1)<< ", we need " << local_height);
 
-          block new_block = parse_and_validate_block_from_blob(blocks.back().block);
-          auto last_block_hash = get_block_hash(new_block);
+          block new_block = parse_block_from_blob(v_sync_b_data.back().block);
+          const auto last_block_hash = get_block_hash(new_block);
         
           if (m_core.have_block(last_block_hash))
           {
-            const uint64_t subchain_height = start_height + blocks.size();
-            LOG_DEBUG_CC(context, "These are old blocks, ignoring: blocks " << start_height << " - " << (subchain_height-1) << ", blockchain height " << m_core.get_current_blockchain_height());
-            m_block_queue.remove_spans(span_connection_id, start_height);
+            const uint64_t subchain_height = start_height + v_sync_b_data.size();
+            LOG_DEBUG_CC(context, "These are old v_sync_b_data, ignoring: v_sync_b_data " << start_height << " - " << (subchain_height-1) << ", blockchain height " << m_core.get_current_blockchain_height());
+            m_block_queue.remove_spans(span_con_id, start_height);
             ++m_sync_old_spans_downloaded;
             continue;
           }
           
-          new_block= parse_and_validate_block_from_blob(blocks.front().block);
+          new_block= parse_block_from_blob(v_sync_b_data.front().block);
         
           bool parent_known = m_core.have_block(new_block.prev_id);
           if (!parent_known)
@@ -1254,7 +1045,7 @@ namespace cryptonote
               // we might be able to ask for that block directly, as we now can request out of order,
               // otherwise we continue out of order, unless this block is the one we need, in which
               // case we request block hashes, though it might be safer to disconnect ?
-              if (start_height > previous_height)
+              if (start_height > local_height)
               {
                 if (should_drop_connection(context, get_next_needed_pruning_stripe().first))
                 {
@@ -1269,11 +1060,11 @@ namespace cryptonote
                 goto skip;
               }
 
-              // this can happen if a connection was sicced onto a late span, if it did not have those blocks,
+              // this can happen if a connection was sicced onto a late span, if it did not have those v_sync_b_data,
               // since we don't know that at the sic time
               LOG_ERROR_CCONTEXT("Got block with unknown parent which was not requested - querying block hashes");
-              m_block_queue.remove_spans(span_connection_id, start_height);
-              context.m_needed_objects.clear();
+              m_block_queue.remove_spans(span_con_id, start_height);
+              context.m_needed_blocks.clear();
               context.m_last_response_height = 0;
               goto skip;
             }
@@ -1295,24 +1086,10 @@ namespace cryptonote
               MINFO("Restarting adding block after idle for " << ns/1e9 << " seconds");
             }
           }
-
-          std::vector<block> pblocks;
-          if (!m_core.prepare_handle_incoming_blocks(blocks, pblocks))
-          {
-            LOG_ERROR_CCONTEXT("Failure in prepare_handle_incoming_blocks");
-            drop_connections(span_origin);
-            return 1;
-          }
-          if (!pblocks.empty() && pblocks.size() != blocks.size())
-          {
-            m_core.cleanup_handle_incoming_blocks();
-            LOG_ERROR_CCONTEXT("Internal error: blocks.size() != block_entry.txs.size()");
-            return 1;
-          }
-
+          
           uint64_t block_process_time_full = 0, transactions_process_time_full = 0;
           size_t num_txs = 0, blockidx = 0;
-          for(const auto& block_entry: blocks)
+          for(const auto& sync_b_data: v_sync_b_data)
           {
             if (m_stopping)
             {
@@ -1320,71 +1097,25 @@ namespace cryptonote
                 return 1;
             }
 
+            const auto block = parse_block_from_blob(sync_b_data.block);
+            std::vector<BlobTx> tx_ps;
+            txes.reserve(sync_b_data.txs.size());
+            for(auto &  tb: sync_b_data.txs){
+              const auto & tx = parse_tx_from_blob_entry(tb);
+              tx_ps.push_back({std::move(tx),std::move(tb.tx_blob)});
+            }
             // process transactions
-            TIME_MEASURE_START(transactions_process_time);
-            num_txs += block_entry.txs.size();
-            std::vector<tx_verification_context> tvc;
-            m_core.handle_incoming_txs(block_entry.txs, tvc, relay_method::block, true);
-            if (tvc.size() != block_entry.txs.size())
-            {
-              LOG_ERROR_CCONTEXT("Internal error: tvc.size() != block_entry.txs.size()");
-              if (!m_core.cleanup_handle_incoming_blocks())
-              {
-                MERROR("Failure in cleanup_handle_incoming_blocks");
-                return 1;
-              }
-              return 1;
-            }
-            std::vector<tx_blob_entry>::const_iterator it = block_entry.txs.begin();
-            for (size_t i = 0; i < tvc.size(); ++i, ++it)
-            {
-              if(tvc[i].m_verifivation_failed)
-              {
-                drop_connections(span_origin);
-                if (!m_p2p->for_connection(span_connection_id, [&](cryptonote_peer_context& context, nodetool::peerid_type peer_id, uint32_t f)->bool{
-                  cryptonote::transaction tx;
-                  crypto::hash txid;
-                  if (it->prunable_hash == crypto::null_hash)
-                  {
-                    parse_and_validate_tx_from_blob(it->blob, tx, txid); // must succeed if we got here
-                  }
-                  else
-                  {
-                    parse_and_validate_tx_base_from_blob(it->blob, tx); // must succeed if we got here
-                    txid = get_pruned_transaction_hash(tx, it->prunable_hash);
-                  }
-                  LOG_ERROR_CCONTEXT("transaction verification failed on NOTIFY_RESPONSE_GET_OBJECTS, tx_id = "
-                      << epee::string_tools::pod_to_hex(txid) << ", dropping connection");
-                  drop_connection(context, false, true);
-                  return 1;
-                }))
-                  LOG_ERROR_CCONTEXT("span connection id not found");
-
-                if (!m_core.cleanup_handle_incoming_blocks())
-                {
-                  MERROR("Failure in cleanup_handle_incoming_blocks");
-                  return 1;
-                }
-                // in case the peer had dropped beforehand, remove the span anyway so other threads can wake up and get it
-                m_block_queue.remove_spans(span_connection_id, start_height);
-                return 1;
-              }
-            }
-            TIME_MEASURE_FINISH(transactions_process_time);
-            transactions_process_time_full += transactions_process_time;
-
+            num_txs += tx_ps.size();
             // process block
 
             TIME_MEASURE_START(block_process_time);
-            block_verification_context bvc = {};
-
-            m_core.get_blockchain_storage().add_new_block(pblocks[blockidx], bvc); // <--- process block
+            block_verification_context bvc = m_core.get_blockchain().add_sync_block(block,tx_ps); // <--- process block
 
             if(bvc.m_verifivation_failed)
             {
               drop_connections(span_origin);
-              if (!m_p2p->for_connection(span_connection_id, [&](cryptonote_peer_context& context, nodetool::peerid_type peer_id, uint32_t f)->bool{
-                LOG_PRINT_CCONTEXT_L1("Block verification failed, dropping connection");
+              if (!m_p2p->for_connection(span_con_id, [&](cryptonote_peer_context& context, nodetool::peerid_type peer_id, uint32_t f)->bool{
+                MERROR(context<<"Block verification failed, dropping connection");
                 drop_connection_with_score(context, bvc.m_bad_pow ? P2P_IP_FAILS_BEFORE_BLOCK : 1, true);
                 return 1;
               }))
@@ -1397,13 +1128,13 @@ namespace cryptonote
               }
 
               // in case the peer had dropped beforehand, remove the span anyway so other threads can wake up and get it
-              m_block_queue.remove_spans(span_connection_id, start_height);
+              m_block_queue.remove_spans(span_con_id, start_height);
               return 1;
             }
             if(bvc.m_marked_as_orphaned)
             {
               drop_connections(span_origin);
-              if (!m_p2p->for_connection(span_connection_id, [&](cryptonote_peer_context& context, nodetool::peerid_type peer_id, uint32_t f)->bool{
+              if (!m_p2p->for_connection(span_con_id, [&](cryptonote_peer_context& context, nodetool::peerid_type peer_id, uint32_t f)->bool{
                 LOG_PRINT_CCONTEXT_L1("Block received at sync phase was marked as orphaned, dropping connection");
                 drop_connection(context, true, true);
                 return 1;
@@ -1417,7 +1148,7 @@ namespace cryptonote
               }
 
               // in case the peer had dropped beforehand, remove the span anyway so other threads can wake up and get it
-              m_block_queue.remove_spans(span_connection_id, start_height);
+              m_block_queue.remove_spans(span_con_id, start_height);
               return 1;
             }
 
@@ -1427,7 +1158,7 @@ namespace cryptonote
 
           } // each download block
 
-          MDEBUG(context << "Block process time (" << blocks.size() << " blocks, " << num_txs << " txs): " << block_process_time_full + transactions_process_time_full << " (" << transactions_process_time_full << "/" << block_process_time_full << ") ms");
+          MDEBUG(context << "Block process time (" << v_sync_b_data.size() << " v_sync_b_data, " << num_txs << " txs): " << block_process_time_full + transactions_process_time_full << " (" << transactions_process_time_full << "/" << block_process_time_full << ") ms");
 
           if (!m_core.cleanup_handle_incoming_blocks())
           {
@@ -1435,43 +1166,38 @@ namespace cryptonote
             return 1;
           }
 
-          m_block_queue.remove_spans(span_connection_id, start_height);
+          m_block_queue.remove_spans(span_con_id, start_height);
 
-          const uint64_t current_blockchain_height = m_core.get_current_blockchain_height();
-          if (current_blockchain_height > previous_height)
+          const uint64_t cur_chain_height = m_core.get_current_blockchain_height();
+          if (cur_chain_height > local_height)
           {
             const uint64_t target_blockchain_height = m_core.get_target_blockchain_height();
             const boost::posix_time::time_duration dt = boost::posix_time::microsec_clock::universal_time() - start;
             std::string progress_message = "";
-            if (current_blockchain_height < target_blockchain_height)
+            if (cur_chain_height < target_blockchain_height)
             {
-              uint64_t completion_percent = (current_blockchain_height * 100 / target_blockchain_height);
+              uint64_t completion_percent = (cur_chain_height * 100 / target_blockchain_height);
               if (completion_percent == 100) // never show 100% if not actually up to date
                 completion_percent = 99;
-              progress_message = " (" + std::to_string(completion_percent) + "%, "
-                  + std::to_string(target_blockchain_height - current_blockchain_height) + " left";
-              std::string time_message = get_periodic_sync_estimate(current_blockchain_height, target_blockchain_height);
+              progress_message = " (" + std::to_string(completion_percent) + "%, "+ std::to_string(target_blockchain_height - cur_chain_height) + " left";
+              std::string time_message = get_periodic_sync_estimate(cur_chain_height, target_blockchain_height);
               if (!time_message.empty())
               {
                 uint64_t total_blocks_to_sync = target_blockchain_height - m_sync_start_height;
-                uint64_t total_blocks_synced = current_blockchain_height - m_sync_start_height;
+                uint64_t total_blocks_synced = cur_chain_height - m_sync_start_height;
                 progress_message += ", " + std::to_string(total_blocks_synced * 100 / total_blocks_to_sync) + "% of total synced";
                 progress_message += ", estimated " + time_message + " left";
               }
               progress_message += ")";
             }
-            const uint32_t previous_stripe = tools::get_pruning_stripe(previous_height, target_blockchain_height, CRYPTONOTE_PRUNING_LOG_STRIPES);
-            const uint32_t current_stripe = tools::get_pruning_stripe(current_blockchain_height, target_blockchain_height, CRYPTONOTE_PRUNING_LOG_STRIPES);
+            const uint32_t previous_stripe = tools::get_pruning_stripe(local_height, target_blockchain_height, CRYPTONOTE_PRUNING_LOG_STRIPES);
+            const uint32_t current_stripe = tools::get_pruning_stripe(cur_chain_height, target_blockchain_height, CRYPTONOTE_PRUNING_LOG_STRIPES);
             std::string timing_message = "";
             if (ELPP->vRegistry()->allowed(el::Level::Info, "sync-info"))
-              timing_message = std::string(" (") + std::to_string(dt.total_microseconds()/1e6) + " sec, "
-                + std::to_string((current_blockchain_height - previous_height) * 1e6 / dt.total_microseconds())
-                + " blocks/sec), " + std::to_string(m_block_queue.get_data_size() / 1048576.f) + " MB queued in "
-                + std::to_string(m_block_queue.get_num_filled_spans()) + " spans, stripe "
-                + std::to_string(previous_stripe) + " -> " + std::to_string(current_stripe);
+              timing_message = std::string(" (") + std::to_string(dt.total_microseconds()/1e6) + " sec, "+ std::to_string((cur_chain_height - local_height) * 1e6 / dt.total_microseconds())+ " v_sync_b_data/sec), " + std::to_string(m_block_queue.get_data_size() / 1048576.f) + " MB queued in "+ std::to_string(m_block_queue.get_num_filled_spans()) + " spans, stripe "+ std::to_string(previous_stripe) + " -> " + std::to_string(current_stripe);
             if (ELPP->vRegistry()->allowed(el::Level::Debug, "sync-info"))
-              timing_message += std::string(": ") + m_block_queue.get_overview(current_blockchain_height);
-            MGINFO_YELLOW("Synced " << current_blockchain_height << "/" << target_blockchain_height
+              timing_message += std::string(": ") + m_block_queue.get_overview(cur_chain_height);
+            MGINFO_YELLOW("Synced " << cur_chain_height << "/" << target_blockchain_height
                 << progress_message << timing_message);
             if (previous_stripe != current_stripe)
               notify_new_stripe(context, current_stripe);
@@ -1533,21 +1259,26 @@ skip:
  
   //------------------------------------------------------------------------------------------------------------------------
   template<class t_core>
-  int t_cryptonote_protocol_handler<t_core>::handle_request_chain(int command, NOTIFY_REQUEST_CHAIN::request& arg, cryptonote_peer_context& context)
+  int t_cryptonote_protocol_handler<t_core>::handle_request_chain(int command, NOTIFY_REQUEST_CHAIN::request& arg, cryptonote_peer_context& peer_cxt)
   {
+    try{
     MLOG_P2P_MESSAGE("Received NOTIFY_REQUEST_CHAIN (" << arg.block_ids.size() << " blocks");
-    if (context.m_state == cryptonote_peer_context::state_before_handshake)
+    if (peer_cxt.m_state == cryptonote_peer_context::state_before_handshake)
     {
       LOG_ERROR_CCONTEXT("Requested chain before handshake, dropping connection");
-      drop_connection(context, false, false);
+      drop_connection(peer_cxt, false, false);
       return 1;
     }
     NOTIFY_RESPONSE_CHAIN_ENTRY::request r;
-    if(!m_core.find_blockchain_supplement(arg.block_ids, !arg.prune, r))
-    {
-      LOG_ERROR_CCONTEXT("Failed to handle NOTIFY_REQUEST_CHAIN.");
-      return 1;
-    }
+     auto sync = find_blockchain_sync_info(remote, resp.m_block_ids,  resp.start_height, resp.total_height);
+    r.split_height=sync.split_height;
+    r.top_height = sync.top_height;
+    r.m_block_ids=sync.hashes;
+    cryptonote::difficulty_type cum_diff_128 = m_db->get_block_cumulative_difficulty(sync.top_height - 1);
+    resp.cum_diff = (cum_diff_128 & 0xffffffffffffffff).convert_to<uint64_t>();
+    resp.cumulative_difficulty_top64 = ((cum_diff_128 >> 64) & 0xffffffffffffffff).convert_to<uint64_t>();
+
+  
     if (r.m_block_ids.size() >= 2)
     {
       cryptonote::block b;
@@ -1559,7 +1290,153 @@ skip:
       r.first_block = cryptonote::block_to_blob(b);
     }
     MLOG_P2P_MESSAGE("-->>NOTIFY_RESPONSE_CHAIN_ENTRY: m_start_height=" << r.start_height << ", m_total_height=" << r.total_height << ", m_block_ids.size()=" << r.m_block_ids.size());
-    post_notify<NOTIFY_RESPONSE_CHAIN_ENTRY>(r, context);
+    post_notify<NOTIFY_RESPONSE_CHAIN_ENTRY>(r, peer_cxt);
+    return 1;
+  }
+  catch(std::exception &ex){
+
+     MERROR(peer_cxt<<"Failed to handle NOTIFY_REQUEST_CHAIN.");
+      return 1;
+
+  }
+  }
+
+    //------------------------------------------------------------------------------------------------------------------------
+  template<class t_core>
+  int t_cryptonote_protocol_handler<t_core>::handle_response_chain_entry(int command, NOTIFY_RESPONSE_CHAIN_ENTRY::request& arg, cryptonote_peer_context& context)
+  {
+    MLOG_P2P_MESSAGE("Received NOTIFY_RESPONSE_CHAIN_ENTRY: m_block_ids.size()=" << arg.m_block_ids.size()
+      << ", m_start_height=" << arg.start_height << ", m_total_height=" << arg.top_height);
+    MLOG_PEER_STATE("received chain");
+
+    if (context.m_expect_response != NOTIFY_RESPONSE_CHAIN_ENTRY::ID)
+    {
+      LOG_ERROR_CCONTEXT("Got NOTIFY_RESPONSE_CHAIN_ENTRY out of the blue, dropping connection");
+      drop_connection(context, true, false);
+      return 1;
+    }
+    context.m_expect_response = 0;
+    if (arg.split_height + 1 > context.m_expect_height) // we expect an overlapping block
+    {
+      LOG_ERROR_CCONTEXT("Got NOTIFY_RESPONSE_CHAIN_ENTRY past expected height, dropping connection");
+      drop_connection(context, true, false);
+      return 1;
+    }
+
+    context.m_last_request_time = boost::date_time::not_a_date_time;
+
+    m_sync_download_chain_size += arg.m_block_ids.size() * sizeof(crypto::hash);
+
+    if(!arg.m_block_ids.size())
+    {
+      LOG_ERROR_CCONTEXT("sent empty m_block_ids, dropping connection");
+      drop_connection(context, true, false);
+      return 1;
+    }
+    if (arg.top_height < arg.m_block_ids.size() || arg.start_height > arg.top_height - arg.m_block_ids.size())
+    {
+      LOG_ERROR_CCONTEXT("sent invalid start/nblocks/height, dropping connection");
+      drop_connection(context, true, false);
+      return 1;
+    }
+   
+    MDEBUG(context << "first block hash " << arg.m_block_ids.front() << ", last " << arg.m_block_ids.back());
+
+    if (arg.top_height >= CRYPTONOTE_MAX_BLOCK_NUMBER || arg.m_block_ids.size() > BLOCKS_IDS_SYNCHRONIZING_MAX_COUNT)
+    {
+      LOG_ERROR_CCONTEXT("sent wrong NOTIFY_RESPONSE_CHAIN_ENTRY, with top_height=" << arg.top_height << " and block_ids=" << arg.m_block_ids.size());
+      drop_connection(context, false, false);
+      return 1;
+    }
+    if (arg.top_height < context.m_remote_chain_height)
+    {
+      MINFO(context << "Claims " << arg.top_height << ", claimed " << context.m_remote_chain_height << " before");
+      hit_score(context, 1);
+    }
+    context.m_remote_chain_height = arg.top_height;
+    context.m_last_response_height = arg.start_height + arg.m_block_ids.size()-1;
+ 
+
+    context.m_needed_blocks.clear();context.m_needed_blocks.reserve(arg.m_block_ids.size());
+    std::unordered_set<crypto::hash> blocks_found;
+    bool first = true;
+    bool expect_unknown = false;
+    for (auto &bh : arg.m_block_ids)
+    {
+      if (!blocks_found.insert(bh).second)
+      {
+        LOG_ERROR_CCONTEXT("Duplicate blocks in chain entry response, dropping connection");
+        drop_connection_with_score(context, 5, false);
+        return 1;
+      }
+      int where;
+      const bool have_block = m_core.have_block_unlocked(bh, &where);
+      if (first)
+      {
+        if (!have_block && !m_block_queue.requested(bh) && !m_block_queue.have(bh))
+        {
+          LOG_ERROR_CCONTEXT("First block hash is unknown, dropping connection");
+          drop_connection_with_score(context, 5, false);
+          return 1;
+        }
+        if (!have_block)
+          expect_unknown = true;
+      }
+      else
+      {
+        // after the first, blocks may be known or unknown, but if they are known,
+        // they should be at the same height if on the main chain
+        if (have_block)
+        {
+          switch (where)
+          {
+            default:
+            case HAVE_BLOCK_INVALID:
+              LOG_ERROR_CCONTEXT("Block is invalid or known without known type, dropping connection");
+              drop_connection(context, true, false);
+              return 1;
+            case HAVE_BLOCK_MAIN_CHAIN:
+              if (expect_unknown)
+              {
+                LOG_ERROR_CCONTEXT("Block is on the main chain, but we did not expect a known block, dropping connection");
+                drop_connection_with_score(context, 5, false);
+                return 1;
+              }
+              if (m_core.get_block_hash_by_height(arg.start_height + i) != bh)
+              {
+                LOG_ERROR_CCONTEXT("Block is on the main chain, but not at the expected height, dropping connection");
+                drop_connection_with_score(context, 5, false);
+                return 1;
+              }
+              break;
+            case HAVE_BLOCK_ALT_CHAIN:
+              if (expect_unknown)
+              {
+                LOG_ERROR_CCONTEXT("Block is on the alt chain, but we did not expect a known block, dropping connection");
+                drop_connection_with_score(context, 5, false);
+                return 1;
+              }
+              break;
+          }
+        }
+        else
+          expect_unknown = true;
+      }
+      context.m_needed_blocks.push_back(bh);
+      first = false;
+    }
+
+    if (!request_missing_objects(context, false))
+    {
+      LOG_ERROR_CCONTEXT("Failed to request missing objects, dropping connection");
+      drop_connection(context, false, false);
+      return 1;
+    }
+
+    if (arg.top_height > m_core.get_target_blockchain_height())
+      m_core.set_target_blockchain_height(arg.top_height);
+
+    context.m_num_requested = 0;
     return 1;
   }
   //------------------------------------------------------------------------------------------------------------------------
@@ -1572,10 +1449,10 @@ skip:
     bool filled;
 
     const uint64_t blockchain_height = m_core.get_current_blockchain_height();
-    if (context.m_remote_blockchain_height <= blockchain_height)
+    if (context.m_remote_chain_height <= blockchain_height)
       return false;
     const boost::posix_time::ptime now = boost::posix_time::microsec_clock::universal_time();
-    const bool has_next_block = tools::has_unpruned_block(blockchain_height, context.m_remote_blockchain_height, context.m_pruning_seed);
+    const bool has_next_block = tools::has_unpruned_block(blockchain_height, context.m_remote_chain_height, context.m_pruning_seed);
     if (has_next_block)
     {
       if (!m_block_queue.has_next_span(blockchain_height, filled, request_time, connection_id))
@@ -1669,16 +1546,16 @@ skip:
       return false;
     }
     const uint32_t local_stripe = tools::get_pruning_stripe(m_core.get_blockchain_pruning_seed());
-    if (m_sync_pruned_blocks && local_stripe && next_stripe != local_stripe)
+    if (local_stripe && next_stripe != local_stripe)
     {
       MDEBUG(context << "We can sync pruned blocks off this peer, not dropping");
       return false;
     }
 
-    if (!context.m_needed_objects.empty())
+    if (!context.m_needed_blocks.empty())
     {
-      const uint64_t next_available_block_height = context.m_last_response_height - context.m_needed_objects.size() + 1;
-      if (tools::has_unpruned_block(next_available_block_height, context.m_remote_blockchain_height, context.m_pruning_seed))
+      const uint64_t next_available_block_height = context.m_last_response_height - context.m_needed_blocks.size() + 1;
+      if (tools::has_unpruned_block(next_available_block_height, context.m_remote_chain_height, context.m_pruning_seed))
       {
         MDEBUG(context << "This peer has unpruned next block at height " << next_available_block_height << ", not dropping");
         return false;
@@ -1713,18 +1590,18 @@ skip:
   {
     // take out blocks we already have
     size_t skip = 0;
-    while (skip < context.m_needed_objects.size() && (m_core.have_block(context.m_needed_objects[skip].first) || (check_block_queue && m_block_queue.have(context.m_needed_objects[skip].first))))
+    while (skip < context.m_needed_blocks.size() && (m_core.have_block(context.m_needed_blocks[skip]) || (check_block_queue && m_block_queue.have(context.m_needed_blocks[skip]))))
     {
       // if we're popping the last hash, record it so we can ask again from that hash,
       // this prevents never being able to progress on peers we get old hash lists from
-      if (skip + 1 == context.m_needed_objects.size())
-        context.m_last_known_hash = context.m_needed_objects[skip].first;
+      if (skip + 1 == context.m_needed_blocks.size())
+        context.m_last_known_hash = context.m_needed_blocks[skip];
       ++skip;
     }
     if (skip > 0)
     {
-      MDEBUG(context << "skipping " << skip << "/" << context.m_needed_objects.size() << " blocks");
-      context.m_needed_objects = std::vector<std::pair<crypto::hash, uint64_t>>(context.m_needed_objects.begin() + skip, context.m_needed_objects.end());
+      MDEBUG(context << "skipping " << skip << "/" << context.m_needed_blocks.size() << " blocks");
+      context.m_needed_blocks = std::vector<std::pair<crypto::hash, uint64_t>>(context.m_needed_blocks.begin() + skip, context.m_needed_blocks.end());
     }
     return skip;
   }
@@ -1741,8 +1618,8 @@ skip:
       return false;
 
     // assumes the span size is less or equal to the stripe size
-    bool full_data_needed = tools::get_pruning_stripe(first_block_height, context.m_remote_blockchain_height, CRYPTONOTE_PRUNING_LOG_STRIPES) == local_stripe
-        || tools::get_pruning_stripe(first_block_height + nblocks - 1, context.m_remote_blockchain_height, CRYPTONOTE_PRUNING_LOG_STRIPES) == local_stripe;
+    bool full_data_needed = tools::get_pruning_stripe(first_block_height, context.m_remote_chain_height, CRYPTONOTE_PRUNING_LOG_STRIPES) == local_stripe
+        || tools::get_pruning_stripe(first_block_height + nblocks - 1, context.m_remote_chain_height, CRYPTONOTE_PRUNING_LOG_STRIPES) == local_stripe;
     if (full_data_needed)
       return false;
     if (check_block_weights && !m_core.has_block_weights(first_block_height, nblocks))
@@ -1751,12 +1628,12 @@ skip:
   }
   //------------------------------------------------------------------------------------------------------------------------
   template<class t_core>
-  bool t_cryptonote_protocol_handler<t_core>::request_missing_objects(cryptonote_peer_context& context, bool check_having_blocks, bool force_next_span)
+  bool t_cryptonote_protocol_handler<t_core>::request_missing_objects(cryptonote_peer_context& peer_cxt, bool check_having_blocks, bool force_next_span)
   {
     // flush stale spans
     std::set<boost::uuids::uuid> live_connections;
-    m_p2p->for_each_connection([&](cryptonote_peer_context& context, nodetool::peerid_type peer_id, uint32_t support_flags)->bool{
-      live_connections.insert(context.m_connection_id);
+    m_p2p->for_each_connection([&](cryptonote_peer_context& peer_cxt, nodetool::peerid_type peer_id, uint32_t support_flags)->bool{
+      live_connections.insert(peer_cxt.m_connection_id);
       return true;
     });
     m_block_queue.flush_stale_spans(live_connections);
@@ -1769,53 +1646,54 @@ skip:
       {
         size_t nspans = m_block_queue.get_num_filled_spans();
         size_t size = m_block_queue.get_data_size();
-        const uint64_t bc_height = m_core.get_current_blockchain_height();
+        const uint64_t cur_chain_height = m_core.get_current_blockchain_height();
         const auto next_needed_pruning_stripe = get_next_needed_pruning_stripe();
-        const uint32_t add_stripe = tools::get_pruning_stripe(bc_height, context.m_remote_blockchain_height, CRYPTONOTE_PRUNING_LOG_STRIPES);
-        const uint32_t peer_stripe = tools::get_pruning_stripe(context.m_pruning_seed);
+        const uint32_t add_stripe = tools::get_pruning_stripe(cur_chain_height, peer_cxt.m_remote_chain_height, CRYPTONOTE_PRUNING_LOG_STRIPES);
+        const uint32_t peer_stripe = tools::get_pruning_stripe(peer_cxt.m_pruning_seed);
         const uint32_t local_stripe = tools::get_pruning_stripe(m_core.get_blockchain_pruning_seed());
         const size_t block_queue_size_threshold = m_block_download_max_size ? m_block_download_max_size : BLOCK_QUEUE_SIZE_THRESHOLD;
         bool queue_proceed = nspans < BLOCK_QUEUE_NSPANS_THRESHOLD || size < block_queue_size_threshold;
         // get rid of blocks we already requested, or already have
-        if (skip_unneeded_hashes(context, true) && context.m_needed_objects.empty() && context.m_num_requested == 0)
+        skip_unneeded_hashes(peer_cxt, true);
+        if (peer_cxt.m_needed_blocks.empty() && peer_cxt.m_num_requested == 0)
         {
-          if (context.m_remote_blockchain_height > m_block_queue.get_next_needed_height(bc_height))
+          if (peer_cxt.m_remote_chain_height > m_block_queue.get_next_needed_height(cur_chain_height))
           {
-            MERROR(context << "Nothing we can request from this peer, and we did not request anything previously");
+            MERROR(peer_cxt << "Nothing we can request from this peer, and we did not request anything previously");
             return false;
           }
-          MDEBUG(context << "Nothing to get from this peer, and it's not ahead of us, all done");
-          context.m_state = cryptonote_peer_context::state_normal;
+          MDEBUG(peer_cxt << "Nothing to get from this peer, and it's not ahead of us, all done");
+          peer_cxt.m_state = cryptonote_peer_context::state_normal;
           return true;
         }
-        uint64_t next_needed_height = m_block_queue.get_next_needed_height(bc_height);
+        uint64_t next_needed_height = m_block_queue.get_next_needed_height(cur_chain_height);
         uint64_t next_block_height;
-        if (context.m_needed_objects.empty())
+        if (peer_cxt.m_needed_blocks.empty())
           next_block_height = next_needed_height;
         else
-          next_block_height = context.m_last_response_height - context.m_needed_objects.size() + 1;
-        bool stripe_proceed_main = ((m_sync_pruned_blocks && local_stripe && add_stripe != local_stripe) || add_stripe == 0 || peer_stripe == 0 || add_stripe == peer_stripe) && (next_block_height < bc_height + BLOCK_QUEUE_FORCE_DOWNLOAD_NEAR_BLOCKS || next_needed_height < bc_height + BLOCK_QUEUE_FORCE_DOWNLOAD_NEAR_BLOCKS);
-        bool stripe_proceed_secondary = tools::has_unpruned_block(next_block_height, context.m_remote_blockchain_height, context.m_pruning_seed);
+          next_block_height = peer_cxt.m_last_response_height - peer_cxt.m_needed_blocks.size() + 1;
+        bool stripe_proceed_main = ((m_sync_pruned_blocks && local_stripe && add_stripe != local_stripe) || add_stripe == 0 || peer_stripe == 0 || add_stripe == peer_stripe) && (next_block_height < cur_chain_height + BLOCK_QUEUE_FORCE_DOWNLOAD_NEAR_BLOCKS || next_needed_height < cur_chain_height + BLOCK_QUEUE_FORCE_DOWNLOAD_NEAR_BLOCKS);
+        bool stripe_proceed_secondary = tools::has_unpruned_block(next_block_height, peer_cxt.m_remote_chain_height, peer_cxt.m_pruning_seed);
         bool proceed = stripe_proceed_main || (queue_proceed && stripe_proceed_secondary);
-        if (!stripe_proceed_main && !stripe_proceed_secondary && should_drop_connection(context, tools::get_pruning_stripe(next_block_height, context.m_remote_blockchain_height, CRYPTONOTE_PRUNING_LOG_STRIPES)))
+        if (!stripe_proceed_main && !stripe_proceed_secondary && should_drop_connection(peer_cxt, tools::get_pruning_stripe(next_block_height, peer_cxt.m_remote_chain_height, CRYPTONOTE_PRUNING_LOG_STRIPES)))
         {
-          if (!context.m_is_income)
-            m_p2p->add_used_stripe_peer(context);
+          if (!peer_cxt.m_is_income)
+            m_p2p->add_used_stripe_peer(peer_cxt);
           return false; // drop outgoing connections
         }
 
-        MDEBUG(context << "proceed " << proceed << " (queue " << queue_proceed << ", stripe " << stripe_proceed_main << "/" <<
+        MDEBUG(peer_cxt << "proceed " << proceed << " (queue " << queue_proceed << ", stripe " << stripe_proceed_main << "/" <<
           stripe_proceed_secondary << "), " << next_needed_pruning_stripe.first << "-" << next_needed_pruning_stripe.second <<
-          " needed, bc add stripe " << add_stripe << ", we have " << peer_stripe << "), bc_height " << bc_height);
-        MDEBUG(context << "  - next_block_height " << next_block_height << ", seed " << epee::string_tools::to_string_hex(context.m_pruning_seed) <<
+          " needed, bc add stripe " << add_stripe << ", we have " << peer_stripe << "), cur_chain_height " << cur_chain_height);
+        MDEBUG(peer_cxt << "  - next_block_height " << next_block_height << ", seed " << epee::string_tools::to_string_hex(peer_cxt.m_pruning_seed) <<
           ", next_needed_height "<< next_needed_height);
-        MDEBUG(context << "  - last_response_height " << context.m_last_response_height << ", m_needed_objects size " << context.m_needed_objects.size());
+        MDEBUG(peer_cxt << "  - last_response_height " << peer_cxt.m_last_response_height << ", m_needed_blocks size " << peer_cxt.m_needed_blocks.size());
 
         // if we're waiting for next span, try to get it before unblocking threads below,
         // or a runaway downloading of future spans might happen
-        if (stripe_proceed_main && should_download_next_span(context, true))
+        if (stripe_proceed_main && should_download_next_span(peer_cxt, true))
         {
-          MDEBUG(context << " we should try for that next span too, we think we could get it faster, resuming");
+          MDEBUG(peer_cxt << " we should try for that next span too, we think we could get it faster, resuming");
           force_next_span = true;
           MLOG_PEER_STATE("resuming");
           break;
@@ -1823,9 +1701,9 @@ skip:
 
         if (proceed)
         {
-          if (context.m_state != cryptonote_peer_context::state_standby)
+          if (peer_cxt.m_state != cryptonote_peer_context::state_standby)
           {
-            LOG_DEBUG_CC(context, "Block queue is " << nspans << " and " << size << ", resuming");
+            LOG_DEBUG_CC(peer_cxt, "Block queue is " << nspans << " and " << size << ", resuming");
             MLOG_PEER_STATE("resuming");
           }
           break;
@@ -1841,11 +1719,11 @@ skip:
           boost::uuids::uuid connection_id;
           if (m_block_queue.has_next_span(m_core.get_current_blockchain_height(), filled, time, connection_id) && filled)
           {
-            LOG_DEBUG_CC(context, "No other thread is adding blocks, and next span needed is ready, resuming");
+            LOG_DEBUG_CC(peer_cxt, "No other thread is adding blocks, and next span needed is ready, resuming");
             MLOG_PEER_STATE("resuming");
-            context.m_state = cryptonote_peer_context::state_standby;
-            ++context.m_callback_request_count;
-            m_p2p->request_callback(context);
+            peer_cxt.m_state = cryptonote_peer_context::state_standby;
+            ++peer_cxt.m_callback_request_count;
+            m_p2p->request_callback(peer_cxt);
             return true;
           }
           else
@@ -1853,62 +1731,60 @@ skip:
             sync.unlock();
 
             // if this has gone on for too long, drop incoming connection to guard against some wedge state
-            if (!context.m_is_income)
+            if (!peer_cxt.m_is_income)
             {
               const uint64_t now = tools::get_tick_count();
               const uint64_t dt = now - m_last_add_end_time;
               if (m_last_add_end_time && tools::ticks_to_ns(dt) >= DROP_ON_SYNC_WEDGE_THRESHOLD)
               {
-                MDEBUG(context << "ns " << tools::ticks_to_ns(dt) << " from " << m_last_add_end_time << " and " << now);
-                MDEBUG(context << "Block addition seems to have wedged, dropping connection");
+                MDEBUG(peer_cxt << "ns " << tools::ticks_to_ns(dt) << " from " << m_last_add_end_time << " and " << now);
+                MDEBUG(peer_cxt << "Block addition seems to have wedged, dropping connection");
                 return false;
               }
             }
           }
         }
 
-        if (context.m_state != cryptonote_peer_context::state_standby)
+        if (peer_cxt.m_state != cryptonote_peer_context::state_standby)
         {
           if (!queue_proceed)
-            LOG_DEBUG_CC(context, "Block queue is " << nspans << " and " << size << ", pausing");
+            LOG_DEBUG_CC(peer_cxt, "Block queue is " << nspans << " and " << size << ", pausing");
           else if (!stripe_proceed_main && !stripe_proceed_secondary)
-            LOG_DEBUG_CC(context, "We do not have the stripe required to download another block, pausing");
-          context.m_state = cryptonote_peer_context::state_standby;
+            LOG_DEBUG_CC(peer_cxt, "We do not have the stripe required to download another block, pausing");
+          peer_cxt.m_state = cryptonote_peer_context::state_standby;
           MLOG_PEER_STATE("pausing");
         }
 
         return true;
       } while(0);
-      context.m_state = cryptonote_peer_context::state_synchronizing;
+      peer_cxt.m_state = cryptonote_peer_context::state_synchronizing;
     }
 
-    MDEBUG(context << " request_missing_objects: check " << check_having_blocks << ", force_next_span " << force_next_span
-        << ", m_needed_objects " << context.m_needed_objects.size() << " lrh " << context.m_last_response_height << ", chain "
-        << m_core.get_current_blockchain_height() << ", pruning seed " << epee::string_tools::to_string_hex(context.m_pruning_seed));
-    if(context.m_needed_objects.size() || force_next_span)
+    MDEBUG(peer_cxt << " request_missing_objects: check " << check_having_blocks << ", force_next_span " << force_next_span<< ", m_needed_blocks " << peer_cxt.m_needed_blocks.size() << " lrh " << peer_cxt.m_last_response_height << ", chain "<< m_core.get_current_blockchain_height() << ", pruning seed " << epee::string_tools::to_string_hex(peer_cxt.m_pruning_seed));
+    if(peer_cxt.m_needed_blocks.size() || force_next_span)
     {
       //we know objects that we need, request this objects
       NOTIFY_REQUEST_GET_OBJECTS::request req;
       bool is_next = false;
       size_t count = 0;
-      const size_t count_limit = m_core.get_block_sync_size(m_core.get_current_blockchain_height());
+      const size_t batch_size = m_core.get_block_sync_batch_size();
       std::pair<uint64_t, uint64_t> span = std::make_pair(0, 0);
       if (force_next_span)
       {
         if (span.second == 0)
         {
           std::vector<crypto::hash> hashes;
-          boost::uuids::uuid span_connection_id;
+          boost::uuids::uuid span_con_id;
           boost::posix_time::ptime time;
-          span = m_block_queue.get_next_span_if_scheduled(hashes, span_connection_id, time);
+          span = m_block_queue.get_next_span_if_scheduled(hashes, span_con_id, time);
           if (span.second > 0)
           {
             is_next = true;
-            req.blocks.reserve(hashes.size());
+            req.b_hashes.reserve(hashes.size());
             for (const auto &hash: hashes)
             {
-              req.blocks.push_back(hash);
-              context.m_requested_objects.insert(hash);
+              req.b_hashes.push_back(hash);
+              peer_cxt.m_requested_objects.insert(hash);
             }
             m_block_queue.reset_next_span_time();
           }
@@ -1916,50 +1792,51 @@ skip:
       }
       if (span.second == 0)
       {
-        MDEBUG(context << " span size is 0");
-        if (context.m_last_response_height + 1 < context.m_needed_objects.size())
+        MDEBUG(peer_cxt << " span size is 0");
+        if (peer_cxt.m_last_response_height + 1 < peer_cxt.m_needed_blocks.size())
         {
-          MERROR(context << " ERROR: inconsistent context: lrh " << context.m_last_response_height << ", nos " << context.m_needed_objects.size());
-          context.m_needed_objects.clear();
-          context.m_last_response_height = 0;
+          MERROR(peer_cxt << " ERROR: inconsistent peer_cxt: lrh " << peer_cxt.m_last_response_height << ", nos " << peer_cxt.m_needed_blocks.size());
+          peer_cxt.m_needed_blocks.clear();
+          peer_cxt.m_last_response_height = 0;
           goto skip;
         }
-        if (skip_unneeded_hashes(context, false) && context.m_needed_objects.empty() && context.m_num_requested == 0)
+        skip_unneeded_hashes(peer_cxt, false);
+        if (peer_cxt.m_needed_blocks.empty() && peer_cxt.m_num_requested == 0)
         {
-          if (context.m_remote_blockchain_height > m_block_queue.get_next_needed_height(m_core.get_current_blockchain_height()))
+          if (peer_cxt.m_remote_chain_height > m_block_queue.get_next_needed_height(m_core.get_current_blockchain_height()))
           {
-            MERROR(context << "Nothing we can request from this peer, and we did not request anything previously");
+            MERROR(peer_cxt << "Nothing we can request from this peer, and we did not request anything previously");
             return false;
           }
-          MDEBUG(context << "Nothing to get from this peer, and it's not ahead of us, all done");
-          context.m_state = cryptonote_peer_context::state_normal;
+          MDEBUG(peer_cxt << "Nothing to get from this peer, and it's not ahead of us, all done");
+          peer_cxt.m_state = cryptonote_peer_context::state_normal;
           return true;
         }
 
-        const uint64_t first_block_height = context.m_last_response_height - context.m_needed_objects.size() + 1;
-        static const uint64_t bp_fork_height = m_core.get_earliest_ideal_height_for_version(8);
-        bool sync_pruned_blocks = m_sync_pruned_blocks && first_block_height >= bp_fork_height && m_core.get_blockchain_pruning_seed();
-        span = m_block_queue.reserve_span(first_block_height, context.m_last_response_height, count_limit, context.m_connection_id, context.m_remote_address, sync_pruned_blocks, m_core.get_blockchain_pruning_seed(), context.m_pruning_seed, context.m_remote_blockchain_height, context.m_needed_objects);
-        MDEBUG(context << " span from " << first_block_height << ": " << span.first << "/" << span.second);
+        const uint64_t first_block_height = peer_cxt.m_last_response_height - peer_cxt.m_needed_blocks.size() + 1;
+      
+
+        span = m_block_queue.reserve_span(first_block_height, peer_cxt.m_last_response_height, batch_size, peer_cxt.m_connection_id, peer_cxt.m_remote_address, true, m_core.get_blockchain_pruning_seed(), peer_cxt.m_pruning_seed, peer_cxt.m_remote_chain_height, peer_cxt.m_needed_blocks);
+
+        MDEBUG(peer_cxt << " span from " << first_block_height << ": " << span.first << "/" << span.second);
         if (span.second > 0)
         {
-          const uint32_t stripe = tools::get_pruning_stripe(span.first, context.m_remote_blockchain_height, CRYPTONOTE_PRUNING_LOG_STRIPES);
-          if (context.m_pruning_seed && stripe != tools::get_pruning_stripe(context.m_pruning_seed))
+          const uint32_t stripe = tools::get_pruning_stripe(span.first, peer_cxt.m_remote_chain_height, CRYPTONOTE_PRUNING_LOG_STRIPES);
+          if (peer_cxt.m_pruning_seed && stripe != tools::get_pruning_stripe(peer_cxt.m_pruning_seed))
           {
-            MDEBUG(context << " starting early on next seed (" << span.first << "  with stripe " << stripe <<
-                ", context seed " << epee::string_tools::to_string_hex(context.m_pruning_seed) << ")");
+            MDEBUG(peer_cxt << " starting early on next seed (" << span.first << "  with stripe " << stripe <<
+                ", peer_cxt seed " << epee::string_tools::to_string_hex(peer_cxt.m_pruning_seed) << ")");
           }
         }
       }
       if (span.second == 0 && !force_next_span)
       {
-        MDEBUG(context << " still no span reserved, we may be in the corner case of next span scheduled and everything else scheduled/filled");
+        MDEBUG(peer_cxt << " still no span reserved, we may be in the corner case of next span scheduled and everything else scheduled/filled");
         std::vector<crypto::hash> hashes;
-        boost::uuids::uuid span_connection_id;
+        boost::uuids::uuid span_con_id;
         boost::posix_time::ptime time;
-        span = m_block_queue.get_next_span_if_scheduled(hashes, span_connection_id, time);
-        if (span.second > 0 && !tools::has_unpruned_block(span.first, context.m_remote_blockchain_height, context.m_pruning_seed))
-          span = std::make_pair(0, 0);
+        span = m_block_queue.get_next_span_if_scheduled(hashes, span_con_id, time);
+       
         if (span.second > 0)
         {
           is_next = true;
@@ -1968,73 +1845,59 @@ skip:
           {
             req.blocks.push_back(hash);
             ++count;
-            context.m_requested_objects.insert(hash);
+            peer_cxt.m_requested_objects.insert(hash);
             // that's atrocious O(n) wise, but this is rare
-            auto i = std::find_if(context.m_needed_objects.begin(), context.m_needed_objects.end(),
-                [&hash](const std::pair<crypto::hash, uint64_t> &o) { return o.first == hash; });
-            if (i != context.m_needed_objects.end())
-              context.m_needed_objects.erase(i);
+            auto i = std::find_if(peer_cxt.m_needed_blocks.begin(), peer_cxt.m_needed_blocks.end(),
+                [&hash](const crypto::hash &o) { return o == hash; });
+            if (i != peer_cxt.m_needed_blocks.end())
+              peer_cxt.m_needed_blocks.erase(i);
           }
         }
       }
-      MDEBUG(context << " span: " << span.first << "/" << span.second << " (" << span.first << " - " << (span.first + span.second - 1) << ")");
+      MDEBUG(peer_cxt << " span: " << span.first << "/" << span.second << " (" << span.first << " - " << (span.first + span.second - 1) << ")");
       if (span.second > 0)
       {
         if (!is_next)
         {
-          const uint64_t first_context_block_height = context.m_last_response_height - context.m_needed_objects.size() + 1;
+          const uint64_t first_context_block_height = peer_cxt.m_last_response_height - peer_cxt.m_needed_blocks.size() + 1;
           uint64_t skip = span.first - first_context_block_height;
-          if (skip > context.m_needed_objects.size())
+          if (skip > peer_cxt.m_needed_blocks.size())
           {
-            MERROR("ERROR: skip " << skip << ", m_needed_objects " << context.m_needed_objects.size() << ", first_context_block_height" << first_context_block_height);
+            MERROR("ERROR: skip " << skip << ", m_needed_blocks " << peer_cxt.m_needed_blocks.size() << ", first_context_block_height" << first_context_block_height);
             return false;
           }
           if (skip > 0)
-            context.m_needed_objects = std::vector<std::pair<crypto::hash, uint64_t>>(context.m_needed_objects.begin() + skip, context.m_needed_objects.end());
-          if (context.m_needed_objects.size() < span.second)
+            peer_cxt.m_needed_blocks = std::vector<crypto::hash>(peer_cxt.m_needed_blocks.begin() + skip, peer_cxt.m_needed_blocks.end());
+          if (peer_cxt.m_needed_blocks.size() < span.second)
           {
-            MERROR("ERROR: span " << span.first << "/" << span.second << ", m_needed_objects " << context.m_needed_objects.size());
+            MERROR("ERROR: span " << span.first << "/" << span.second << ", m_needed_blocks " << peer_cxt.m_needed_blocks.size());
             return false;
           }
 
           req.blocks.reserve(req.blocks.size() + span.second);
           for (size_t n = 0; n < span.second; ++n)
           {
-            req.blocks.push_back(context.m_needed_objects[n].first);
+            const auto & bh = peer_cxt.m_needed_blocks[n];
+            req.blocks.push_back(bh);
             ++count;
-            context.m_requested_objects.insert(context.m_needed_objects[n].first);
+            peer_cxt.m_requested_objects.insert(bh);
           }
-          context.m_needed_objects = std::vector<std::pair<crypto::hash, uint64_t>>(context.m_needed_objects.begin() + span.second, context.m_needed_objects.end());
+          peer_cxt.m_needed_blocks = std::vector<crypto::hash>(peer_cxt.m_needed_blocks.begin() + span.second, peer_cxt.m_needed_blocks.end());
         }
-
-        req.prune = should_ask_for_pruned_data(context, span.first, span.second, true);
 
         // if we need to ask for full data and that peer does not have the right stripe, we can't ask it
-        if (!req.prune && context.m_pruning_seed)
-        {
-          const uint32_t peer_stripe = tools::get_pruning_stripe(context.m_pruning_seed);
-          const uint32_t first_stripe = tools::get_pruning_stripe(span.first, context.m_remote_blockchain_height, CRYPTONOTE_PRUNING_LOG_STRIPES);
-          const uint32_t last_stripe = tools::get_pruning_stripe(span.first + span.second - 1, context.m_remote_blockchain_height, CRYPTONOTE_PRUNING_LOG_STRIPES);
-          if (((first_stripe && peer_stripe != first_stripe) || (last_stripe && peer_stripe != last_stripe)) && !m_sync_pruned_blocks)
-          {
-            MDEBUG(context << "We need full data, but the peer does not have it, dropping peer");
-            return false;
-          }
-        }
-        context.m_last_request_time = boost::posix_time::microsec_clock::universal_time();
-        context.m_expect_height = span.first;
-        context.m_expect_response = NOTIFY_RESPONSE_GET_OBJECTS::ID;
+       
+        peer_cxt.m_last_request_time = boost::posix_time::microsec_clock::universal_time();
+        peer_cxt.m_expect_height = span.first;
+        peer_cxt.m_expect_response = NOTIFY_RESPONSE_GET_OBJECTS::ID;
         MLOG_P2P_MESSAGE("-->>NOTIFY_REQUEST_GET_OBJECTS: blocks.size()=" << req.blocks.size()
-            << "requested blocks count=" << count << " / " << count_limit << " from " << span.first << ", first hash " << req.blocks.front());
+            << "requested blocks count=" << count << " / " << batch_size << " from " << span.first << ", first hash " << req.blocks.front());
         //epee::net_utils::network_throttle_manager::get_global_throttle_inreq().logger_handle_net("log/dr-monero/net/req-all.data", sec, get_avg_block_size());
 
-        MDEBUG("Asking for " << (req.prune ? "pruned" : "full") << " data, start/end "
-          << tools::get_pruning_stripe(span.first, context.m_remote_blockchain_height, CRYPTONOTE_PRUNING_LOG_STRIPES)
-          << "/" << tools::get_pruning_stripe(span.first + span.second - 1, context.m_remote_blockchain_height, CRYPTONOTE_PRUNING_LOG_STRIPES)
-          << ", ours " << tools::get_pruning_stripe(m_core.get_blockchain_pruning_seed()) << ", peer stripe " << tools::get_pruning_stripe(context.m_pruning_seed));
+  
 
-        context.m_num_requested += req.blocks.size();
-        post_notify<NOTIFY_REQUEST_GET_OBJECTS>(req, context);
+        peer_cxt.m_num_requested += req.blocks.size();
+        post_notify<NOTIFY_REQUEST_GET_OBJECTS>(req, peer_cxt);
         MLOG_PEER_STATE("requesting objects");
         return true;
       }
@@ -2043,7 +1906,7 @@ skip:
       const uint64_t blockchain_height = m_core.get_current_blockchain_height();
       if (std::max(blockchain_height, m_block_queue.get_next_needed_height(blockchain_height)) >= m_core.get_target_blockchain_height())
       {
-        context.m_state = cryptonote_peer_context::state_normal;
+        peer_cxt.m_state = cryptonote_peer_context::state_normal;
         MLOG_PEER_STATE("Nothing to do for now, switching to normal state");
         return true;
       }
@@ -2052,7 +1915,7 @@ skip:
     }
 
 skip:
-    context.m_needed_objects.clear();
+    peer_cxt.m_needed_blocks.clear();
 
     // we might have been called from the "received chain entry" handler, and end up
     // here because we can't use any of those blocks (maybe because all of them are
@@ -2064,63 +1927,60 @@ skip:
       {
         uint64_t start_height;
         std::vector<cryptonote::block_complete_entry> blocks;
-        boost::uuids::uuid span_connection_id;
+        boost::uuids::uuid span_con_id;
         epee::net_utils::network_address span_origin;
-        if (m_block_queue.get_next_span(start_height, blocks, span_connection_id, span_origin, true))
+        if (m_block_queue.get_next_span(start_height, blocks, span_con_id, span_origin, true))
         {
-          LOG_DEBUG_CC(context, "No other thread is adding blocks, resuming");
+          LOG_DEBUG_CC(peer_cxt, "No other thread is adding blocks, resuming");
           MLOG_PEER_STATE("will try to add blocks next");
-          context.m_state = cryptonote_peer_context::state_standby;
-          ++context.m_callback_request_count;
-          m_p2p->request_callback(context);
+          peer_cxt.m_state = cryptonote_peer_context::state_standby;
+          ++peer_cxt.m_callback_request_count;
+          m_p2p->request_callback(peer_cxt);
           return true;
         }
       }
     }
 
-    if(context.m_last_response_height < context.m_remote_blockchain_height-1)
+    if(peer_cxt.m_last_response_height < peer_cxt.m_remote_chain_height-1)
     {//we have to fetch more objects ids, request blockchain entry
 
-      NOTIFY_REQUEST_CHAIN::request r = {};
-      context.m_expect_height = m_core.get_current_blockchain_height();
-      m_core.get_short_chain_history(r.block_ids);
+      NOTIFY_REQUEST_CHAIN::request r {m_core.get_blockchain().get_short_chain_history()};
+      peer_cxt.m_expect_height = m_core.get_current_blockchain_height();
       CHECK_AND_ASSERT_MES(!r.block_ids.empty(), false, "Short chain history is empty");
 
       if (!start_from_current_chain)
       {
         // we'll want to start off from where we are on that peer, which may not be added yet
-        if (context.m_last_known_hash != crypto::null_hash && r.block_ids.front() != context.m_last_known_hash)
+        if (peer_cxt.m_last_known_hash != crypto::null_hash && r.block_ids.front() != peer_cxt.m_last_known_hash)
         {
-          context.m_expect_height = std::numeric_limits<uint64_t>::max();
-          r.block_ids.push_front(context.m_last_known_hash);
+          peer_cxt.m_expect_height = std::numeric_limits<uint64_t>::max();
+          r.block_ids.push_front(peer_cxt.m_last_known_hash);
         }
       }
 
-      r.prune = m_sync_pruned_blocks;
 
       //std::string blob; // for calculate size of request
       //epee::serialization::store_t_to_binary(r, blob);
       //epee::net_utils::network_throttle_manager::get_global_throttle_inreq().logger_handle_net("log/dr-monero/net/req-all.data", sec, get_avg_block_size());
       //LOG_PRINT_CCONTEXT_L1("r = " << 200);
 
-      context.m_last_request_time = boost::posix_time::microsec_clock::universal_time();
-      context.m_expect_response = NOTIFY_RESPONSE_CHAIN_ENTRY::ID;
+      peer_cxt.m_last_request_time = boost::posix_time::microsec_clock::universal_time();
+      peer_cxt.m_expect_response = NOTIFY_RESPONSE_CHAIN_ENTRY::ID;
       MLOG_P2P_MESSAGE("-->>NOTIFY_REQUEST_CHAIN: m_block_ids.size()=" << r.block_ids.size() << ", start_from_current_chain " << start_from_current_chain);
-      post_notify<NOTIFY_REQUEST_CHAIN>(r, context);
+      post_notify<NOTIFY_REQUEST_CHAIN>(r, peer_cxt);
       MLOG_PEER_STATE("requesting chain");
     }else
     {
-      CHECK_AND_ASSERT_MES(context.m_last_response_height == context.m_remote_blockchain_height-1
-                           && !context.m_needed_objects.size()
-                           && !context.m_requested_objects.size(), false, "request_missing_blocks final condition failed!"
-                           << "\r\nm_last_response_height=" << context.m_last_response_height
-                           << "\r\nm_remote_blockchain_height=" << context.m_remote_blockchain_height
-                           << "\r\nm_needed_objects.size()=" << context.m_needed_objects.size()
-                           << "\r\nm_requested_objects.size()=" << context.m_requested_objects.size()
-                           << "\r\non connection [" << epee::net_utils::print_connection_context_short(context)<< "]");
+      CHECK_AND_ASSERT_MES(peer_cxt.m_last_response_height == peer_cxt.m_remote_chain_height-1
+                           && !peer_cxt.m_needed_blocks.size()&& !peer_cxt.m_requested_objects.size(), false, "request_missing_blocks final condition failed!"
+                           << "\r\nm_last_response_height=" << peer_cxt.m_last_response_height
+                           << "\r\nm_remote_blockchain_height=" << peer_cxt.m_remote_chain_height
+                           << "\r\nm_needed_objects.size()=" << peer_cxt.m_needed_blocks.size()
+                           << "\r\nm_requested_objects.size()=" << peer_cxt.m_requested_objects.size()
+                           << "\r\non connection [" << epee::net_utils::print_connection_context_short(peer_cxt)<< "]");
 
-      context.m_state = cryptonote_peer_context::state_normal;
-      if (context.m_remote_blockchain_height >= m_core.get_target_blockchain_height())
+      peer_cxt.m_state = cryptonote_peer_context::state_normal;
+      if (peer_cxt.m_remote_chain_height >= m_core.get_target_blockchain_height())
       {
         if (m_core.get_current_blockchain_height() >= m_core.get_target_blockchain_height())
         {
@@ -2130,7 +1990,7 @@ skip:
       }
       else
       {
-        MINFO(context << " we've reached this peer's blockchain height (theirs " << context.m_remote_blockchain_height << ", our target " << m_core.get_target_blockchain_height());
+        MINFO(peer_cxt << " we've reached this peer's blockchain height (theirs " << peer_cxt.m_remote_chain_height << ", our target " << m_core.get_target_blockchain_height());
       }
     }
     return true;
@@ -2140,12 +2000,12 @@ skip:
   bool t_cryptonote_protocol_handler<t_core>::on_connection_synchronized()
   {
     bool val_expected = false;
-    uint64_t current_blockchain_height = m_core.get_current_blockchain_height();
-    if(!m_core.is_within_compiled_block_hash_area(current_blockchain_height) && m_synchronized.compare_exchange_strong(val_expected, true))
+    uint64_t cur_chain_height = m_core.get_current_blockchain_height();
+    if( m_synchronized.compare_exchange_strong(val_expected, true))
     {
-      if ((current_blockchain_height > m_sync_start_height) && (m_sync_spans_downloaded > 0))
+      if ((cur_chain_height > m_sync_start_height) && (m_sync_spans_downloaded > 0))
       {
-        uint64_t synced_blocks = current_blockchain_height - m_sync_start_height;
+        uint64_t synced_blocks = cur_chain_height - m_sync_start_height;
         // Report only after syncing an "interesting" number of blocks:
         if (synced_blocks > 20)
         {
@@ -2161,12 +2021,8 @@ skip:
         }
       }
       MGINFO_YELLOW(ENDL << "**********************************************************************" << ENDL
-        << "You are now synchronized with the network. You may now start monero-wallet-cli." << ENDL
-        << ENDL
-        << "Use the \"help\" command to see the list of available commands." << ENDL
-        << "**********************************************************************");
+        << "You are now synchronized with the network." << ENDL);
       m_sync_timer.pause();
-      if (ELPP->vRegistry()->allowed(el::Level::Info, "sync-info"))
       {
         const uint64_t sync_time = m_sync_timer.value();
         const uint64_t add_time = m_add_timer.value();
@@ -2181,7 +2037,6 @@ skip:
         }
       }
     }
-    m_core.safesyncmode(true);
     m_p2p->clear_used_stripe_peers();
 
     // ask for txpool complement from any suitable node if we did not yet
@@ -2218,198 +2073,23 @@ skip:
     });
     return count;
   }
+
   //------------------------------------------------------------------------------------------------------------------------
   template<class t_core>
-  int t_cryptonote_protocol_handler<t_core>::handle_response_chain_entry(int command, NOTIFY_RESPONSE_CHAIN_ENTRY::request& arg, cryptonote_peer_context& context)
+  bool t_cryptonote_protocol_handler<t_core>::relay_block(const blobdata& blob, const uint64_t b_height, cryptonote_peer_context& exclude_context)
   {
-    MLOG_P2P_MESSAGE("Received NOTIFY_RESPONSE_CHAIN_ENTRY: m_block_ids.size()=" << arg.m_block_ids.size()
-      << ", m_start_height=" << arg.start_height << ", m_total_height=" << arg.total_height);
-    MLOG_PEER_STATE("received chain");
-
-    if (context.m_expect_response != NOTIFY_RESPONSE_CHAIN_ENTRY::ID)
-    {
-      LOG_ERROR_CCONTEXT("Got NOTIFY_RESPONSE_CHAIN_ENTRY out of the blue, dropping connection");
-      drop_connection(context, true, false);
-      return 1;
-    }
-    context.m_expect_response = 0;
-    if (arg.start_height + 1 > context.m_expect_height) // we expect an overlapping block
-    {
-      LOG_ERROR_CCONTEXT("Got NOTIFY_RESPONSE_CHAIN_ENTRY past expected height, dropping connection");
-      drop_connection(context, true, false);
-      return 1;
-    }
-
-    context.m_last_request_time = boost::date_time::not_a_date_time;
-
-    m_sync_download_chain_size += arg.m_block_ids.size() * sizeof(crypto::hash);
-
-    if(!arg.m_block_ids.size())
-    {
-      LOG_ERROR_CCONTEXT("sent empty m_block_ids, dropping connection");
-      drop_connection(context, true, false);
-      return 1;
-    }
-    if (arg.total_height < arg.m_block_ids.size() || arg.start_height > arg.total_height - arg.m_block_ids.size())
-    {
-      LOG_ERROR_CCONTEXT("sent invalid start/nblocks/height, dropping connection");
-      drop_connection(context, true, false);
-      return 1;
-    }
-    if (!arg.m_block_weights.empty() && arg.m_block_weights.size() != arg.m_block_ids.size())
-    {
-      LOG_ERROR_CCONTEXT("sent invalid block weight array, dropping connection");
-      drop_connection(context, true, false);
-      return 1;
-    }
-    MDEBUG(context << "first block hash " << arg.m_block_ids.front() << ", last " << arg.m_block_ids.back());
-
-    if (arg.total_height >= CRYPTONOTE_MAX_BLOCK_NUMBER || arg.m_block_ids.size() > BLOCKS_IDS_SYNCHRONIZING_MAX_COUNT)
-    {
-      LOG_ERROR_CCONTEXT("sent wrong NOTIFY_RESPONSE_CHAIN_ENTRY, with total_height=" << arg.total_height << " and block_ids=" << arg.m_block_ids.size());
-      drop_connection(context, false, false);
-      return 1;
-    }
-    if (arg.total_height < context.m_remote_blockchain_height)
-    {
-      MINFO(context << "Claims " << arg.total_height << ", claimed " << context.m_remote_blockchain_height << " before");
-      hit_score(context, 1);
-    }
-    context.m_remote_blockchain_height = arg.total_height;
-    context.m_last_response_height = arg.start_height + arg.m_block_ids.size()-1;
-    if(context.m_last_response_height > context.m_remote_blockchain_height)
-    {
-      LOG_ERROR_CCONTEXT("sent wrong NOTIFY_RESPONSE_CHAIN_ENTRY, with m_total_height=" << arg.total_height
-                                                                         << ", m_start_height=" << arg.start_height
-                                                                         << ", m_block_ids.size()=" << arg.m_block_ids.size());
-      drop_connection(context, false, false);
-      return 1;
-    }
-
-    uint64_t n_use_blocks = m_core.prevalidate_block_hashes(arg.start_height, arg.m_block_ids, arg.m_block_weights);
-    if (n_use_blocks == 0 || n_use_blocks + HASH_OF_HASHES_STEP <= arg.m_block_ids.size())
-    {
-      LOG_ERROR_CCONTEXT("Most blocks are invalid, dropping connection");
-      drop_connection(context, true, false);
-      return 1;
-    }
-
-    context.m_needed_objects.clear();
-    context.m_needed_objects.reserve(arg.m_block_ids.size());
-    uint64_t added = 0;
-    std::unordered_set<crypto::hash> blocks_found;
-    bool first = true;
-    bool expect_unknown = false;
-    for (size_t i = 0; i < arg.m_block_ids.size(); ++i)
-    {
-      const auto  & bh= arg.m_block_ids[i];
-      if (!blocks_found.insert(bh).second)
-      {
-        LOG_ERROR_CCONTEXT("Duplicate blocks in chain entry response, dropping connection");
-        drop_connection_with_score(context, 5, false);
-        return 1;
-      }
-      int where;
-      const bool have_block = m_core.have_block_unlocked(bh, &where);
-      if (first)
-      {
-        if (!have_block && !m_block_queue.requested(arg.m_block_ids[i]) && !m_block_queue.have(arg.m_block_ids[i]))
-        {
-          LOG_ERROR_CCONTEXT("First block hash is unknown, dropping connection");
-          drop_connection_with_score(context, 5, false);
-          return 1;
-        }
-        if (!have_block)
-          expect_unknown = true;
-      }
-      if (!first)
-      {
-        // after the first, blocks may be known or unknown, but if they are known,
-        // they should be at the same height if on the main chain
-        if (have_block)
-        {
-          switch (where)
-          {
-            default:
-            case HAVE_BLOCK_INVALID:
-              LOG_ERROR_CCONTEXT("Block is invalid or known without known type, dropping connection");
-              drop_connection(context, true, false);
-              return 1;
-            case HAVE_BLOCK_MAIN_CHAIN:
-              if (expect_unknown)
-              {
-                LOG_ERROR_CCONTEXT("Block is on the main chain, but we did not expect a known block, dropping connection");
-                drop_connection_with_score(context, 5, false);
-                return 1;
-              }
-              if (m_core.get_block_hash_by_height(arg.start_height + i) != bh)
-              {
-                LOG_ERROR_CCONTEXT("Block is on the main chain, but not at the expected height, dropping connection");
-                drop_connection_with_score(context, 5, false);
-                return 1;
-              }
-              break;
-            case HAVE_BLOCK_ALT_CHAIN:
-              if (expect_unknown)
-              {
-                LOG_ERROR_CCONTEXT("Block is on the alt chain, but we did not expect a known block, dropping connection");
-                drop_connection_with_score(context, 5, false);
-                return 1;
-              }
-              break;
-          }
-        }
-        else
-          expect_unknown = true;
-      }
-      const uint64_t block_weight = arg.m_block_weights.empty() ? 0 : arg.m_block_weights[i];
-      context.m_needed_objects.push_back(std::make_pair(arg.m_block_ids[i], block_weight));
-      if (++added == n_use_blocks)
-        break;
-      first = false;
-    }
-    context.m_last_response_height -= arg.m_block_ids.size() - n_use_blocks;
-
-    if (!request_missing_objects(context, false))
-    {
-      LOG_ERROR_CCONTEXT("Failed to request missing objects, dropping connection");
-      drop_connection(context, false, false);
-      return 1;
-    }
-
-    if (arg.total_height > m_core.get_target_blockchain_height())
-      m_core.set_target_blockchain_height(arg.total_height);
-
-    context.m_num_requested = 0;
-    return 1;
-  }
-  //------------------------------------------------------------------------------------------------------------------------
-  template<class t_core>
-  bool t_cryptonote_protocol_handler<t_core>::relay_block(NOTIFY_NEW_BLOCK::request& arg, cryptonote_peer_context& exclude_context)
-  {
-    NOTIFY_NEW_FLUFFY_BLOCK::request fluffy_arg = AUTO_VAL_INIT(fluffy_arg);
-    fluffy_arg.current_blockchain_height = arg.current_blockchain_height;    
-    std::vector<tx_blob_entry> fluffy_txs;
-    fluffy_arg.b = arg.b;
-    fluffy_arg.b.txs = fluffy_txs;
+    NOTIFY_NEW_FLUFFY_BLOCK::request fluffy_arg{};
+    fluffy_arg.cur_chain_height = b_height;   
+    fluffy_arg.b = blob;
 
     // sort peers between fluffy ones and others
-    std::vector< boost::uuids::uuid> fullConnections, fluffyConnections;
+    std::vector< boost::uuids::uuid>  fluffyConnections;
     m_p2p->for_each_connection([this, &exclude_context, &fullConnections, &fluffyConnections](cryptonote_peer_context& context, nodetool::peerid_type peer_id, uint32_t support_flags)
     {
       // peer_id also filters out connections before handshake
       if (peer_id && exclude_context.m_connection_id != context.m_connection_id )
       {
-        if(m_core.fluffy_blocks_enabled() && (support_flags & P2P_SUPPORT_FLAG_FLUFFY_BLOCKS))
-        {
-          LOG_DEBUG_CC(context, "PEER SUPPORTS FLUFFY BLOCKS - RELAYING THIN/COMPACT WHATEVER BLOCK");
           fluffyConnections.push_back( context.m_connection_id);
-        }
-        else
-        {
-          LOG_DEBUG_CC(context, "PEER DOESN'T SUPPORT FLUFFY BLOCKS - RELAYING FULL BLOCK");
-          fullConnections.push_back( context.m_connection_id);
-        }
       }
       return true;
     });
@@ -2420,12 +2100,6 @@ skip:
       epee::levin::message_writer fluffyBlob{32 * 1024};
       epee::serialization::store_t_to_binary(fluffy_arg, fluffyBlob.buffer);
       m_p2p->relay_notify_to_list(NOTIFY_NEW_FLUFFY_BLOCK::ID, std::move(fluffyBlob), std::move(fluffyConnections));
-    }
-    if (!fullConnections.empty())
-    {
-      epee::levin::message_writer fullBlob{128 * 1024};
-      epee::serialization::store_t_to_binary(arg, fullBlob.buffer);
-      m_p2p->relay_notify_to_list(NOTIFY_NEW_BLOCK::ID, std::move(fullBlob), std::move(fullConnections));
     }
 
     return true;
@@ -2596,7 +2270,7 @@ skip:
         drop.push_back(cntxt.m_connection_id);
       return true;
     });
-    for (const boost::uuids::uuid &id: drop)
+    for (const auto &id: drop)
     {
       m_block_queue.flush_spans(id, true);
       m_p2p->for_connection(id, [&](cryptonote_peer_context& context, nodetool::peerid_type peer_id, uint32_t f)->bool{
@@ -2612,7 +2286,7 @@ skip:
     uint64_t target = 0;
     m_p2p->for_each_connection([&](const cryptonote_peer_context& cntxt, nodetool::peerid_type peer_id, uint32_t support_flags) {
       if (cntxt.m_state >= cryptonote_peer_context::state_synchronizing && cntxt.m_connection_id != context.m_connection_id)
-        target = std::max(target, cntxt.m_remote_blockchain_height);
+        target = std::max(target, cntxt.m_remote_chain_height);
       return true;
     });
     const uint64_t previous_target = m_core.get_target_blockchain_height();

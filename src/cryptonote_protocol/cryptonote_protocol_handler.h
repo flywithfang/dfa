@@ -75,13 +75,7 @@ namespace cryptonote
   { 
         try { 
             typedef cryptonote_protocol_handler internal_owner_type_name;
-           // HANDLE_NOTIFY_T2(NOTIFY_NEW_BLOCK, &cryptonote_protocol_handler::handle_notify_new_block)
-            if(is_notify && NOTIFY_NEW_BLOCK::ID == command) 
-            {
-              handled=true;
-              const auto func = &cryptonote_protocol_handler::handle_notify_new_block;
-              return epee::net_utils::buff_to_t_adapter<internal_owner_type_name, typename NOTIFY_NEW_BLOCK::request>(this, command, in_buff, std::bind(func, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3), context);
-            }
+          
               if(is_notify && NOTIFY_NEW_TRANSACTIONS::ID == command) 
             {
               handled=true;
@@ -139,7 +133,7 @@ namespace cryptonote
   
     public:
     //----------------- i_bc_protocol_layout ---------------------------------------
-    virtual bool relay_block(NOTIFY_NEW_BLOCK::request& arg, cryptonote_peer_context& exclude_context);
+    virtual bool relay_block(const blobdata& blob, const uint64_t b_height, cryptonote_peer_context& exclude_context);
     virtual bool relay_transactions(NOTIFY_NEW_TRANSACTIONS::request& arg, const boost::uuids::uuid& source, epee::net_utils::zone zone, relay_method tx_relay);
     virtual uint64_t get_current_blockchain_height()const;
     virtual void on_transactions_relayed(epee::span<const cryptonote::blobdata> tx_blobs, relay_method tx_relay) ;
@@ -149,7 +143,6 @@ namespace cryptonote
    
   private:
     //----------------- commands handlers ----------------------------------------------
-    int handle_notify_new_block(int command, NOTIFY_NEW_BLOCK::request& arg, cryptonote_peer_context& context);
     int handle_notify_new_transactions(int command, NOTIFY_NEW_TRANSACTIONS::request& arg, cryptonote_peer_context& context);
     int handle_request_get_objects(int command, NOTIFY_REQUEST_GET_OBJECTS::request& arg, cryptonote_peer_context& context);
     int handle_response_get_objects(int command, NOTIFY_RESPONSE_GET_OBJECTS::request& arg, cryptonote_peer_context& context);
@@ -222,7 +215,6 @@ private:
     uint64_t m_sync_spans_downloaded, m_sync_old_spans_downloaded, m_sync_bad_spans_downloaded;
     uint64_t m_sync_download_chain_size, m_sync_download_objects_size;
     size_t m_block_download_max_size;
-    bool m_sync_pruned_blocks;
 
     // Values for sync time estimates
     boost::posix_time::ptime m_sync_start_time;

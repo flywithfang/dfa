@@ -114,7 +114,7 @@ rct::keyV print_out(const public_key & tx_key, const transaction & tx){
      rct::rctSig  rct = tx.rct_signatures;
     cout<<"rct "<<to_string(rct.type)<<endl;
      auto & ecdhs = rct.ecdhInfo;
-     const auto outPk=rct.outPk;
+     const auto outCommitments=rct.outCommitments;
     public_key B;
     crypto::secret_key_to_public_key(b,B);
    for(auto o : tx.vout){
@@ -140,7 +140,7 @@ rct::keyV print_out(const public_key & tx_key, const transaction & tx){
       rct::d2h(a2,a);
      rct::addKeys2(xGbH,noise,a2,H);
      cout<<"outC="<<xGbH<<endl;
-     const auto outC=outPk[t].commitment;
+     const auto outC=outCommitments[t].commitment;
      cout<<"outC="<<outC<<endl;
      out.push_back(outC);
     ++t;
@@ -158,7 +158,7 @@ void print_tx(Blockchain* chain,const string& _tx_hash, bool json){
   cout<<"tran size "<<blob.size()<<endl;
   if(json){
   transaction tx;
-  if (!parse_and_validate_tx_from_blob(blob, tx))
+  if (!parse_tx_from_blob(blob, tx))
     throw DB_ERROR("Failed to parse transaction from blob retrieved from the db");
    auto js=to_json_string(tx);
    cout<<js<<endl;
@@ -259,7 +259,7 @@ void cal_block_hash(const string & hex){
     if(!r) throw runtime_error("bad hex");
     
     
-   const block bl = cryptonote::parse_and_validate_block_from_blob(bd);
+   const block bl = cryptonote::parse_block_from_blob(bd);
    crypto::hash hash=get_block_hash(bl);
     cout<<"hash "<<hash<<endl;
     cout<<to_json_string(bl)<<endl;
@@ -267,8 +267,11 @@ void cal_block_hash(const string & hex){
 void check_block(const string &hex){
 
   const auto buf = string_tools::parse_hexstr_to_binbuff(hex);
-  const auto b = cryptonote::parse_and_validate_block_from_blob(buf);
+  const auto b = cryptonote::parse_block_from_blob(buf);
     cout<<to_json_string(b)<<endl;
+crypto::hash h;
+    calculate_block_hash(b,h);
+    cout<<"block hash"<<h<<endl;
 }
 void test_block_template(const string &arg){
 
@@ -277,7 +280,7 @@ void test_block_template(const string &arg){
   const auto bt=m_core.chain.create_block_template(nullptr,addr,b);
   const auto & bd= t_serializable_object_to_blob(bt.b);
   cout<<string_tools::buff_to_hex_nodelimer(bd);
-  const auto b2 = parse_and_validate_block_from_blob(bd);
+  const auto b2 = parse_block_from_blob(bd);
    cout<<to_json_string(b2)<<endl;
 
 }

@@ -107,7 +107,7 @@ namespace cryptonote
   private:
     std::set<span> m_spans;
     mutable boost::recursive_mutex mutex;
-    std::unordered_set<crypto::hash> requested_hashes;
-    std::unordered_set<crypto::hash> have_blocks;
+    std::unordered_set<crypto::hash> m_requested_hashes;
+    std::unordered_set<crypto::hash> m_have_blocks;
   };
 }

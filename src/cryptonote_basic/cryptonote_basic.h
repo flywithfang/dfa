@@ -138,17 +138,6 @@ namespace cryptonote
        MDEBUG("extra"<<extra);
     END_SERIALIZE()
 
-  public:
-    transaction_prefix(){ set_null(); }
-    void set_null()
-    {
-      version = 0;
-      unlock_time = 0;
-      vin.clear();
-      vout.clear();
-      extra.clear();
-      tx_pub_key=crypto::null_pkey;
-    }
   };
 
   class transaction: public transaction_prefix
@@ -159,63 +148,30 @@ namespace cryptonote
     mutable std::atomic<bool> prunable_hash_valid;
     mutable std::atomic<bool> blob_size_valid;
 
+    bool pruned;
   public:
     rct::rctSig rct_signatures;
 
     // hash cash
     mutable crypto::hash hash;
     mutable crypto::hash prunable_hash;
-    mutable size_t blob_size;
 
-    bool pruned;
+   
 
     std::atomic<unsigned int> unprunable_size;
     std::atomic<unsigned int> prefix_size;
 
-    transaction();
-    transaction(const transaction &t);
-    transaction &operator=(const transaction &t);
-    virtual ~transaction();
-    void set_null();
     void invalidate_hashes();
     bool is_hash_valid() const { return hash_valid.load(std::memory_order_acquire); }
     void set_hash_valid(bool v) const { hash_valid.store(v,std::memory_order_release); }
     bool is_prunable_hash_valid() const { return prunable_hash_valid.load(std::memory_order_acquire); }
     void set_prunable_hash_valid(bool v) const { prunable_hash_valid.store(v,std::memory_order_release); }
-    bool is_blob_size_valid() const { return blob_size_valid.load(std::memory_order_acquire); }
-    void set_blob_size_valid(bool v) const { blob_size_valid.store(v,std::memory_order_release); }
     void set_hash(const crypto::hash &h) const { hash = h; set_hash_valid(true); }
     void set_prunable_hash(const crypto::hash &h) const { prunable_hash = h; set_prunable_hash_valid(true); }
-    void set_blob_size(size_t sz) const { blob_size = sz; set_blob_size_valid(true); }
-
-    BEGIN_SERIALIZE_OBJECT()
-      if (!typename Archive<W>::is_saving())
-      {
-        set_hash_valid(false);
-        set_prunable_hash_valid(false);
-        set_blob_size_valid(false);
-      }
-      [[maybe_unused]] const unsigned int start_pos = getpos(ar);
-
-      FIELDS(*static_cast<transaction_prefix *>(this))
-
-      if  constexpr(Archive<W>::is_binary_protocol::value)
-       {
-        prefix_size = getpos(ar) - start_pos;
-      }
-
+    bool is_pruned()const{return pruned;}
     
-        ar.tag("rct_signatures");
-      //  if (!vin.empty())
-        {
-          ar.begin_object();
-          bool r = rct_signatures.serialize_rctsig_base(ar, vin.size(), vout.size());
-          if (!r || !ar.stream().good())
-           throw_and_log("bad rctsig_base blob data");
-          ar.end_object();
-
-          if  constexpr(Archive<W>::is_binary_protocol::value)
-           { unprunable_size = getpos(ar) - start_pos;}
+    BEGIN_SERIALIZE_OBJECT()
+          serialize_base(ar);
 
           if (!pruned && rct_signatures.type != rct::RCTTypeNull)
           {
@@ -227,7 +183,7 @@ namespace cryptonote
              throw_and_log("bad rctsig_prunable blob data");
             ar.end_object();
           }
-        }
+        
       if (!typename Archive<W>::is_saving())
         pruned = false;
     END_SERIALIZE()
@@ -235,116 +191,52 @@ namespace cryptonote
     template<bool W, template <bool> class Archive>
     bool serialize_base(Archive<W> &ar)
     {
-      FIELDS(*static_cast<transaction_prefix *>(this))
+       if (!typename Archive<W>::is_saving())
       {
-        ar.tag("rct_signatures");
-        if (!vin.empty())
+        set_hash_valid(false);
+        set_prunable_hash_valid(false);
+      }
+      [[maybe_unused]] const unsigned int start_pos = getpos(ar);
+
+      FIELDS(*static_cast<transaction_prefix *>(this))
+  
+     if  constexpr(Archive<W>::is_binary_protocol::value)
+       {
+        prefix_size = getpos(ar) - start_pos;
+      }
+
+      {
+        ar.tag("rctsig_base");
         {
           ar.begin_object();
           bool r = rct_signatures.serialize_rctsig_base(ar, vin.size(), vout.size());
-          if (!r || !ar.stream().good()) return false;
+          if (!r || !ar.stream().good())
+           return false;
           ar.end_object();
         }
+         if  constexpr(Archive<W>::is_binary_protocol::value)
+           { unprunable_size = getpos(ar) - start_pos;}
+
       }
       if (!typename Archive<W>::is_saving())
         pruned = true;
       return ar.stream().good();
     }
-
+  uint64_t fee()const{ return rct_signatures.txnFee; }
   private:
     static size_t get_signature_size(const txin_v& tx_in);
   };
 
-  inline transaction::transaction(const transaction &t):
-    transaction_prefix(t),
-    hash_valid(false),
-    prunable_hash_valid(false),
-    blob_size_valid(false),
-    rct_signatures(t.rct_signatures),
-    pruned(t.pruned),
-    unprunable_size(t.unprunable_size.load()),
-    prefix_size(t.prefix_size.load())
-  {
-    if (t.is_hash_valid())
-    {
-      hash = t.hash;
-      set_hash_valid(true);
-    }
-    if (t.is_blob_size_valid())
-    {
-      blob_size = t.blob_size;
-      set_blob_size_valid(true);
-    }
-    if (t.is_prunable_hash_valid())
-    {
-      prunable_hash = t.prunable_hash;
-      set_prunable_hash_valid(true);
-    }
-  }
-
-  inline transaction &transaction::operator=(const transaction &t)
-  {
-    transaction_prefix::operator=(t);
-
-    set_hash_valid(false);
-    set_prunable_hash_valid(false);
-    set_blob_size_valid(false);
-    rct_signatures = t.rct_signatures;
-    if (t.is_hash_valid())
-    {
-      hash = t.hash;
-      set_hash_valid(true);
-    }
-    if (t.is_prunable_hash_valid())
-    {
-      prunable_hash = t.prunable_hash;
-      set_prunable_hash_valid(true);
-    }
-    if (t.is_blob_size_valid())
-    {
-      blob_size = t.blob_size;
-      set_blob_size_valid(true);
-    }
-    pruned = t.pruned;
-    unprunable_size = t.unprunable_size.load();
-    prefix_size = t.prefix_size.load();
-    return *this;
-  }
-
-  inline
-  transaction::transaction()
-  {
-    set_null();
-  }
-
-  inline
-  transaction::~transaction()
-  {
-  }
-
-  inline
-  void transaction::set_null()
-  {
-    transaction_prefix::set_null();
-    rct_signatures.type = rct::RCTTypeNull;
-    set_hash_valid(false);
-    set_prunable_hash_valid(false);
-    set_blob_size_valid(false);
-    pruned = false;
-    unprunable_size = 0;
-    prefix_size = 0;
-  }
-
+ 
+ 
   inline
   void transaction::invalidate_hashes()
   {
     set_hash_valid(false);
     set_prunable_hash_valid(false);
-    set_blob_size_valid(false);
   }
 
-  inline
-  size_t transaction::get_signature_size(const txin_v& tx_in)
+  inline  size_t transaction::get_signature_size(const txin_v& tx_in)
   {
     struct txin_signature_size_visitor : public boost::static_visitor<size_t>
     {
@@ -354,7 +246,7 @@ namespace cryptonote
 
     return boost::apply_visitor(txin_signature_size_visitor(), tx_in);
   }
-
+  
 
 
   /************************************************************************/
@@ -391,7 +283,7 @@ namespace cryptonote
     bool is_hash_valid() const { return hash_valid.load(std::memory_order_acquire); }
     void set_hash_valid(bool v) const { hash_valid.store(v,std::memory_order_release); }
     void set_hash(const crypto::hash &h) const { hash = h; set_hash_valid(true); }
-
+  
     transaction miner_tx;
     std::vector<crypto::hash> tx_hashes;
 

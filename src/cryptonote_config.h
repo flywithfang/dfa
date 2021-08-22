@@ -60,7 +60,7 @@
 
 
 #define DIFFICULTY_TARGET                            (60*10)  // seconds - before first fork
-#define DIFFICULTY_WINDOW                               64 // blocks
+#define DIFFICULTY_WINDOW                               12 // blocks
 
 #define CRYPTONOTE_LOCKED_TX_ALLOWED_DELTA_BLOCKS       1
 #define CRYPTONOTE_LOCKED_TX_ALLOWED_DELTA_SECONDS   DIFFICULTY_TARGET * CRYPTONOTE_LOCKED_TX_ALLOWED_DELTA_BLOCKS

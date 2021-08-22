@@ -149,7 +149,7 @@ namespace cryptonote
      *
      * @return true unless the transaction cannot be found in the pool
      */
-    bool take_tx(const crypto::hash &id, transaction &tx, cryptonote::blobdata &txblob, size_t& tx_weight, uint64_t& fee, bool &relayed, bool &do_not_relay, bool &pruned);
+    bool pop_tx(const crypto::hash &id, transaction &tx, cryptonote::blobdata &txblob, size_t& tx_weight, uint64_t& fee, bool &relayed, bool &do_not_relay, bool &pruned);
 
     /**
      * @brief checks if the pool has a transaction with the given hash
@@ -161,29 +161,6 @@ namespace cryptonote
      */
     bool have_tx(const crypto::hash &id, relay_category tx_category) const;
 
-    /**
-     * @brief action to take when notified of a block added to the blockchain
-     *
-     * Currently does nothing
-     *
-     * @param new_block_height the height of the blockchain after the change
-     * @param top_block_id the hash of the new top block
-     *
-     * @return true
-     */
-    bool on_blockchain_inc(uint64_t new_block_height, const crypto::hash& top_block_id);
-
-    /**
-     * @brief action to take when notified of a block removed from the blockchain
-     *
-     * Currently does nothing
-     *
-     * @param new_block_height the height of the blockchain after the change
-     * @param top_block_id the hash of the new top block
-     *
-     * @return true
-     */
-    bool on_blockchain_dec(uint64_t new_block_height, const crypto::hash& top_block_id);
 
     /**
      * @brief action to take periodically
@@ -490,7 +467,7 @@ namespace cryptonote
      *
      * @return false if any key images to be removed cannot be found, otherwise true
      */
-    bool remove_transaction_keyimages(const transaction_prefix& tx, const crypto::hash &txid);
+    bool remove_transaction_keyimages(const transaction_prefix& tx);
 
     /**
      * @brief check if any of a transaction's spent key images are present in a given set
@@ -560,9 +537,6 @@ namespace cryptonote
 
     size_t m_txpool_max_weight;
     size_t m_txpool_weight;
-    bool m_mine_stem_txes;
-
-    std::unordered_map<crypto::hash, transaction> m_parsed_tx_cache;
 
     //! Next timestamp that a DB check for relayable txes is allowed
     std::atomic<time_t> m_next_check;

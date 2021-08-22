@@ -38,5 +38,5 @@ END_INIT_SIMPLE_FUZZER()
 
 BEGIN_SIMPLE_FUZZER()
   cryptonote::transaction tx = AUTO_VAL_INIT(tx);
-  parse_and_validate_tx_from_blob(std::string((const char*)buf, len), tx);
+  parse_tx_from_blob(std::string((const char*)buf, len), tx);
 END_SIMPLE_FUZZER()

@@ -114,8 +114,8 @@ cryptonote::BlockTemplate Blockchain::create_block_template( const crypto::hash 
     height = m_db->height();
     b.major_version = m_hardfork->get_current_version();
     b.minor_version = m_hardfork->get_ideal_version();
-    b.prev_id = get_tail_id();
-    bt.diff = get_difficulty_for_next_block();
+    b.prev_id = get_top_hash();
+    bt.diff = get_blockchain_diff();
     {
       rx_seedheights(height, &seed_height, &n_seed_height);
       seed_hash = get_block_hash_by_height(seed_height);

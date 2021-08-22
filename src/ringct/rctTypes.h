@@ -205,7 +205,7 @@ namespace rct {
       bool operator==(const Bulletproof &other) const { return V == other.V && A == other.A && S == other.S && T1 == other.T1 && T2 == other.T2 && taux == other.taux && mu == other.mu && L == other.L && R == other.R && a == other.a && b == other.b && t == other.t; }
 
       BEGIN_SERIALIZE_OBJECT()
-        // Commitments aren't saved, they're restored via outPk
+        // Commitments aren't saved, they're restored via outCommitments
         // FIELD(V)
         FIELD(A)
         FIELD(S)
@@ -234,7 +234,7 @@ namespace rct {
     // MG holds the MLSAG signature of a transaction
     // mixRing holds all the public keypairs (P, C) for a transaction
     // ecdhInfo holds an encoded mask / amount to be passed to each receiver
-    // outPk contains public keypairs which are destinations (P, C),
+    // outCommitments contains public keypairs which are destinations (P, C),
     //  P = address, C = commitment to amount
     enum {
       RCTTypeNull = 0,
@@ -266,7 +266,7 @@ namespace rct {
         std::vector<std::vector<ctkey>> mixRing; //the set of all pubkeys / copy
         //pairs that you mix with
         std::vector<ecdhTuple> ecdhInfo;//amount+commitment+fee+
-        std::vector<ctkey> outPk;
+        std::vector<ctkey> outCommitments;
         xmr_amount txnFee; // contains b
 
         template<bool W, template <bool> class Archive>
@@ -280,7 +280,6 @@ namespace rct {
           // FIELD(message) - not serialized, it can be reconstructed
           // FIELD(mixRing) - not serialized, it can be reconstructed
      
-
           ar.tag("ecdhInfo");
           ar.begin_array();
           PREPARE_CUSTOM_VECTOR_SERIALIZATION(outputs, ecdhInfo);
@@ -297,15 +296,15 @@ namespace rct {
           }
           ar.end_array();
 
-          ar.tag("outPk");
+          ar.tag("outCommitments");
           ar.begin_array();
-          ::serialization::detail::prepare_custom_vector_serialization(outputs, outPk, typename Archive<W>::is_saving());
-          if (outPk.size() != outputs)
+          ::serialization::detail::prepare_custom_vector_serialization(outputs, outCommitments, typename Archive<W>::is_saving());
+          if (outCommitments.size() != outputs)
             throw std::runtime_error("bad outpk size");
           for (size_t i = 0; i < outputs; ++i)
           {
             do {                  
-              bool r = ::do_serialize(ar, outPk[i].commitment);         
+              bool r = ::do_serialize(ar, outCommitments[i].commitment);         
               if (!r || !ar.stream().good()) return false;      
             } while(0);
             if (outputs - i > 1)
@@ -320,7 +319,7 @@ namespace rct {
           FIELD(message)
           FIELD(mixRing)
           FIELD(ecdhInfo)
-          FIELD(outPk)
+          FIELD(outCommitments)
           VARINT_FIELD(txnFee)
         END_SERIALIZE()
     };
@@ -329,7 +328,7 @@ namespace rct {
         std::vector<clsag> CLSAGs;
         std::vector<key> pseudoOuts; //C - for simple rct
 
-        // when changing this function, update cryptonote::get_pruned_transaction_weight
+        // when changing this function, update cryptonote::get_transaction_weight
         template<bool W, template <bool> class Archive>
         bool serialize_rctsig_prunable(Archive<W> &ar, uint8_t type, size_t inputs, size_t outputs, size_t mixin)
         {

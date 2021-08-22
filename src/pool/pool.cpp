@@ -73,6 +73,8 @@ extern "C"{
 #include "uthash.h"
 }
 
+#include <iostream>
+
 #define MAX_LINE 8192
 #define CLIENTS_INIT 8192
 #define RPC_BODY_MAX 65536
@@ -2839,15 +2841,14 @@ post_hash:
                 "{\"jsonrpc\":\"2.0\",\"id\":\"0\",\"method\":"
                 "\"submit_block\", \"params\":[\"%s\"]}",
                 block_hex);
-
+        log_info("body%s\n",body);
         rpc_callback_t *cb = rpc_callback_new(rpc_on_block_submitted, 0, 0);
         cb->data = calloc(1, sizeof(block_t));
         block_t* b = (block_t*) cb->data;
         b->height = bt->height;
-        unsigned char block_hash[32] = {0};
-        if (get_block_hash(block, bin_size, block_hash) != 0)
-            log_error("Error getting block hash!");
-        bin_to_hex(block_hash, 32, b->hash, 64);
+        const auto block_hash = get_block_hash(block, bin_size);
+        bin_to_hex(block_hash.data, 32, b->hash, 64);
+        std::cout<<"prev_hash "<<bt->prev_hash<<std::endl;
         strncpy(b->prev_hash, bt->prev_hash, 64);
         b->difficulty = bt->difficulty;
         b->status = BLOCK_LOCKED;
@@ -2899,6 +2900,7 @@ post_hash:
 
 static void miner_on_read(struct bufferevent *bev, void *ctx)
 {
+    try{
     const char *unknown_method = "Removing client. Unknown method called.";
     const char *too_bad = "Removing client. Too many bad shares.";
     const char *too_long = "Removing client. Message too long.";
@@ -3015,6 +3017,9 @@ unlock:
     clients_reading--;
     pthread_cond_signal(&cond_clients);
     pthread_mutex_unlock(&mutex_clients);
+}catch(std::exception & ex){
+    std::cerr<<ex.what()<<std::endl;
+}
 }
 
 

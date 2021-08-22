@@ -258,8 +258,7 @@ namespace cryptonote
         }
       }
    
-      crypto::hash tx_prefix_hash;
-      get_transaction_prefix_hash(tx, tx_prefix_hash);
+      const crypto::hash tx_prefix_hash=get_transaction_prefix_hash(tx);
       rct::ctkeyV outSk;
 
       const auto & message= rct::hash2rct(tx_prefix_hash);
@@ -300,7 +299,7 @@ namespace cryptonote
     block bl = {};
 
     blobdata tx_bl = string_tools::parse_hexstr_to_binbuff(genesis_tx);
-    auto r = parse_and_validate_tx_from_blob(tx_bl, bl.miner_tx);
+      auto r = parse_tx_from_blob(tx_bl, bl.miner_tx);
     if(!r)
       throw_and_log("failed to parse coinbase tx from hard coded blob");
     bl.major_version = CURRENT_BLOCK_MAJOR_VERSION;

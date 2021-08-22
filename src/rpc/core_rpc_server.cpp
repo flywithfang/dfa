@@ -304,11 +304,11 @@ namespace cryptonote
     ++res.height; // turn top block height into blockchain height
     res.top_block_hash = string_tools::pod_to_hex(top_hash);
     res.target_height = m_p2p.get_crypto_protocol().is_synchronized() ? 0 : m_core.get_target_blockchain_height();
-    store_difficulty(m_core.get_blockchain_storage().get_difficulty_for_next_block(), res.difficulty, res.wide_difficulty, res.difficulty_top64);
-    res.target = m_core.get_blockchain_storage().get_difficulty_target();
-    res.tx_count = m_core.get_blockchain_storage().get_total_transactions() - res.height; //without coinbase
+    store_difficulty(m_core.get_blockchain().get_blockchain_diff(), res.difficulty, res.wide_difficulty, res.difficulty_top64);
+    res.target = m_core.get_blockchain().get_difficulty_target();
+    res.tx_count = m_core.get_blockchain().get_total_transactions() - res.height; //without coinbase
     res.tx_pool_size = m_core.get_pool_transactions_count(!restricted);
-    res.alt_blocks_count = restricted ? 0 : m_core.get_blockchain_storage().get_alternative_blocks_count();
+    res.alt_blocks_count = restricted ? 0 : m_core.get_blockchain().get_alternative_blocks_count();
     uint64_t total_conn = restricted ? 0 : m_p2p.get_public_connections_count();
     res.outgoing_connections_count = restricted ? 0 : m_p2p.get_outgoing_connections_count();
     res.incoming_connections_count = restricted ? 0 : (total_conn - res.outgoing_connections_count);
@@ -321,17 +321,17 @@ namespace cryptonote
     res.testnet = net_type == TESTNET;
     res.stagenet = net_type == STAGENET;
     res.nettype = net_type == MAINNET ? "mainnet" : net_type == TESTNET ? "testnet" : net_type == STAGENET ? "stagenet" : "fakechain";
-    store_difficulty(m_core.get_blockchain_storage().get_db().get_block_cumulative_difficulty(res.height - 1),
+    store_difficulty(m_core.get_blockchain().get_db().get_block_cumulative_difficulty(res.height - 1),
         res.cum_diff, res.wide_cumulative_difficulty, res.cumulative_difficulty_top64);
     res.block_size_limit =0 ;
     res.block_size_median = res.block_weight_median = 0;
-    res.adjusted_time = m_core.get_blockchain_storage().get_adjusted_time(res.height);
+    res.adjusted_time = m_core.get_blockchain().get_adjusted_time(res.height);
 
     res.start_time = restricted ? 0 : (uint64_t)m_core.get_start_time();
     res.free_space = restricted ? std::numeric_limits<uint64_t>::max() : m_core.get_free_space();
     res.offline = m_core.offline();
   
-    res.database_size = m_core.get_blockchain_storage().get_db().get_database_size();
+    res.database_size = m_core.get_blockchain().get_db().get_database_size();
     if (restricted)
       res.database_size = round_up(res.database_size, 5ull* 1024 * 1024 * 1024);
     res.update_available = restricted ? false : m_core.is_update_available();
@@ -369,82 +369,6 @@ namespace cryptonote
       if (!r) return false;
     END_SERIALIZE()
   };
-  //------------------------------------------------------------------------------------------------------------------------------
-  bool core_rpc_server::on_get_blocks(const COMMAND_RPC_GET_BLOCKS_FAST::request& req, COMMAND_RPC_GET_BLOCKS_FAST::response& res, const connection_context *ctx)
-  {
-    RPC_TRACKER(get_blocks);
-
-    // quick check for noop
-    if (!req.block_ids.empty())
-    {
-      const auto [height,top_hash]=m_core.get_blockchain_top();
-      if (top_hash == req.block_ids.front())
-      {
-        res.start_height = 0;
-        res.current_height = height;
-        res.status = CORE_RPC_STATUS_OK;
-        return true;
-      }
-    }
-
-    size_t max_blocks = COMMAND_RPC_GET_BLOCKS_FAST_MAX_BLOCK_COUNT;
-
-
-    std::vector<BlockchainDB::BlockData > bs;
-    if(!m_core.find_blockchain_supplement(req.start_height, req.block_ids, bs, res.current_height, res.start_height, req.prune, true, max_blocks, COMMAND_RPC_GET_BLOCKS_FAST_MAX_TX_COUNT))
-    {
-      res.status = "Failed";
-      add_host_fail(ctx);
-      return true;
-    }
-
-
-    size_t size = 0, ntxes = 0;
-    res.blocks.reserve(bs.size());
-    res.output_indices.reserve(bs.size());
-    for(auto& bd: bs)
-    {
-      res.blocks.resize(res.blocks.size()+1);
-      auto & bb = res.blocks.back();
-      bb.pruned = req.prune;
-      bb.block = bd.b_blob;
-      size += bd.b_blob.size();
-      res.output_indices.push_back(COMMAND_RPC_GET_BLOCKS_FAST::block_output_indices());
-      ntxes += bd.txes.size();
-      auto & b_oi = res.output_indices.back().indices;
-      b_oi.reserve(1 + bd.txes.size());
-      
-      bb.txs.reserve(bd.txes.size());
-      for (auto &[t_hash,t_blob]:bd.txes)
-      {
-        bb.txs.push_back({std::move(t_blob), crypto::null_hash});
-        size += bb.txs.back().blob.size();
-      }
-
-      const size_t n_txes_to_lookup = bd.txes.size() + 1;
-     // if (n_txes_to_lookup > 0)
-      {
-        std::vector<std::vector<uint64_t>> indices;
-        bool r = m_core.get_tx_outputs_gindexs(bd.miner_tx_hash, n_txes_to_lookup, indices);
-        if (!r)
-        {
-          res.status = "Failed";
-          return true;
-        }
-        if (indices.size() != n_txes_to_lookup || res.output_indices.back().indices.size() != 0)
-        {
-          res.status = "Failed";
-          return true;
-        }
-        for (auto & e : indices)
-          b_oi.push_back({std::move(e)});
-      }
-    }
-
-    MDEBUG("on_get_blocks: " << bs.size() << " blocks, " << ntxes << " txes, size " << size);
-    res.status = CORE_RPC_STATUS_OK;
-    return true;
-  }
 
 bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_HASHES::request& req, COMMAND_RPC_GET_ALT_BLOCKS_HASHES::response& res, const connection_context *ctx)
     {
@@ -492,7 +416,7 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
       block blk;
       try
       {
-        blk = m_core.get_blockchain_storage().get_db().get_block_from_height(height);
+        blk = m_core.get_blockchain().get_db().get_block_from_height(height);
       }
       catch (...)
       {
@@ -510,22 +434,7 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
     res.status = CORE_RPC_STATUS_OK;
     return true;
   }
-  //------------------------------------------------------------------------------------------------------------------------------
-  bool core_rpc_server::on_get_hashes(const COMMAND_RPC_GET_HASHES_FAST::request& req, COMMAND_RPC_GET_HASHES_FAST::response& res, const connection_context *ctx)
-  {
-    RPC_TRACKER(get_hashes);
-
-    res.start_height = req.start_height;
-    if(!m_core.get_blockchain_storage().find_blockchain_supplement(req.block_ids, res.m_block_ids, NULL, res.start_height, res.current_height, false))
-    {
-      res.status = "Failed";
-      add_host_fail(ctx);
-      return true;
-    }
-
-    res.status = CORE_RPC_STATUS_OK;
-    return true;
-  }
+ 
   //------------------------------------------------------------------------------------------------------------------------------
   bool core_rpc_server::on_get_outs_bin(const COMMAND_RPC_GET_OUTPUTS_BIN::request& req, COMMAND_RPC_GET_OUTPUTS_BIN::response& res, const connection_context *ctx)
   {
@@ -654,71 +563,6 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
     size_t found_in_pool = 0;
     std::unordered_set<crypto::hash> pool_tx_hashes;
     std::unordered_map<crypto::hash, tx_info> per_tx_pool_tx_info;
-    if (!missed_txs.empty())
-    {
-      std::vector<tx_info> pool_tx_info;
-      bool r = m_core.get_pool_transactions_and_spent_keys_info(pool_tx_info,  !request_has_rpc_origin || !restricted);
-      if(r)
-      {
-        // sort to match original request
-        std::vector<std::tuple<crypto::hash, cryptonote::blobdata, crypto::hash, cryptonote::blobdata>> sorted_txs;
-        std::vector<tx_info>::const_iterator i;
-        unsigned txs_processed = 0;
-        for (const crypto::hash &h: vh)
-        {
-          if (std::find(missed_txs.begin(), missed_txs.end(), h) == missed_txs.end())
-          {
-            if (txs.size() == txs_processed)
-            {
-              res.status = "Failed: internal error - txs is empty";
-              return true;
-            }
-            // core returns the ones it finds in the right order
-            if (std::get<0>(txs[txs_processed]) != h)
-            {
-              res.status = "Failed: tx hash mismatch";
-              return true;
-            }
-            sorted_txs.push_back(std::move(txs[txs_processed]));
-            ++txs_processed;
-          }
-          else if ((i = std::find_if(pool_tx_info.begin(), pool_tx_info.end(), [h](const tx_info &txi) { return epee::string_tools::pod_to_hex(h) == txi.id_hash; })) != pool_tx_info.end())
-          {
-            cryptonote::transaction tx;
-            if (!cryptonote::parse_and_validate_tx_from_blob(i->tx_blob, tx))
-            {
-              res.status = "Failed to parse and validate tx from blob";
-              return true;
-            }
-            std::stringstream ss;
-            binary_archive<true> ba(ss);
-            bool r = const_cast<cryptonote::transaction&>(tx).serialize_base(ba);
-            if (!r)
-            {
-              res.status = "Failed to serialize transaction base";
-              return true;
-            }
-            const cryptonote::blobdata pruned = ss.str();
-            const crypto::hash prunable_hash =  get_transaction_prunable_hash(tx);
-            sorted_txs.push_back(std::make_tuple(h, pruned, prunable_hash, std::string(i->tx_blob, pruned.size())));
-            missed_txs.erase(std::find(missed_txs.begin(), missed_txs.end(), h));
-            pool_tx_hashes.insert(h);
-            const std::string hash_string = epee::string_tools::pod_to_hex(h);
-            for (const auto &ti: pool_tx_info)
-            {
-              if (ti.id_hash == hash_string)
-              {
-                per_tx_pool_tx_info.insert(std::make_pair(h, ti));
-                break;
-              }
-            }
-            ++found_in_pool;
-          }
-        }
-        txs = sorted_txs;
-      }
-      MINFO("Found " << found_in_pool << "/" << vh.size() << " transactions in the pool");
-    }
 
     std::vector<std::string>::const_iterator txhi = req.txs_hashes.begin();
     std::vector<crypto::hash>::const_iterator vhi = vh.begin();
@@ -730,21 +574,17 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
       crypto::hash tx_hash = *vhi++;
       e.tx_hash = *txhi++;
       e.prunable_hash = epee::string_tools::pod_to_hex(std::get<2>(tx));
-      if (req.split || req.prune || std::get<3>(tx).empty())
       {
         // use splitted form with pruned and prunable (filled only when prune=false and the daemon has it), leaving as_hex as empty
         e.pruned_as_hex = string_tools::buff_to_hex_nodelimer(std::get<1>(tx));
-        if (!req.prune)
-          e.prunable_as_hex = string_tools::buff_to_hex_nodelimer(std::get<3>(tx));
         if (req.decode_as_json)
         {
           cryptonote::blobdata tx_data;
           cryptonote::transaction t;
-          if (req.prune || std::get<3>(tx).empty())
           {
             // decode pruned tx to JSON
             tx_data = std::get<1>(tx);
-            if (cryptonote::parse_and_validate_tx_base_from_blob(tx_data, t))
+            if (cryptonote::parse_tx_base_from_blob(tx_data, t))
             {
               pruned_transaction pruned_tx{t};
               e.as_json = obj_to_json_str(pruned_tx);
@@ -755,73 +595,18 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
               return true;
             }
           }
-          else
-          {
-            // decode full tx to JSON
-            tx_data = std::get<1>(tx) + std::get<3>(tx);
-            if (cryptonote::parse_and_validate_tx_from_blob(tx_data, t))
-            {
-              e.as_json = obj_to_json_str(t);
-            }
-            else
-            {
-              res.status = "Failed to parse and validate tx from blob";
-              return true;
-            }
-          }
+         
         }
       }
-      else
+   
+  
       {
-        // use non-splitted form, leaving pruned_as_hex and prunable_as_hex as empty
-        cryptonote::blobdata tx_data = std::get<1>(tx) + std::get<3>(tx);
-        e.as_hex = string_tools::buff_to_hex_nodelimer(tx_data);
-        if (req.decode_as_json)
-        {
-          cryptonote::transaction t;
-          if (cryptonote::parse_and_validate_tx_from_blob(tx_data, t))
-          {
-            e.as_json = obj_to_json_str(t);
-          }
-          else
-          {
-            res.status = "Failed to parse and validate tx from blob";
-            return true;
-          }
-        }
-      }
-      e.in_pool = pool_tx_hashes.find(tx_hash) != pool_tx_hashes.end();
-      if (e.in_pool)
-      {
-        e.block_height = e.block_timestamp = std::numeric_limits<uint64_t>::max();
-        auto it = per_tx_pool_tx_info.find(tx_hash);
-        if (it != per_tx_pool_tx_info.end())
-        {
-          e.relayed = it->second.relayed;
-          e.received_timestamp = it->second.receive_time;
-        }
-        else
-        {
-          MERROR("Failed to determine pool info for " << tx_hash);
-          e.relayed = false;
-          e.received_timestamp = 0;
-        }
-      }
-      else
-      {
-        e.block_height = m_core.get_blockchain_storage().get_db().get_tx_block_height(tx_hash);
-        e.block_timestamp = m_core.get_blockchain_storage().get_db().get_block_timestamp(e.block_height);
+        e.block_height = m_core.get_blockchain().get_db().get_tx_block_height(tx_hash);
+        e.block_timestamp = m_core.get_blockchain().get_db().get_block_timestamp(e.block_height);
         e.received_timestamp = 0;
-        e.relayed = false;
       }
-
-      // fill up old style responses too, in case an old wallet asks
-      res.txs_as_hex.push_back(e.as_hex);
-      if (req.decode_as_json)
-        res.txs_as_json.push_back(e.as_json);
 
       // output indices too if not in pool
-      if (pool_tx_hashes.find(tx_hash) == pool_tx_hashes.end())
       {
         bool r = m_core.get_tx_outputs_gindexs(tx_hash, e.output_indices);
         if (!r)
@@ -856,7 +641,7 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
 
     
     using R=COMMAND_RPC_IS_KEY_IMAGE_SPENT;
-    const Blockchain & bc = m_core.get_blockchain_storage();
+    const Blockchain & bc = m_core.get_blockchain();
     for(const auto& ki_hex_str: req.key_images)
     {
       blobdata b;
@@ -899,19 +684,9 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
       
       // Fixing of high orphan issue for most pools
       // Thanks Boolberry!
-      const block b =parse_and_validate_block_from_blob(blockblob);
-
-      // Fix from Boolberry neglects to check block
-      // size, do that with the function below
-      if(!m_core.check_incoming_block_size(blockblob))
-      {
-        error_resp.code = CORE_RPC_ERROR_CODE_WRONG_BLOCKBLOB_SIZE;
-        error_resp.message = "Block bloc size is too big, rejecting block";
-        return false;
-      }
-
+      const block b =parse_block_from_blob(blockblob);
       block_verification_context bvc;
-      if(!m_core.handle_block_found(b, bvc))
+      if(!m_core.get_blockchain().add_new_block(b, bvc))
       {
         error_resp.code = CORE_RPC_ERROR_CODE_BLOCK_NOT_ACCEPTED;
         error_resp.message = "Block not accepted";
@@ -921,24 +696,10 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
       if(bvc.m_added_to_main_chain)
       {
         cryptonote_peer_context exclude_context = {};
-        NOTIFY_NEW_BLOCK::request arg {};
-        arg.current_blockchain_height = m_core.get_current_blockchain_height();
-        std::vector<crypto::hash> missed_txs;
-        std::vector<cryptonote::blobdata> txs;
-        m_core.get_transactions(b.tx_hashes, txs, missed_txs);
-        if(missed_txs.size() &&  m_core.get_block_hash_by_height(cryptonote::get_block_height(b)) != get_block_hash(b))
-        {
-          MWARNING("Block found but, seems that reorganize just happened after that, do not relay this block");
-          return true;
-        }
-        CHECK_AND_ASSERT_MES(txs.size() == b.tx_hashes.size() && !missed_txs.size(), false, "can't find some transactions in found block:" << get_block_hash(b) << " txs.size()=" << txs.size()<< ", b.tx_hashes.size()=" << b.tx_hashes.size() << ", missed_txs.size()" << missed_txs.size());
+        const auto b_height = m_core.get_current_blockchain_height();
+        const blob = cryptonote::block_to_blob(b);
 
-        cryptonote::block_to_blob(b, arg.b.block);
-        //pack transactions
-        for(auto& tx:  txs)
-          arg.b.txs.push_back({tx, crypto::null_hash});
-
-        m_p2p.get_crypto_protocol().relay_block(arg, exclude_context);
+        m_p2p.get_crypto_protocol().relay_block(blob,b_height, exclude_context);
       }
 
       res.status = CORE_RPC_STATUS_OK;
@@ -970,12 +731,9 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
       return true;
     }
 
-    res.sanity_check_failed = false;
-
-   // if (!skip_validation)
     {
-      tx_verification_context tvc{};
-      if(!m_core.handle_incoming_tx({tx_blob, crypto::null_hash}, tvc, relay_method::local, false) || tvc.m_verifivation_failed)
+      tx_verification_context tvc=m_core.handle_incoming_tx({tx_blob, crypto::null_hash},  relay_method::local, false);
+      if( tvc.m_verifivation_failed)
       {
         res.status = "Failed";
         std::string reason = "";
@@ -1026,18 +784,6 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
   }
 
  
-  //------------------------------------------------------------------------------------------------------------------------------
-  bool core_rpc_server::on_save_bc(const COMMAND_RPC_SAVE_BC::request& req, COMMAND_RPC_SAVE_BC::response& res, const connection_context *ctx)
-  {
-    RPC_TRACKER(save_bc);
-    if( !m_core.get_blockchain_storage().store_blockchain() )
-    {
-      res.status = "Error while storing blockchain";
-      return true;
-    }
-    res.status = CORE_RPC_STATUS_OK;
-    return true;
-  }
   //------------------------------------------------------------------------------------------------------------------------------
   bool core_rpc_server::on_get_peer_list(const COMMAND_RPC_GET_PEER_LIST::request& req, COMMAND_RPC_GET_PEER_LIST::response& res, const connection_context *ctx)
   {
@@ -1156,7 +902,7 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
     size_t n_txes = m_core.get_pool_transactions_count(allow_sensitive);
     if (n_txes > 0)
     {
-      m_core.get_pool_transactions_and_spent_keys_info(res.transactions, allow_sensitive);
+      m_core.get_pool_transactions(res.transactions, allow_sensitive);
       for (tx_info& txi : res.transactions)
         txi.tx_blob = epee::string_tools::buff_to_hex_nodelimer(txi.tx_blob);
     }
@@ -1340,14 +1086,14 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
     response.height = height;
     response.depth = m_core.get_current_blockchain_height() - height - 1;
     response.hash = string_tools::pod_to_hex(hash);
-    store_difficulty(m_core.get_blockchain_storage().block_difficulty(height),
+    store_difficulty(m_core.get_blockchain().block_difficulty(height),
         response.difficulty, response.wide_difficulty, response.difficulty_top64);
-    store_difficulty(m_core.get_blockchain_storage().get_db().get_block_cumulative_difficulty(height),
+    store_difficulty(m_core.get_blockchain().get_db().get_block_cumulative_difficulty(height),
         response.cum_diff, response.wide_cumulative_difficulty, response.cumulative_difficulty_top64);
     response.reward = get_outs_money_amount(blk.miner_tx);
-    response.block_size = response.block_weight = m_core.get_blockchain_storage().get_db().get_block_weight(height);
+    response.block_size = response.block_weight = 0;
     response.num_txes = blk.tx_hashes.size();
-    response.pow_hash = fill_pow_hash ? string_tools::pod_to_hex(get_block_pow(&(m_core.get_blockchain_storage()), blk, height)) : "";
+    response.pow_hash = fill_pow_hash ? string_tools::pod_to_hex(get_block_pow(&(m_core.get_blockchain()), blk, height)) : "";
     response.long_term_weight = 0;
     response.miner_tx_hash = string_tools::pod_to_hex(cryptonote::get_transaction_hash(blk.miner_tx));
     return true;
@@ -1629,7 +1375,7 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
     RPC_TRACKER(hard_fork_info);
     
 
-    const Blockchain &blockchain = m_core.get_blockchain_storage();
+    const Blockchain &blockchain = m_core.get_blockchain();
     uint8_t version = req.version > 0 ? req.version : blockchain.get_next_hard_fork_version();
     res.version = blockchain.get_current_hard_fork_version();
     res.enabled = blockchain.get_hard_fork_voting_info(version, res.window, res.votes, res.threshold, res.earliest_height, res.voting);
@@ -1714,22 +1460,7 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
     res.status = CORE_RPC_STATUS_OK;
     return true;
   }
-  //------------------------------------------------------------------------------------------------------------------------------
-  bool core_rpc_server::on_get_coinbase_tx_sum(const COMMAND_RPC_GET_COINBASE_TX_SUM::request& req, COMMAND_RPC_GET_COINBASE_TX_SUM::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
-  {
-    RPC_TRACKER(get_coinbase_tx_sum);
-    const uint64_t bc_height = m_core.get_current_blockchain_height();
-    if (req.height >= bc_height || req.count > bc_height)
-    {
-      res.status = "height or count is too large";
-      return true;
-    }
-    std::pair<boost::multiprecision::uint128_t, boost::multiprecision::uint128_t> amounts = m_core.get_coinbase_tx_sum(req.height, req.count);
-    store_128(amounts.first, res.emission_amount, res.wide_emission_amount, res.emission_amount_top64);
-    store_128(amounts.second, res.fee_amount, res.wide_fee_amount, res.fee_amount_top64);
-    res.status = CORE_RPC_STATUS_OK;
-    return true;
-  }
+ 
   //------------------------------------------------------------------------------------------------------------------------------
   bool core_rpc_server::on_get_base_fee_estimate(const COMMAND_RPC_GET_BASE_FEE_ESTIMATE::request& req, COMMAND_RPC_GET_BASE_FEE_ESTIMATE::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
   {
@@ -1746,7 +1477,7 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
     RPC_TRACKER(get_alternate_chains);
     try
     {
-      std::vector<std::pair<Blockchain::block_extended_info, std::vector<crypto::hash>>> chains = m_core.get_blockchain_storage().get_alternative_chains();
+      std::vector<std::pair<Blockchain::block_extended_info, std::vector<crypto::hash>>> chains = m_core.get_blockchain().get_alternative_chains();
       for (const auto &i: chains)
       {
         difficulty_type wdiff = i.first.cum_diff;
@@ -1761,7 +1492,7 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
           return true;
         }
         cryptonote::block main_chain_parent_block;
-        try { main_chain_parent_block = m_core.get_blockchain_storage().get_db().get_block_from_height(i.first.height - i.second.size()); }
+        try { main_chain_parent_block = m_core.get_blockchain().get_db().get_block_from_height(i.first.height - i.second.size()); }
         catch (const std::exception &e) { res.status = "Error finding alternate chain attachment point"; return true; }
         res.chains.back().main_chain_parent_block = epee::string_tools::pod_to_hex(get_block_hash(main_chain_parent_block));
       }
@@ -2095,7 +1826,7 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
         const crypto::public_key & B=req.B;
         const auto start_height = req.start_height;
         std::vector<transaction_out> v;
-          Blockchain & bc = m_core.get_blockchain_storage();
+          Blockchain & bc = m_core.get_blockchain();
          //B+H(kA,i)G=otk
          bc.for_all_outputs(start_height,[&](auto oid, auto & ot){
           const auto & tx_pub_key= ot.tx_pub_key;
@@ -2136,8 +1867,6 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
   bool core_rpc_server::on_flush_cache(const COMMAND_RPC_FLUSH_CACHE::request& req, COMMAND_RPC_FLUSH_CACHE::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
   {
     RPC_TRACKER(flush_cache);
-    if (req.bad_txs)
-      m_core.flush_bad_txs_cache();
     if (req.bad_blocks)
       m_core.flush_invalid_blocks();
     res.status = CORE_RPC_STATUS_OK;
