@@ -53,9 +53,6 @@ namespace cryptonote
   transaction parse_tx_from_blob(const blobdata_ref& tx_blob);
   transaction parse_tx_from_blob_entry(const tx_blob_entry & tb );
   transaction parse_tx_base_from_blob(const blobdata_ref& tx_blob);
-  bool is_v1_tx(const blobdata_ref& tx_blob);
-  bool is_v1_tx(const blobdata& tx_blob);
-
   
   bool is_out_to_acc(const account_keys& acc, const txout_to_key& out_key,  size_t output_index);
 

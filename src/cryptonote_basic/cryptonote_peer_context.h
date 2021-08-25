@@ -44,7 +44,7 @@ namespace cryptonote
     cryptonote_peer_context(): m_state(state_before_handshake), m_remote_chain_height(0), m_last_response_height(0),
         m_last_request_time(boost::date_time::not_a_date_time), m_callback_request_count(0),
         m_last_known_hash(crypto::null_hash), m_pruning_seed(0), m_rpc_port(0), m_rpc_credits_per_hash(0), m_anchor(false), m_score(0),
-        m_expect_response(0), m_expect_height(0), m_num_requested(0) {}
+        m_expect_response(0), m_sync_start_height(0), m_num_requested(0) {}
 
     enum state
     {
@@ -75,7 +75,7 @@ namespace cryptonote
     bool m_anchor;
     int32_t m_score;
     int m_expect_response;
-    uint64_t m_expect_height;
+    uint64_t m_sync_start_height;
     size_t m_num_requested;
     epee::copyable_atomic m_new_stripe_notification{0};
     epee::copyable_atomic m_idle_peer_notification{0};

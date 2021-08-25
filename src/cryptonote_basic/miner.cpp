@@ -317,22 +317,6 @@ namespace cryptonote
     return true;
   }
   //-----------------------------------------------------------------------------------------------------
-  bool miner::find_nonce_for_given_block( const Blockchain *pbc,block& bl, const difficulty_type& diffic, uint64_t height)
-  {
-    for(; bl.nonce != std::numeric_limits<uint32_t>::max(); bl.nonce++)
-    {
-      crypto::hash pow=cryptonote::get_block_pow(pbc, bl, height);
-      if(cryptonote::check_hash(pow, diffic))
-      {
-        bl.invalidate_hashes();
-        MINFO("pow "<<pow<<"/"<<diffic<<","<<bl.prev_id<<","<<get_block_hash(bl)<<","<<bl.nonce<<",h="<<height);
-        return true;
-      }
-    }
-    bl.invalidate_hashes();
-    return false;
-  }
-  //-----------------------------------------------------------------------------------------------------
   void miner::on_synchronized()
   {
     if(m_do_mining)

@@ -305,7 +305,7 @@ namespace cryptonote
     res.top_block_hash = string_tools::pod_to_hex(top_hash);
     res.target_height = m_p2p.get_crypto_protocol().is_synchronized() ? 0 : m_core.get_target_blockchain_height();
     store_difficulty(m_core.get_blockchain().get_blockchain_diff(), res.difficulty, res.wide_difficulty, res.difficulty_top64);
-    res.target = m_core.get_blockchain().get_difficulty_target();
+    res.target = DIFFICULTY_TARGET;
     res.tx_count = m_core.get_blockchain().get_total_transactions() - res.height; //without coinbase
     res.tx_pool_size = m_core.get_pool_transactions_count(!restricted);
     res.alt_blocks_count = restricted ? 0 : m_core.get_blockchain().get_alternative_blocks_count();
@@ -393,46 +393,6 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
       MDEBUG("on_get_alt_blocks_hashes: " << blks.size() << " blocks " );
       res.status = CORE_RPC_STATUS_OK;
       return true;
-  }
-  //------------------------------------------------------------------------------------------------------------------------------
-  bool core_rpc_server::on_get_blocks_by_height(const COMMAND_RPC_GET_BLOCKS_BY_HEIGHT::request& req, COMMAND_RPC_GET_BLOCKS_BY_HEIGHT::response& res, const connection_context *ctx)
-  {
-    RPC_TRACKER(get_blocks_by_height);
-  
-
-    const bool restricted = m_restricted && ctx;
-    if (restricted && req.heights.size() > RESTRICTED_BLOCK_COUNT)
-    {
-      res.status = "Too many blocks requested in restricted mode";
-      return true;
-    }
-
-    res.status = "Failed";
-    res.blocks.clear();
-    res.blocks.reserve(req.heights.size());
-    
-    for (uint64_t height : req.heights)
-    {
-      block blk;
-      try
-      {
-        blk = m_core.get_blockchain().get_db().get_block_from_height(height);
-      }
-      catch (...)
-      {
-        res.status = "Error retrieving block at height " + std::to_string(height);
-        return true;
-      }
-      std::vector<transaction> txs;
-      std::vector<crypto::hash> missed_txs;
-      m_core.get_transactions(blk.tx_hashes, txs, missed_txs);
-      res.blocks.resize(res.blocks.size() + 1);
-      res.blocks.back().block = block_to_blob(blk);
-      for (auto& tx : txs)
-        res.blocks.back().txs.push_back({tx_to_blob(tx), crypto::null_hash});
-    }
-    res.status = CORE_RPC_STATUS_OK;
-    return true;
   }
  
   //------------------------------------------------------------------------------------------------------------------------------
@@ -1093,7 +1053,7 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
     response.reward = get_outs_money_amount(blk.miner_tx);
     response.block_size = response.block_weight = 0;
     response.num_txes = blk.tx_hashes.size();
-    response.pow_hash = fill_pow_hash ? string_tools::pod_to_hex(get_block_pow(&(m_core.get_blockchain()), blk, height)) : "";
+    response.pow_hash = fill_pow_hash ? string_tools::pod_to_hex(get_block_pow(m_core.get_blockchain(), blk, height)) : "";
     response.long_term_weight = 0;
     response.miner_tx_hash = string_tools::pod_to_hex(cryptonote::get_transaction_hash(blk.miner_tx));
     return true;
@@ -1289,9 +1249,6 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
   bool core_rpc_server::on_get_block(const COMMAND_RPC_GET_BLOCK::request& req, COMMAND_RPC_GET_BLOCK::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
   {
     RPC_TRACKER(get_block);
-   
-
-
     crypto::hash block_hash;
     if (!req.hash.empty())
     {
@@ -1322,12 +1279,7 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
       error_resp.message = "Internal error: can't get block by hash. Hash = " + req.hash + '.';
       return false;
     }
-    if (blk.miner_tx.vin.size() != 1 || blk.miner_tx.vin.front().type() != typeid(txin_gen))
-    {
-      error_resp.code = CORE_RPC_ERROR_CODE_INTERNAL_ERROR;
-      error_resp.message = "Internal error: coinbase transaction in the block has the wrong type";
-      return false;
-    }
+
     uint64_t block_height = boost::get<txin_gen>(blk.miner_tx.vin.front()).height;
     const bool restricted = m_restricted && ctx;
     bool response_filled = fill_block_header_response(blk, orphan, block_height, block_hash, res.block_header, req.fill_pow_hash && !restricted);
@@ -1706,22 +1658,6 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
     res.status = CORE_RPC_STATUS_OK;
     return true;
   }
-  //------------------------------------------------------------------------------------------------------------------------------
-  bool core_rpc_server::on_get_txpool_backlog(const COMMAND_RPC_GET_TRANSACTION_POOL_BACKLOG::request& req, COMMAND_RPC_GET_TRANSACTION_POOL_BACKLOG::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
-  {
-    RPC_TRACKER(get_txpool_backlog);
-  
-
-    if (!m_core.get_txpool_backlog(res.backlog))
-    {
-      error_resp.code = CORE_RPC_ERROR_CODE_INTERNAL_ERROR;
-      error_resp.message = "Failed to get txpool backlog";
-      return false;
-    }
-
-    res.status = CORE_RPC_STATUS_OK;
-    return true;
-  }
    //------------------------------------------------------------------------------------------------------------------------------
   bool core_rpc_server::on_get_output_distribution_bin(const COMMAND_RPC_GET_OUTPUT_DISTRIBUTION::request& req, COMMAND_RPC_GET_OUTPUT_DISTRIBUTION::response& res, const connection_context *ctx)
   {
@@ -1863,15 +1799,7 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
     res.status = CORE_RPC_STATUS_OK;
     return true;
   }
-  //------------------------------------------------------------------------------------------------------------------------------
-  bool core_rpc_server::on_flush_cache(const COMMAND_RPC_FLUSH_CACHE::request& req, COMMAND_RPC_FLUSH_CACHE::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
-  {
-    RPC_TRACKER(flush_cache);
-    if (req.bad_blocks)
-      m_core.flush_invalid_blocks();
-    res.status = CORE_RPC_STATUS_OK;
-    return true;
-  }
+  
  
  
   //------------------------------------------------------------------------------------------------------------------------------

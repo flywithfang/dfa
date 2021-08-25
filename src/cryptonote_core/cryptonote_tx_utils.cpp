@@ -44,6 +44,7 @@ using namespace epee;
 #include "crypto/hash.h"
 #include "ringct/rctSigs.h"
 #include "crypto/rx-hash.h"
+#include "cryptonote_core/alt_chain.hpp"
 
 using namespace crypto;
 
@@ -281,7 +282,7 @@ namespace cryptonote
   {
     for(; bl.nonce != std::numeric_limits<uint32_t>::max(); bl.nonce++)
     {
-      crypto::hash h=cryptonote::get_block_pow(pbc, bl, height);
+      crypto::hash h=cryptonote::get_block_pow(*pbc, bl, height);
       if(cryptonote::check_hash(h, diffic))
       {
         bl.invalidate_hashes();
@@ -311,38 +312,36 @@ namespace cryptonote
     return bl;
   }
   //---------------------------------------------------------------
-  void get_altblock_longhash(const block& b, crypto::hash& pow, const uint64_t main_height, const uint64_t height, const uint64_t seed_height, const crypto::hash& seed_hash)
+   crypto::hash  get_altblock_pow(const AltChain &bc, const block& b, const uint64_t chain_height)
   {
     blobdata bd = get_block_hashing_blob(b);
-    pow = rx_slow_hash(main_height, seed_height, seed_hash.data, bd.data(), bd.size(),  false, 1);
+    
+    crypto::hash K{};
+    if (chain_height>0)
+    {
+      const auto K_heigth = rx_seedheight(chain_height);
+      K = bc.get_block_hash_by_height(K_heigth);
+    } 
+    auto pow = rx_slow_hash(K, bd.data(), bd.size());
+    return pow;
   }
 
-  crypto::hash get_block_pow(const Blockchain *pbc, const block& b, const uint64_t height)
+
+  crypto::hash get_block_pow(const Blockchain &bc, const block& b, const uint64_t chain_height)
   {
   
     blobdata bd = get_block_hashing_blob(b);
     
-    uint64_t seed_height, main_height;
-    crypto::hash seed_hash{};
-    if (pbc != NULL)
+    crypto::hash K{};
+    if (chain_height>0)
     {
-      seed_height = rx_seedheight(height);
-      seed_hash = pbc->get_pending_block_id_by_height(seed_height);
-      main_height = pbc->get_current_blockchain_height();
-    } else
-    {
-      memset(&seed_hash, 0, sizeof(hash));  // only happens when generating genesis block
-      seed_height = 0;
-      main_height = 0;
-    }
-    auto pow = rx_slow_hash(main_height, seed_height, seed_hash.data, bd.data(), bd.size(), false, false);
+      const auto K_heigth = rx_seedheight(chain_height);
+      K = bc.get_block_hash_by_height(K_heigth);
+    } 
+    auto pow = rx_slow_hash(K, bd.data(), bd.size());
     return pow;
   }
 
-  void get_block_longhash_reorg(const uint64_t split_height)
-  {
-    rx_reorg(split_height);
-  }
 
  bool  verify_keys(const crypto::secret_key &secret_key, const crypto::public_key &public_key) {
       crypto::public_key calculated_pub;

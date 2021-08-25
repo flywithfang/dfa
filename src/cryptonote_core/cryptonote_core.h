@@ -315,13 +315,6 @@ namespace cryptonote
      size_t get_alternative_blocks_count() const;
 
      /**
-      * @copydoc Blockchain::set_checkpoints
-      *
-      * @note see Blockchain::set_checkpoints()
-      */
-     void set_checkpoints(checkpoints&& chk_pts);
-
-     /**
       * @brief set the file path to read from when loading checkpoints
       *
       * @param path the path to set ours as
@@ -367,13 +360,7 @@ namespace cryptonote
      bool get_pool_transactions(std::vector<transaction>& txs, bool include_sensitive_txes = false) const;
 
      std::vector<std::tuple<crypto::hash, cryptonote::blobdata, relay_method>> get_relayable_transactions();
-     /**
-      * @copydoc tx_memory_pool::get_txpool_backlog
-      * @param include_sensitive_txes include private transactions
-      *
-      * @note see tx_memory_pool::get_txpool_backlog
-      */
-     bool get_txpool_backlog(std::vector<tx_backlog_entry>& backlog, bool include_sensitive_txes = false) const;
+   
      
      /**
       * @copydoc tx_memory_pool::get_transactions
@@ -391,12 +378,7 @@ namespace cryptonote
       */
      bool get_pool_transaction_stats(struct txpool_stats& stats, bool include_sensitive_txes = false) const;
 
-     /**
-      * @copydoc tx_memory_pool::get_transaction
-      *
-      * @note see tx_memory_pool::get_transaction
-      */
-     bool get_pool_transaction(const crypto::hash& id, cryptonote::blobdata& tx, relay_category tx_category) const;
+
 
      /**
       * @copydoc tx_memory_pool::get_pool_transactions
@@ -482,14 +464,7 @@ namespace cryptonote
       */
      const Blockchain& get_blockchain()const{return m_blockchain;}
 
-     /**
-      * @copydoc tx_memory_pool::print_pool
-      *
-      * @note see tx_memory_pool::print_pool
-      */
-     std::string print_pool(bool short_format) const;
-
-    
+     const tx_memory_pool& get_tx_pool()const{return m_mempool;}
 
 
      /**
@@ -586,15 +561,6 @@ namespace cryptonote
       */
      bool are_key_images_spent(const std::vector<crypto::key_image>& key_im, std::vector<bool> &spent) const;
 
-     /**
-      * @brief check if multiple key images are spent in the transaction pool
-      *
-      * @param key_im list of key images to check
-      * @param spent return-by-reference result for each image checked
-      *
-      * @return true
-      */
-     bool are_key_images_spent_in_pool(const std::vector<crypto::key_image>& key_im, std::vector<bool> &spent) const;
 
      /**
       * @brief get the number of blocks to sync in one go
@@ -672,26 +638,6 @@ namespace cryptonote
       */
      bool check_blockchain_pruning();
 
-  
-     /**
-      * @brief checks whether block weights are known for the given range
-      */
-     bool has_block_weights(uint64_t height, uint64_t nblocks) const;
-
-    
-     /**
-      * @brief flushes the invalid block cache
-      */
-     void flush_invalid_blocks();
-
-     /**
-      * @brief returns the set of transactions in the txpool which are not in the argument
-      *
-      * @param hashes hashes of transactions to exclude from the result
-      *
-      * @return true iff success, false otherwise
-      */
-     bool get_txpool_complement(const std::vector<crypto::hash> &hashes, std::vector<cryptonote::blobdata> &txes);
 
    private:
 
@@ -714,40 +660,6 @@ namespace cryptonote
      bool parse_tx_from_blob(transaction& tx, crypto::hash& tx_hash, const blobdata& blob) const;
 
      /**
-      * @brief check a transaction's syntax
-      *
-      * For now this does nothing, but it may check something about the tx
-      * in the future.
-      *
-      * @param tx the transaction to check
-      *
-      * @return true
-      */
-     bool check_tx_syntax(const transaction& tx) const;
-
-     /**
-      * @brief validates some simple properties of a transaction
-      *
-      * Currently checks: tx has inputs,
-      *                   tx inputs all of supported type(s),
-      *                   tx outputs valid (type, key, amount),
-      *                   input and output total amounts don't overflow,
-      *                   output amount <= input amount,
-      *                   tx not too large,
-      *                   each input has a different key image.
-      *
-      * @param tx the transaction to check
-      * @param keeped_by_block if the transaction has been in a block
-      *
-      * @return true if all the checks pass, otherwise false
-      */
-     bool check_tx_semantic(const transaction& tx, bool keeped_by_block) const;
-
-     bool handle_incoming_tx_pre(const tx_blob_entry& tx_blob, tx_verification_context& tvc, cryptonote::transaction &tx, crypto::hash &tx_hash);
-     bool handle_incoming_tx_post(const tx_blob_entry& tx_blob, tx_verification_context& tvc, cryptonote::transaction &tx, crypto::hash &tx_hash);
-
-
-     /**
       * @brief act on a set of command line options given
       *
       * @param vm the command line options
@@ -755,36 +667,6 @@ namespace cryptonote
       * @return true
       */
      bool handle_command_line(const boost::program_options::variables_map& vm);
-
-     /**
-      * @brief verify that each input key image in a transaction is unique
-      *
-      * @param tx the transaction to check
-      *
-      * @return false if any key image is repeated, otherwise true
-      */
-     bool check_tx_inputs_keyimages_diff(const transaction& tx) const;
-
-     /**
-      * @brief verify that each ring uses distinct members
-      *
-      * @param tx the transaction to check
-      *
-      * @return false if any ring uses duplicate members, true otherwise
-      */
-     bool check_tx_inputs_ring_members_diff(const transaction& tx) const;
-
-     /**
-      * @brief verify that each input key image in a transaction is in
-      * the valid domain
-      *
-      * @param tx the transaction to check
-      *
-      * @return false if any key image is not in the valid domain, otherwise true
-      */
-     bool check_tx_inputs_keyimages_domain(const transaction& tx) const;
-
-    
 
      /**
       * @brief checks DNS versions

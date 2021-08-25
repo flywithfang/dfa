@@ -171,7 +171,7 @@
             MINFO(peer_cxt << " kicking idle peer, last update " << (dt.total_microseconds() / 1.e6) << " seconds ago, expecting " << (int)peer_cxt.m_expect_response);
             peer_cxt.m_last_request_time = boost::date_time::not_a_date_time;
             peer_cxt.m_expect_response = 0;
-            peer_cxt.m_expect_height = 0;
+            peer_cxt.m_sync_start_height = 0;
             peer_cxt.m_state = cryptonote_peer_context::state_standby; // we'll go back to adding, then (if we can't), download
           }
           else
@@ -193,11 +193,13 @@
 
     if(peer_cxt.m_state == cryptonote_peer_context::state_synchronizing && peer_cxt.m_last_request_time == boost::posix_time::not_a_date_time)
     {
-      NOTIFY_REQUEST_CHAIN::request r = {m_core.get_blockchain().get_short_chain_history()};
+      
       peer_cxt.m_needed_blocks.clear();
-      peer_cxt.m_expect_height = m_core.get_current_blockchain_height();
+      peer_cxt.m_sync_start_height = m_core.get_current_blockchain_height();
       peer_cxt.m_last_request_time = boost::posix_time::microsec_clock::universal_time();
       peer_cxt.m_expect_response = NOTIFY_RESPONSE_CHAIN_ENTRY::ID;
+      
+      NOTIFY_REQUEST_CHAIN::request r = {m_core.get_blockchain().get_short_chain_history()};
       MDEBUG(peer_cxt<<"-->>NOTIFY_REQUEST_CHAIN: m_block_ids.size()=" << r.block_ids.size() );
       post_notify<NOTIFY_REQUEST_CHAIN>(r, peer_cxt);
       MDEBUG(peer_cxt<<"requesting chain");
@@ -205,7 +207,7 @@
     else if(peer_cxt.m_state == cryptonote_peer_context::state_standby)
     {
       peer_cxt.m_state = cryptonote_peer_context::state_synchronizing;
-      try_add_next_blocks(peer_cxt);
+      try_add_next_span(peer_cxt);
     }
 
     return true;
@@ -221,18 +223,7 @@
     if(peer_cxt.m_state == cryptonote_peer_context::state_synchronizing)
       return true;
 
-    // from v6, if the peer advertises a top block version, reject if it's not what it should be (will only work if no voting)
-    if (peer_sync_info.current_height > 0)
-    {
-      const uint8_t version = m_core.get_ideal_hard_fork_version(peer_sync_info.current_height - 1);
-      if (version != peer_sync_info.top_version)
-      {
-        if (version < peer_sync_info.top_version && version == m_core.get_ideal_hard_fork_version())
-          MDEBUG(peer_cxt << " peer claims higher version than we think (" <<
-              (unsigned)peer_sync_info.top_version << " for " << (peer_sync_info.current_height - 1) << " instead of " << (unsigned)version <<") - we may be forked from the network and a software upgrade may be needed, or that peer is broken or malicious");
-        return false;
-      }
-    }
+
 
     // reject weird pruning schemes
     if (peer_sync_info.pruning_seed)
@@ -285,7 +276,6 @@
         m_sync_spans_downloaded = 0;
         m_sync_old_spans_downloaded = 0;
         m_sync_bad_spans_downloaded = 0;
-        m_sync_download_chain_size = 0;
         m_sync_download_objects_size = 0;
       }
       m_core.set_target_blockchain_height(peer_sync_info.current_height);

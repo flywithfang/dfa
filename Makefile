@@ -67,10 +67,6 @@ debug-test-asan:
 	mkdir -p $(builddir)/debug
 	cd $(builddir)/debug && cmake -D BUILD_TESTS=ON -D SANITIZE=ON -D CMAKE_BUILD_TYPE=Debug $(topdir) &&  $(MAKE) && $(MAKE) ARGS="-E libwallet_api_tests" test
 
-debug-test-trezor:
-	mkdir -p $(builddir)/debug
-	cd $(builddir)/debug && cmake -D BUILD_TESTS=ON -D TREZOR_DEBUG=ON -D CMAKE_BUILD_TYPE=Debug $(topdir) &&  $(MAKE) && $(MAKE) ARGS="-E libwallet_api_tests" test
-
 debug-all:
 	mkdir -p $(builddir)/debug
 	cd $(builddir)/debug && cmake -D BUILD_TESTS=ON -D BUILD_SHARED_LIBS=OFF -D CMAKE_BUILD_TYPE=Debug $(topdir) && $(MAKE)
@@ -82,9 +78,8 @@ debug-static-all:
 debug-static-win64:
 	mkdir -p $(builddir)/debug
 	cd $(builddir)/debug && cmake -G "MSYS Makefiles" -D STATIC=ON -D ARCH="x86-64" -D BUILD_64=ON -D CMAKE_BUILD_TYPE=Debug -D BUILD_TAG="win-x64" -D CMAKE_TOOLCHAIN_FILE=$(topdir)/cmake/64-bit-toolchain.cmake -D MSYS2_FOLDER=$(shell cd ${MINGW_PREFIX}/.. && pwd -W) $(topdir) && $(MAKE)
- 
 
- 
+
 cmake-release:
 	mkdir -p $(builddir)/release
 	cd $(builddir)/release && cmake -D CMAKE_BUILD_TYPE=Release $(topdir)
@@ -112,6 +107,12 @@ dfad:
 		mkdir -p $(builddir)/release
 		cd $(builddir)/release && cmake -D BUILD_TESTS=OFF -D CMAKE_BUILD_TYPE=Release  $(topdir)
 	  cd $(builddir)/release/src/daemon && $(MAKE)
+
+unit-test:
+	mkdir -p $(builddir)/release
+	cd $(builddir)/release && cmake -D BUILD_TESTS=ON -D CMAKE_BUILD_TYPE=Release $(topdir)
+	cd $(builddir)/release/tests/unit_tests && $(MAKE)
+
 #RelWithDebInfo
 release-static:
 	mkdir -p $(builddir)/release

@@ -1736,16 +1736,6 @@ uint32_t BlockchainLMDB::get_blockchain_pruning_seed() const
   return pruning_seed;
 }
 
-static bool is_v1_tx(MDB_cursor *c_txs_pruned, MDB_val *tx_id)
-{
-  MDB_val v;
-  int ret = mdb_cursor_get(c_txs_pruned, tx_id, &v, MDB_SET);
-  if (ret)
-    throw0(DB_ERROR(lmdb_error("Failed to find transaction pruned data: ", ret).c_str()));
-  if (v.mv_size == 0)
-    throw0(DB_ERROR("Invalid transaction pruned data"));
-  return cryptonote::is_v1_tx(cryptonote::blobdata_ref{(const char*)v.mv_data, v.mv_size});
-}
 
 enum { prune_mode_prune, prune_mode_update, prune_mode_check };
 
@@ -1853,7 +1843,7 @@ bool BlockchainLMDB::prune_worker(int mode, uint32_t pruning_seed)
       if (block_height + CRYPTONOTE_PRUNING_TIP_BLOCKS < blockchain_height)
       {
         ++n_total_records;
-        if (!tools::has_unpruned_block(block_height, blockchain_height, pruning_seed) && !is_v1_tx(c_txs_pruned, &k))
+        if (!tools::has_unpruned_block(block_height, blockchain_height, pruning_seed) )
         {
           ++n_prunable_records;
           result = mdb_cursor_get(c_txs_prunable, &k, &v, MDB_SET);
@@ -1939,7 +1929,7 @@ bool BlockchainLMDB::prune_worker(int mode, uint32_t pruning_seed)
         }
       }
       MDB_val_set(kp, ti.data.tx_id);
-      if (!tools::has_unpruned_block(block_height, blockchain_height, pruning_seed) && !is_v1_tx(c_txs_pruned, &kp))
+      if (!tools::has_unpruned_block(block_height, blockchain_height, pruning_seed) )
       {
         result = mdb_cursor_get(c_txs_prunable, &kp, &v, MDB_SET);
         if (result && result != MDB_NOTFOUND)
@@ -2536,7 +2526,7 @@ uint64_t BlockchainLMDB::get_block_already_generated_coins(const uint64_t& heigh
   return ret;
 }
 
-crypto::hash BlockchainLMDB::get_block_hash_from_height(const uint64_t& height) const
+crypto::hash BlockchainLMDB::get_block_hash_from_height(const uint64_t& block_height) const
 {
   MVERBOSE("BlockchainLMDB::" << __func__);
   check_open();
@@ -2544,12 +2534,12 @@ crypto::hash BlockchainLMDB::get_block_hash_from_height(const uint64_t& height) 
   TXN_PREFIX_RDONLY();
   RCURSOR(block_info);
 
-  //MDB_val_set(result, height);
-  MDB_val result{sizeof(height), (void *)&height};
+  //MDB_val_set(result, block_height);
+  MDB_val result{sizeof(block_height), (void *)&block_height};
   auto get_result = mdb_cursor_get(m_cur_block_info, (MDB_val *)&zerokval, &result, MDB_GET_BOTH);
   if (get_result == MDB_NOTFOUND)
   {
-    throw0(BLOCK_DNE(std::string("Attempt to get hash from height ").append(boost::lexical_cast<std::string>(height)).append(" failed -- hash not in db").c_str()));
+    throw0(BLOCK_DNE(std::string("Attempt to get hash from block_height ").append(boost::lexical_cast<std::string>(block_height)).append(" failed -- hash not in db").c_str()));
   }
   else if (get_result)
     throw0(DB_ERROR(lmdb_error("Error attempting to retrieve a block hash from the db: ", get_result).c_str()));
@@ -3061,20 +3051,21 @@ output_data_t BlockchainLMDB::get_output_key( const uint64_t& output_id) const
   return ot;
 }
 
-void BlockchainLMDB::get_output_key(const std::vector<uint64_t> &offsets, std::vector<output_data_t> &outputs, bool allow_partial) const
+ std::vector<output_data_t> BlockchainLMDB::get_output_keys(const std::vector<uint64_t> &oids) const
 {
-
   MVERBOSE("BlockchainLMDB::" << __func__);
+
+   std::vector<output_data_t> outputs;
+
   TIME_MEASURE_START(db3);
   check_open();
-  outputs.clear();
-  outputs.reserve(offsets.size());
+  outputs.reserve(oids.size());
 
   TXN_PREFIX_RDONLY();
 
   RCURSOR(tx_outputs);
 
-  for (auto o_index : offsets)
+  for (auto o_index : oids)
   {
     MDB_val_set(k,o_index);
     MDB_val v;
@@ -3082,27 +3073,21 @@ void BlockchainLMDB::get_output_key(const std::vector<uint64_t> &offsets, std::v
     auto get_result = mdb_cursor_get(m_cur_tx_outputs, &k, &v, MDB_SET);
     if (get_result == MDB_NOTFOUND)
     {
-      if (allow_partial)
-      {
-        MDEBUG("Partial result: " << outputs.size() << "/" << offsets.size());
-        break;
-      }
       throw1(OUTPUT_DNE((std::string("Attempting to get output pubkey by global index ")+ boost::lexical_cast<std::string>(o_index) + ", count " + boost::lexical_cast<std::string>(num_outputs()) + "), but key does not exist (current height " + boost::lexical_cast<std::string>(height()) + ")").c_str()));
     }
     else if (get_result)
       throw0(DB_ERROR(lmdb_error("Error attempting to retrieve an output pubkey from the db", get_result).c_str()));
 
-    {
       const auto *ot = (const output_data_t *)v.mv_data;
       outputs.push_back(*ot);
-    }
-   
   }
 
   TXN_POSTFIX_RDONLY();
 
   TIME_MEASURE_FINISH(db3);
   MVERBOSE("db3: " << db3);
+
+  return outputs;
 }
 
 tx_out_index BlockchainLMDB::get_output_tx_and_index_from_global(const uint64_t& output_id) const

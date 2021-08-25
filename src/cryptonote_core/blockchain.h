@@ -71,6 +71,7 @@ namespace cryptonote
   struct test_options;
 
 
+  
   /** 
    * @brief Callback routine that returns checkpoints data for specific network type
    * 
@@ -145,14 +146,7 @@ namespace cryptonote
      */
     bool deinit();
 
-    /**
-     * @brief assign a set of blockchain checkpoint hashes
-     *
-     * @param chk_pts the set of checkpoints to assign
-     */
-    void set_checkpoints(checkpoints&& chk_pts) { m_checkpoints = chk_pts; }
-
-
+   
     /**
      * @brief get blocks from blocks based on start height and count
      *
@@ -188,18 +182,6 @@ namespace cryptonote
      * @return the hash of the block at the requested height, or a zeroed hash if there is no such block
      */
     crypto::hash get_block_hash_by_height(uint64_t height) const;
-
-    /**
-     * @brief gets a block's hash given a height
-     *
-     * Used only by prepare_handle_incoming_blocks. Will look in the list of incoming blocks
-     * if the height is contained there.
-     *
-     * @param height the height of the block
-     *
-     * @return the hash of the block at the requested height, or a zeroed hash if there is no such block
-     */
-    crypto::hash get_pending_block_id_by_height(uint64_t height) const;
 
     /**
      * @brief gets the block with a given hash
@@ -270,12 +252,6 @@ namespace cryptonote
     
     std::tuple<crypto::hash,uint64_t> get_top_block_hash()const;
 
-    /**
-     * @brief returns the difficulty target the next block to be added must meet
-     *
-     * @return the target
-     */
-    difficulty_type get_blockchain_diff();
 
     /**
      * @brief check currently stored difficulties against difficulty checkpoints
@@ -461,35 +437,6 @@ namespace cryptonote
     bool store_blockchain();
 
 
-   
-    /**
-     * @brief validate a transaction's fee
-     *
-     * This function validates the fee is enough for the transaction.
-     * This is based on the weight of the transaction, and, after a
-     * height threshold, on the average weight of transaction in a past window
-     *
-     * @param tx_weight the transaction weight
-     * @param fee the fee
-     *
-     * @return true if the fee is enough, false otherwise
-     */
-    bool check_fee(size_t tx_weight, uint64_t fee) const;
-
-    /**
-     * @brief check that a transaction's outputs conform to current standards
-     *
-     * This function checks, for example at the time of this writing, that
-     * each output is of the form a * 10^b (phrased differently, that if
-     * written out would have only one non-zero digit in base 10).
-     *
-     * @param tx the transaction to check the outputs of
-     * @param tvc returned info about tx verification
-     *
-     * @return false if any outputs do not conform, otherwise true
-     */
-    bool check_tx_outputs(const transaction& tx, tx_verification_context &tvc) const;
-
 
     /**
      * @brief gets the difficulty of the block with a given height
@@ -514,27 +461,12 @@ namespace cryptonote
      *
      * @return false if an unexpected exception occurs, else true
      */
-    bool get_transactions_blobs(const std::vector<crypto::hash>& txs_ids, std::vector<cryptonote::blobdata>& txs, std::vector<crypto::hash>& missed_txs, bool pruned = false) const;
-    bool get_transactions_blobs(const std::vector<crypto::hash>& txs_ids, std::vector<tx_blob_entry>& txs, std::vector<crypto::hash>& missed_txs, bool pruned = false) const;
-    template<class t_ids_container, class t_tx_container, class t_missed_container>
-    bool get_split_transactions_blobs(const t_ids_container& txs_ids, t_tx_container& txs, t_missed_container& missed_txs) const;
-  
+    std::vector<tx_blob_pruned_entry> get_pruned_transactions_blobs(const std::vector<crypto::hash>& txs_ids) const;
+     std::vector<tx_blob_entry> get_transactions_blobs(const std::vector<crypto::hash>& txs_ids) const;
 
     //debug functions
 
-    /**
-     * @brief check the blockchain against a set of checkpoints
-     *
-     * If a block fails a checkpoint and enforce is enabled, the blockchain
-     * will be rolled back to two blocks prior to that block.  If enforce
-     * is disabled, as is currently the default case with DNS-based checkpoints,
-     * an error will be printed to the user but no other action will be taken.
-     *
-     * @param points the checkpoints to check against
-     * @param enforce whether or not to take action on failure
-     */
-    void check_against_checkpoints(const checkpoints& points, bool enforce);
-
+  
     /**
      * @brief configure whether or not to enforce DNS-based checkpoints
      *
@@ -646,13 +578,6 @@ namespace cryptonote
      */
     bool get_hard_fork_voting_info(uint8_t version, uint32_t &window, uint32_t &votes, uint32_t &threshold, uint64_t &earliest_height, uint8_t &voting) const;
 
-    /**
-     * @brief get difficulty target based on chain and hardfork version
-     *
-     * @return difficulty target
-     */
-    uint64_t get_difficulty_target() const;
-
 
 
     /**
@@ -735,7 +660,6 @@ namespace cryptonote
     bool txpool_tx_matches_category(const crypto::hash& tx_hash, relay_category category);
 
    
-    uint64_t prevalidate_block_hashes(uint64_t height, const std::vector<crypto::hash> &hashes, const std::vector<uint64_t> &weights);
     uint32_t get_blockchain_pruning_seed() const { return m_db->get_blockchain_pruning_seed(); }
     bool prune_blockchain(uint32_t pruning_seed = 0);
     bool update_blockchain_pruning();
@@ -750,21 +674,12 @@ namespace cryptonote
      */
     std::vector<time_t> get_last_block_timestamps(unsigned int blocks) const;
 
+    uint64_t get_block_timestamp(const uint64_t& height) const;
+    uint64_t get_block_already_generated_coins(uint64_t height) const;
+   
+
+    difficulty_type get_block_cumulative_difficulty(uint64_t height) const;
   
-
-    /**
-     * @brief checks whether we have known weights for the given block heights
-     *
-     * @param height the start height to check for
-     * @param nblocks how many blocks to check from that height
-     */
-    bool has_block_weights(uint64_t height, uint64_t nblocks) const;
-
-    /**
-     * @brief flush the invalid blocks set
-     */
-    void flush_invalid_blocks();
-
     /**
      * @brief get the "adjusted time"
      *
@@ -807,56 +722,8 @@ namespace cryptonote
        // TODO: evaluate whether or not each of these typedefs are left over from blockchain_storage
     typedef std::unordered_set<crypto::key_image> key_images_container;
 
-    typedef std::vector<block_extended_info> blocks_container;
-
     typedef std::unordered_map<crypto::hash, block_extended_info> blocks_ext_by_hash;
 
-    /**
-     * @brief collects the keys for all outputs being "spent" as an input
-     *
-     * This function makes sure that each "input" in an input (mixins) exists
-     * and collects the public key for each from the transaction it was included in
-     * via the visitor passed to it.
-     *
-     * If pmax_related_block_height is not NULL, its value is set to the height
-     * of the most recent block which contains an output used in the input set
-     *
-     * @tparam visitor_t a class encapsulating tx is unlocked and collect tx key
-     * @param tx_in_to_key a transaction input instance
-     * @param vis an instance of the visitor to use
-     * @param tx_prefix_hash the hash of the associated transaction_prefix
-     * @param pmax_related_block_height return-by-pointer the height of the most recent block in the input set
-     * @param tx_version version of the tx, if > 1 we also get commitments
-     *
-     * @return false if any keys are not found or any inputs are not unlocked, otherwise true
-     */
-    template<class visitor_t>
-    inline bool scan_outputkeys_for_indexes(size_t tx_version, const txin_to_key& tx_in_to_key, visitor_t &vis, const crypto::hash &tx_prefix_hash) const;
-
-    /**
-     * @brief collect output public keys of a transaction input set
-     *
-     * This function locates all outputs associated with a given input set (mixins)
-     * and validates that they exist and are usable
-     * (unlocked, unspent is checked elsewhere).
-     *
-     * If pmax_related_block_height is not NULL, its value is set to the height
-     * of the most recent block which contains an output used in the input set
-     *
-     * @param tx_version the transaction version
-     * @param txin the transaction input
-     * @param tx_prefix_hash the transaction prefix hash, for caching organization
-     * @param sig the input signature
-     * @param output_keys return-by-reference the public keys of the outputs in the input set
-     * @param rct_signatures the ringCT signatures, which are only valid if tx version > 1
-     * @param pmax_related_block_height return-by-pointer the height of the most recent block in the input set
-     * @param hf_version the consensus rules version to use
-     *
-     * @return false if any output is not yet unlocked, or is missing, otherwise true
-     */
-    bool check_tx_input(size_t tx_version,const txin_to_key& txin, const crypto::hash& tx_prefix_hash, const rct::rctSig &rct_signatures, std::vector<rct::ctkey> &decoys,  uint8_t hf_version) const;
-
-   
 
     /**
      * @brief performs a blockchain reorganization according to the longest chain rule
@@ -934,20 +801,6 @@ namespace cryptonote
     difficulty_type get_next_difficulty_for_alternative_chain(const std::list<block_extended_info>& alt_chain, block_extended_info& bei) const;
 
     /**
-     * @brief sanity checks a miner transaction before validating an entire block
-     *
-     * This function merely checks basic things like the structure of the miner
-     * transaction, the unlock time, and that the amount doesn't overflow.
-     *
-     * @param b the block containing the miner transaction
-     * @param height the height at which the block will be added
-     * @param hf_version the consensus rules to apply
-     *
-     * @return false if anything is found wrong with the miner transaction, otherwise true
-     */
-    bool prevalidate_miner_transaction(const block& b, uint64_t height, uint8_t hf_version);
-
-    /**
      * @brief validates a miner (coinbase) transaction
      *
      * This function makes sure that the miner calculated his reward correctly
@@ -1005,78 +858,6 @@ namespace cryptonote
      */
     bool is_tx_spendtime_unlocked(uint64_t unlock_time, uint8_t hf_version) const;
 
-    /**
-     * @brief stores an invalid block in a separate container
-     *
-     * Storing invalid blocks allows quick dismissal of the same block
-     * if it is seen again.
-     *
-     * @param bl the invalid block
-     * @param h the block's hash
-     *
-     * @return false if the block cannot be stored for some reason, otherwise true
-     */
-    bool add_block_as_invalid(const block& bl, const crypto::hash& h);
-
-    /**
-     * @brief stores an invalid block in a separate container
-     *
-     * Storing invalid blocks allows quick dismissal of the same block
-     * if it is seen again.
-     *
-     * @param bei the invalid block (see ::block_extended_info)
-     * @param h the block's hash
-     *
-     * @return false if the block cannot be stored for some reason, otherwise true
-     */
-    bool add_block_as_invalid(const block_extended_info& bei, const crypto::hash& h);
-
-    /**
-     * @brief checks a block's timestamp
-     *
-     * This function grabs the timestamps from the most recent <n> blocks,
-     * where n = BLOCKCHAIN_TIMESTAMP_CHECK_WINDOW.  If there are not those many
-     * blocks in the blockchain, the timestap is assumed to be valid.  If there
-     * are, this function returns:
-     *   true if the block's timestamp is not less than the timestamp of the
-     *       median of the selected blocks
-     *   false otherwise
-     *
-     * @param b the block to be checked
-     * @param median_ts return-by-reference the median of timestamps
-     *
-     * @return true if the block's timestamp is valid, otherwise false
-     */
-    bool check_block_timestamp(const block& b, uint64_t& median_ts) const;
-    bool check_block_timestamp(const block& b) const {
-     uint64_t median_ts; return check_block_timestamp(b, median_ts); }
-
-    /**
-     * @brief checks a block's timestamp
-     *
-     * If the block is not more recent than the median of the recent
-     * timestamps passed here, it is considered invalid.
-     *
-     * @param timestamps a list of the most recent timestamps to check against
-     * @param b the block to be checked
-     *
-     * @return true if the block's timestamp is valid, otherwise false
-     */
-    bool check_block_timestamp(std::vector<uint64_t>& timestamps, const block& b, uint64_t& median_ts) const;
-    bool check_block_timestamp(std::vector<uint64_t>& timestamps, const block& b) const { uint64_t median_ts; return check_block_timestamp(timestamps, b, median_ts); }
-
-    /**
-     * @brief finish an alternate chain's timestamp window from the main chain
-     *
-     * for an alternate chain, get the timestamps from the main chain to complete
-     * the needed number of timestamps for the BLOCKCHAIN_TIMESTAMP_CHECK_WINDOW.
-     *
-     * @param start_height the alternate chain's attachment height to the main chain
-     * @param timestamps return-by-value the timestamps set to be populated
-     *
-     * @return true unless start_height is greater than the current blockchain height
-     */
-    bool complete_timestamps_vector(uint64_t start_height, std::vector<uint64_t>& timestamps) const;
 
     void return_tx_to_pool(std::vector<std::pair<transaction, blobdata>> &txs);
 
@@ -1090,18 +871,7 @@ namespace cryptonote
      */
     bool check_for_double_spend(const transaction& tx, key_images_container& keys_this_block) const;
 
-    /**
-     * @brief validates a transaction input's ring signature
-     *
-     * @param tx_prefix_hash the transaction prefix' hash
-     * @param key_image the key image generated from the true input
-     * @param pubkeys the public keys for each input in the ring signature
-     * @param sig the signature generated for each input in the ring signature
-     * @param result false if the ring signature is invalid, otherwise true
-     */
-    void check_ring_signature(const crypto::hash &tx_prefix_hash, const crypto::key_image &key_image,
-        const std::vector<rct::ctkey> &pubkeys, const std::vector<crypto::signature> &sig, uint64_t &result) const;
-
+ 
     /**
      * @brief loads block hashes from compiled-in data set
      *
@@ -1113,16 +883,7 @@ namespace cryptonote
      */
     void load_compiled_in_block_hashes(const GetCheckpointsCallback& get_checkpoints);
 
-    /**
-     * @brief expands v2 transaction data from blockchain
-     *
-     * RingCT transactions do not transmit some of their data if it
-     * can be reconstituted by the receiver. This function expands
-     * that implicit data.
-     */
-    bool expand_transaction_2(transaction &tx, const crypto::hash &tx_prefix_hash, const std::vector<std::vector<rct::ctkey>> &pubkeys) const;
 
- 
     /**
      * @brief stores a new cached block template
      *
@@ -1140,16 +901,6 @@ namespace cryptonote
     tx_memory_pool& m_tx_pool;
 
     mutable epee::critical_section m_blockchain_lock; // TODO: add here reader/writer lock
-
-    // Keccak hashes for each block and for fast pow checking
-    std::vector<std::pair<crypto::hash, crypto::hash>> m_blocks_hash_of_hashes;
-    std::vector<std::pair<crypto::hash, uint64_t>> m_blocks_hash_check;
-
-    // some invalid blocks
-    blocks_ext_by_hash m_invalid_blocks;     // crypto::hash -> block_extended_info
-
-
-    checkpoints m_checkpoints;
 
     HardFork *m_hardfork;
 

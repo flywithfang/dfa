@@ -142,10 +142,10 @@ namespace cryptonote
   };
   struct block_complete_entry
   {
-    blobdata block;
+    blobdata blob;
     std::vector<tx_blob_entry> tbs;
     BEGIN_KV_SERIALIZE_MAP()
-      KV_SERIALIZE(block)
+      KV_SERIALIZE(blob)
       KV_SERIALIZE(txs)
       
     END_KV_SERIALIZE_MAP()
@@ -164,11 +164,11 @@ namespace cryptonote
 
     struct request_t
     {
-      block_complete_entry b;
+      block_complete_entry bce;
       uint64_t current_blockchain_height;
 
       BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE(b)
+        KV_SERIALIZE(bce)
         KV_SERIALIZE(current_blockchain_height)
       END_KV_SERIALIZE_MAP()
     };
@@ -187,12 +187,12 @@ namespace cryptonote
     {
       crypto::hash block_hash;
       uint64_t current_blockchain_height;      
-      std::vector<uint64_t> missing_tx_indices;
+      std::vector<crypto::hash> missing_tx_hashes;
       
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE_VAL_POD_AS_BLOB(block_hash)
         KV_SERIALIZE(current_blockchain_height)
-        KV_SERIALIZE_CONTAINER_POD_AS_BLOB(missing_tx_indices)
+        KV_SERIALIZE_CONTAINER_POD_AS_BLOB(missing_tx_hashes)
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<request_t> request;
@@ -228,10 +228,12 @@ namespace cryptonote
 
     struct request_t
     {
-      std::vector<crypto::hash> b_hashes;
+      uint64_t span_start_height;
+      uint64_t span_len;
 
       BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE_CONTAINER_POD_AS_BLOB(b_hashes)
+       KV_SERIALIZE(span_start_height)
+       KV_SERIALIZE(span_len)
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<request_t> request;
@@ -243,14 +245,14 @@ namespace cryptonote
 
     struct request_t
     {
+      uint64_t span_start_height;
       std::vector<block_complete_entry>  bces;
-      std::vector<crypto::hash>          missed_ids;
-      uint64_t                         current_blockchain_height;
+      uint64_t  chain_height;
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(bces)
-        KV_SERIALIZE_CONTAINER_POD_AS_BLOB(missed_ids)
-        KV_SERIALIZE(current_blockchain_height)
+        KV_SERIALIZE(chain_height)
+         KV_SERIALIZE(span_start_height)
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<request_t> request;
@@ -301,22 +303,13 @@ namespace cryptonote
     struct request_t
     {
       uint64_t split_height;
-      uint64_t top_height;
-      uint64_t cum_diff;
-      uint64_t cumulative_difficulty_top64;
+      uint64_t chain_height;
       std::vector<crypto::hash> m_block_ids;
-      cryptonote::blobdata first_block;
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(split_height)
-        KV_SERIALIZE(total_height)
-        KV_SERIALIZE(cum_diff)
-        if (is_store)
-          KV_SERIALIZE(cumulative_difficulty_top64)
-        else
-          KV_SERIALIZE_OPT(cumulative_difficulty_top64, (uint64_t)0)
+        KV_SERIALIZE(chain_height)
         KV_SERIALIZE_CONTAINER_POD_AS_BLOB(m_block_ids)
-        KV_SERIALIZE(first_block)
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<request_t> request;

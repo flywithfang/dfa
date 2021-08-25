@@ -218,6 +218,8 @@ struct txpool_tx_meta_t
     uint64_t top_height;
     std::vector<crypto::hash> hashes;
   };
+
+ 
 #define DBF_SAFE       1
 #define DBF_FAST       2
 #define DBF_FASTEST    4
@@ -907,7 +909,7 @@ public:
    *
    * @return the hash
    */
-  virtual crypto::hash get_block_hash_from_height(const uint64_t& height) const = 0;
+  virtual crypto::hash get_block_hash_from_height(const uint64_t& block_height) const = 0;
 
   /**
    * @brief fetch a list of blocks
@@ -1244,7 +1246,7 @@ public:
    * @param offsets a list of amount-specific output indices
    * @param outputs return-by-reference a list of outputs' metadata
    */
-  virtual void get_output_key( const std::vector<uint64_t> &offsets, std::vector<output_data_t> &outputs, bool allow_partial = false) const = 0;
+  virtual std::vector<output_data_t> get_output_keys( const std::vector<uint64_t> &ois) const = 0;
   
   /*
    * FIXME: Need to check with git blame and ask what this does to

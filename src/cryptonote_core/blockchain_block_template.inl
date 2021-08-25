@@ -60,8 +60,7 @@ cryptonote::BlockTemplate Blockchain::create_block_template( const crypto::hash 
     //we have new block in alternative chain
     std::list<block_extended_info> alt_chain;
     block_verification_context bvc = {};
-    std::vector<uint64_t> timestamps;
-    if (!build_alt_chain(*from_block, alt_chain, timestamps, bvc))
+    if (!build_alt_chain(*from_block, alt_chain,  bvc))
       throw_and_log("fail to build atl_chain");
 
     if (parent_in_main)
@@ -134,11 +133,6 @@ cryptonote::BlockTemplate Blockchain::create_block_template( const crypto::hash 
   bt.n_seed_height=n_seed_height;
   bt.n_seed_hash = n_seed_hash;
 
-  uint64_t median_ts;
-  if (!check_block_timestamp(b, median_ts))
-  {
-    b.timestamp = median_ts;
-  }
 
   if (!m_tx_pool.fill_block_template(bt))
   {

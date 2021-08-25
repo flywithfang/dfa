@@ -120,29 +120,29 @@ namespace cryptonote {
     return !carry;
   }
 
-  uint64_t next_difficulty_64(std::vector<std::uint64_t> history_tss, std::vector<uint64_t> history_diffs, size_t target_seconds) {
+  uint64_t next_difficulty_64(std::vector<std::uint64_t> tss, std::vector<uint64_t> diffs, size_t target_seconds) {
 
-    if(history_tss.size() > DIFFICULTY_WINDOW)
+    if(tss.size() > DIFFICULTY_WINDOW)
     {
-      history_tss.resize(DIFFICULTY_WINDOW);
-      history_diffs.resize(DIFFICULTY_WINDOW);
+      tss.resize(DIFFICULTY_WINDOW);
+      diffs.resize(DIFFICULTY_WINDOW);
     }
 
 
-    size_t length = history_tss.size();
-    assert(length == history_diffs.size());
+    size_t length = tss.size();
+    assert(length == diffs.size());
     if (length <= 1) {
       return 1;
     }
     static_assert(DIFFICULTY_WINDOW >= 2, "Window is too small");
     assert(length <= DIFFICULTY_WINDOW);
-    sort(history_tss.begin(), history_tss.end());
+    sort(tss.begin(), tss.end());
     assert(/*cut_begin >= 0 &&*/ cut_begin + 2 <= cut_end && cut_end <= length);
-    uint64_t time_span = history_tss[length - 1] - history_tss[0];
+    uint64_t time_span = tss[length - 1] - tss[0];
     if (time_span == 0) {
       time_span = 1;
     }
-    uint64_t total_work = history_diffs[length - 1] - history_diffs[0];
+    uint64_t total_work = diffs[length - 1] - diffs[0];
     assert(total_work > 0);
     uint64_t low, high;
     mul(total_work, target_seconds, low, high);
@@ -188,33 +188,24 @@ namespace cryptonote {
       return check_hash_128(hash, difficulty);
   }
 
-  difficulty_type next_difficulty(std::vector<uint64_t> history_tss, std::vector<difficulty_type> history_diffs, size_t block_time) {
+  difficulty_type next_difficulty(std::vector<uint64_t> tss, std::vector<difficulty_type> diffs, size_t block_time) {
 
-    //cutoff DIFFICULTY_LAG
-    if(history_tss.size() > DIFFICULTY_WINDOW)
-    {
-      history_tss.resize(DIFFICULTY_WINDOW);
-      history_diffs.resize(DIFFICULTY_WINDOW);
-    }
-
-    size_t length = history_tss.size();
-    assert(length == history_diffs.size());
+    size_t length = tss.size();
+    assert(length == diffs.size());
     if (length <= 1) {
       return 1;
     }
     static_assert(DIFFICULTY_WINDOW >= 2, "Window is too small");
     assert(length <= DIFFICULTY_WINDOW);
-    sort(history_tss.begin(), history_tss.end());
-    uint64_t time_span = history_tss[length - 1] - history_tss[0];
-    if (time_span == 0) {
+
+    int64_t time_span = tss[length - 1] - tss[0];
+    if (time_span<= 0) {
       time_span = 1;
     }
-    difficulty_type total_work = history_diffs[length - 1] - history_diffs[0];
+    const auto total_work = diffs[length - 1] - diffs[0];
     assert(total_work > 0);
     boost::multiprecision::uint256_t d =  (boost::multiprecision::uint256_t(total_work) * block_time + time_span - 1) / time_span;
     
-    if(d > max128bit)
-      return 0; 
      const auto block_diff = d.convert_to<difficulty_type>();
      MDEBUG("block_diff" << static_cast<uint64_t>(block_diff) << ",total_work "<<total_work<<", time_span "<<time_span);
      return block_diff;

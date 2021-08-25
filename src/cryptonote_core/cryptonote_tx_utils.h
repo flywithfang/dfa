@@ -39,7 +39,7 @@ namespace cryptonote
 
   std::tuple<bool, transaction> construct_miner_tx(size_t height, uint64_t fee, const account_public_address &miner_address,  const varbinary& extra_nonce = varbinary(),  uint8_t hard_fork_version = 1);
   
-
+  struct AltChain;
 
   struct tx_source_entry
   {
@@ -88,11 +88,9 @@ namespace cryptonote
 
   class Blockchain;
  
-  void get_altblock_longhash(const block& b, crypto::hash& res, const uint64_t main_height, const uint64_t height,const uint64_t seed_height, const crypto::hash& seed_hash);
+  crypto::hash  get_altblock_pow(const AltChain &bc, const block& b, const uint64_t chain_height);
   
-  crypto::hash get_block_pow(const Blockchain *pb, const block& b, const uint64_t height);
-  void get_block_longhash_reorg(const uint64_t split_height);
-
+  crypto::hash get_block_pow(const Blockchain&pb, const block& b, const uint64_t height);
  bool  verify_keys(const crypto::secret_key &secret_key, const crypto::public_key &public_key) ;
 }
 

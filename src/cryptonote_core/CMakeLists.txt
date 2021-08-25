@@ -30,8 +30,10 @@ SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17")
 
 set(cryptonote_core_sources
   blockchain.cpp
+  alt_chain.cpp
   cryptonote_core.cpp
   tx_pool.cpp
+  tx_validate.cpp
   cryptonote_tx_utils.cpp)
 
 set(cryptonote_core_headers)

@@ -129,7 +129,7 @@ namespace cryptonote
 
 
   //---------------------------------------------------------------
-  bool expand_transaction_1(transaction &tx, bool base_only)
+  bool expand_transaction_1(transaction &tx)
   {
  //  if ( !is_coinbase(tx))
     {
@@ -151,7 +151,7 @@ namespace cryptonote
         rv.outCommitments[n].otk = rct::pk2rct(boost::get<txout_to_key>(tx.vout[n].target).key);
       }
 
-      if (!base_only)
+      if (!tx.is_pruned())
       {
         //const bool bulletproof = rct::is_rct_bulletproof(rv.type);
      //   if (bulletproof)
@@ -207,7 +207,7 @@ namespace cryptonote
     bool r = ::serialization::serialize(ba, tx);
     if(!r) 
       throw_and_log(std::string("Failed to parse transaction from blob") + string_tools::buff_to_hex(tx_blob));
-    r = expand_transaction_1(tx, false);
+    r = expand_transaction_1(tx);
     if(!r)
       throw_and_log(std::string("Failed to expand transaction data")+string_tools::buff_to_hex(tx_blob));
     tx.invalidate_hashes();
@@ -224,7 +224,7 @@ namespace cryptonote
     if(!r)
       throw_and_log("Failed to parse transaction from blob"+ string_tools::buff_to_hex(tx_blob));
     
-    r = expand_transaction_1(tx, true);
+    r = expand_transaction_1(tx);
     if(!r)
       throw_and_log("Failed to expand transaction data"+ string_tools::buff_to_hex(tx_blob));
 
@@ -242,22 +242,6 @@ namespace cryptonote
     return true;
   }
  
-  //---------------------------------------------------------------
-  bool is_v1_tx(const blobdata_ref& tx_blob)
-  {
-    uint64_t version;
-    const char* begin = static_cast<const char*>(tx_blob.data());
-    const char* end = begin + tx_blob.size();
-    int read = tools::read_varint(begin, end, version);
-    if (read <= 0)
-      throw std::runtime_error("Internal error getting transaction version");
-    return version <= 1;
-  }
-  //---------------------------------------------------------------
-  bool is_v1_tx(const blobdata& tx_blob)
-  {
-    return is_v1_tx(blobdata_ref{tx_blob.data(), tx_blob.size()});
-  }
   //---------------------------------------------------------------
   bool generate_key_image_helper(const account_keys& ack,   const crypto::public_key& tx_public_key,  size_t oi, keypair& otk_p, crypto::key_image& ki)
   {

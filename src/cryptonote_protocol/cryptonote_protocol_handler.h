@@ -154,11 +154,9 @@ namespace cryptonote
 
     //----------------------------------------------------------------------------------
     //bool get_payload_sync_data(HANDSHAKE_DATA::request& hshd, cryptonote_peer_context& context);
-    bool should_drop_connection(cryptonote_peer_context& context, uint32_t next_stripe);
-    bool request_missing_objects(cryptonote_peer_context& context, bool check_having_blocks, bool force_next_span = false);
+    bool download_next_span(cryptonote_peer_context& context, bool check_having_blocks);
     size_t get_synchronizing_connections_count();
     bool on_connection_synchronized();
-    bool should_download_next_span(cryptonote_peer_context& context, bool standby);
     bool should_ask_for_pruned_data(cryptonote_peer_context& context, uint64_t first_block_height, uint64_t nblocks, bool check_block_weights) const;
     void drop_connection(cryptonote_peer_context &context, bool add_fail, bool flush_all_spans);
     void drop_connection_with_score(cryptonote_peer_context &context, unsigned int score, bool flush_all_spans);
@@ -166,7 +164,7 @@ namespace cryptonote
     bool kick_idle_peers();
     bool check_standby_peers();
     bool update_sync_search();
-    int try_add_next_blocks(cryptonote_peer_context &context);
+    int try_add_next_span(cryptonote_peer_context &context);
     void notify_new_stripe(cryptonote_peer_context &context, uint32_t stripe);
     size_t skip_unneeded_hashes(cryptonote_peer_context& context, bool check_block_queue) const;
     bool request_txpool_complement(cryptonote_peer_context &context);
@@ -197,6 +195,8 @@ private:
     nodetool::p2p_endpoint_stub<cryptonote_peer_context> m_p2p_stub;
 
     nodetool::i_p2p_endpoint<cryptonote_peer_context>* m_p2p;
+
+    block_queue m_block_queue;
     
     std::atomic<uint32_t> m_syncronized_connections_count;
     std::atomic<bool> m_synchronized;
@@ -204,7 +204,8 @@ private:
     std::atomic<bool> m_no_sync;
     std::atomic<bool> m_ask_for_txpool_complement;
     boost::mutex m_sync_lock;
-    block_queue m_block_queue;
+
+
     epee::math_helper::once_a_time_seconds<8> m_idle_peer_kicker;
     epee::math_helper::once_a_time_milliseconds<100> m_standby_checker;
     epee::math_helper::once_a_time_seconds<101> m_sync_search_checker;
