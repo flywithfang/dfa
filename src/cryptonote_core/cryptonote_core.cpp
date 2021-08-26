@@ -201,18 +201,7 @@ namespace cryptonote
     "replaced by the number of blocks discarded from the old chain"
   , ""
   };
-  static const command_line::arg_descriptor<std::string> arg_block_rate_notify = {
-    "block-rate-notify"
-  , "Run a program when the block rate undergoes large fluctuations. This might "
-    "be a sign of large amounts of hash rate going on and off the Monero network, "
-    "and thus be of potential interest in predicting attacks. %t will be replaced "
-    "by the number of minutes for the observation window, %b by the number of "
-    "blocks observed within that window, and %e by the number of blocks that was "
-    "expected in that window. It is suggested that this notification is used to "
-    "automatically increase the number of confirmations required before a payment "
-    "is acted upon."
-  , ""
-  };
+
   static const command_line::arg_descriptor<bool> arg_keep_alt_blocks  = {
     "keep-alt-blocks"
   , "Keep alternative blocks on restart"
@@ -221,7 +210,8 @@ namespace cryptonote
 
   //-----------------------------------------------------------------------------------------------
   core::core():
-              m_mempool(m_blockchain),
+              m_db(new_db()),
+              m_mempool(*m_db),
               m_blockchain(m_mempool),
               m_starter_message_showed(false),
               m_target_blockchain_height(0),
@@ -246,41 +236,12 @@ namespace cryptonote
   {
     m_blockchain.set_enforce_dns_checkpoints(enforce_dns);
   }
-  //-----------------------------------------------------------------------------------
-  void core::set_txpool_listener(boost::function<void(std::vector<txpool_event>)> zmq_pub)
-  {
-    CRITICAL_REGION_LOCAL(m_incoming_tx_lock);
-    m_zmq_pub = std::move(zmq_pub);
-  }
+
 
   //-----------------------------------------------------------------------------------------------
   bool core::update_checkpoints(const bool skip_dns /* = false */)
   {
-    if (m_nettype != MAINNET || m_disable_dns_checkpoints) return true;
-
-    if (m_checkpoints_updating.test_and_set()) return true;
-
-    bool res = true;
-    if (!skip_dns && time(NULL) - m_last_dns_checkpoints_update >= 3600)
-    {
-      res = m_blockchain.update_checkpoints(m_checkpoints_path, true);
-      m_last_dns_checkpoints_update = time(NULL);
-      m_last_json_checkpoints_update = time(NULL);
-    }
-    else if (time(NULL) - m_last_json_checkpoints_update >= 600)
-    {
-      res = m_blockchain.update_checkpoints(m_checkpoints_path, false);
-      m_last_json_checkpoints_update = time(NULL);
-    }
-
-    m_checkpoints_updating.clear();
-
-    // if anything fishy happened getting new checkpoints, bring down the house
-    if (!res)
-    {
-      graceful_exit();
-    }
-    return res;
+    return true;
   }
   //-----------------------------------------------------------------------------------
   void core::stop()
@@ -325,7 +286,6 @@ namespace cryptonote
     command_line::add_arg(desc, arg_block_notify);
     command_line::add_arg(desc, arg_prune_blockchain);
     command_line::add_arg(desc, arg_reorg_notify);
-    command_line::add_arg(desc, arg_block_rate_notify);
     command_line::add_arg(desc, arg_keep_alt_blocks);
 
     miner::init_options(desc);
@@ -352,9 +312,9 @@ namespace cryptonote
     return true;
   }
   //-----------------------------------------------------------------------------------------------
-  uint64_t core::get_current_blockchain_height() const
+  uint64_t core::get_chain_height() const
   {
-    return m_blockchain.get_current_blockchain_height();
+    return m_blockchain.get_chain_height();
   }
   //-----------------------------------------------------------------------------------------------
   void core::get_blockchain_top(uint64_t& height, crypto::hash& top_id) const
@@ -378,13 +338,22 @@ namespace cryptonote
   //-----------------------------------------------------------------------------------------------
   bool core::get_alternative_blocks(std::vector<block>& blocks) const
   {
-    return m_blockchain.get_alternative_blocks(blocks);
+
+      blocks.reserve(m_db->get_alt_block_count());
+      m_db.for_all_alt_blocks([&blocks](const crypto::hash &blkid, const cryptonote::alt_block_data_t &data, const cryptonote::blobdata_ref *blob) {
+        if (!blob)
+        {
+          MERROR("No blob, but blobs were requested");
+          return false;
+        }
+        cryptonote::block bl= cryptonote::parse_block_from_blob(*blob);
+        blocks.push_back(std::move(bl));
+       
+        return true;
+      }, true);
+      return true;
   }
-  //-----------------------------------------------------------------------------------------------
-  size_t core::get_alternative_blocks_count() const
-  {
-    return m_blockchain.get_alternative_blocks_count();
-  }
+ 
   //-----------------------------------------------------------------------------------------------
   bool core::init(const boost::program_options::variables_map& vm, const cryptonote::test_options *test_options, const GetCheckpointsCallback& get_checkpoints/* = nullptr */)
   {
@@ -399,8 +368,6 @@ namespace cryptonote
     CHECK_AND_ASSERT_MES(r, false, "Failed to handle command line");
 
     std::string db_sync_mode = command_line::get_arg(vm, cryptonote::arg_db_sync_mode);
-    bool db_salvage = command_line::get_arg(vm, cryptonote::arg_db_salvage) != 0;
-    bool fast_sync = command_line::get_arg(vm, arg_fast_block_sync) != 0;
     uint64_t blocks_threads = command_line::get_arg(vm, arg_prep_blocks_threads);
     std::string check_updates_string = command_line::get_arg(vm, arg_check_updates);
     size_t max_txpool_weight = command_line::get_arg(vm, arg_max_txpool_weight);
@@ -415,22 +382,6 @@ namespace cryptonote
     // make sure the data directory exists, and try to lock it
     CHECK_AND_ASSERT_MES (boost::filesystem::exists(folder) || boost::filesystem::create_directories(folder), false,
       std::string("Failed to create directory ").append(folder.string()).c_str());
-
-    // check for blockchain.bin
-    try
-    {
-      const boost::filesystem::path old_files = folder;
-      if (boost::filesystem::exists(old_files / "blockchain.bin"))
-      {
-        MWARNING("Found old-style blockchain.bin in " << old_files.string());
-        MWARNING("Monero now uses a new format. You can either remove blockchain.bin to start syncing");
-        MWARNING("the blockchain anew, or use monero-blockchain-export and monero-blockchain-import to");
-        MWARNING("convert your existing blockchain.bin to the new format. See README.md for instructions.");
-        return false;
-      }
-    }
-    // folder might not be a directory, etc, etc
-    catch (...) { }
 
     std::unique_ptr<BlockchainDB> db(new_db());
     if (db == NULL)
@@ -502,16 +453,6 @@ namespace cryptonote
       MERROR("Failed to parse reorg notify spec: " << e.what());
     }
 
-    try
-    {
-      if (!command_line::is_arg_defaulted(vm, arg_block_rate_notify))
-        m_block_rate_notify.reset(new tools::Notify(command_line::get_arg(vm, arg_block_rate_notify).c_str()));
-    }
-    catch (const std::exception &e)
-    {
-      MERROR("Failed to parse block rate notify spec: " << e.what());
-    }
-
     const std::pair<uint8_t, uint64_t> regtest_hard_forks[3] = {std::make_pair(1, 0), std::make_pair(mainnet_hard_forks[num_mainnet_hard_forks-1].version, 1), std::make_pair(0, 0)};
     const cryptonote::test_options regtest_test_options = {
       regtest_hard_forks,
@@ -524,9 +465,6 @@ namespace cryptonote
     r = m_mempool.init(max_txpool_weight, m_nettype == FAKECHAIN);
     CHECK_AND_ASSERT_MES(r, false, "Failed to initialize memory pool");
 
-    // now that we have a valid m_blockchain, we can clean out any
-    // transactions in the pool that do not conform to the current fork
-    m_mempool.validate(m_blockchain.get_current_hard_fork_version());
 
     bool show_time_stats = command_line::get_arg(vm, arg_show_time_stats) != 0;
     m_blockchain.set_show_time_stats(show_time_stats);
@@ -584,6 +522,7 @@ namespace cryptonote
   {
     m_mempool.deinit();
     m_blockchain.deinit();
+    m_db.close();
     return true;
   }
   //-----------------------------------------------------------------------------------------------
@@ -607,7 +546,7 @@ namespace cryptonote
     if (m_test_drop_download_height == 0)
       return true;
 
-    if (get_blockchain().get_current_blockchain_height() <= m_test_drop_download_height)
+    if (get_blockchain().get_chain_height() <= m_test_drop_download_height)
       return true;
 
     return false;
@@ -648,12 +587,7 @@ namespace cryptonote
        return tvc;
       }
 
-      if(!check_tx_semantic(tx_info, tx_relay == relay_method::block)){
-          tvc.m_verifivation_failed = true;
-          return tvc;
-      }
-
-      if(!m_mempool.add_tx(tx, tx_hash, blob, tx_weight, tvc, tx_relay, relayed, 0)){
+      if(!m_mempool.add_tx(tx, tx_hash, blob,  tvc, tx_relay, relayed, 0)){
           tvc.m_verifivation_failed = true;
           return tvc;
       }
@@ -735,40 +669,7 @@ namespace cryptonote
   {
     return m_blockchain.get_outs(req, res);
   }
-  //-----------------------------------------------------------------------------------------------
-  bool core::get_output_distribution( uint64_t from_height, uint64_t to_height, uint64_t &start_height, std::vector<uint64_t> &distribution) const
-  {
-    return m_blockchain.get_output_distribution( from_height, to_height, start_height, distribution);
-  }
-  //-----------------------------------------------------------------------------------------------
-  bool core::get_tx_outputs_gindexs(const crypto::hash& tx_id, std::vector<uint64_t>& indexs) const
-  {
-    return m_blockchain.get_tx_outputs_gindexs(tx_id, indexs);
-  }
-  //-----------------------------------------------------------------------------------------------
-  bool core::get_tx_outputs_gindexs(const crypto::hash& tx_id, size_t n_txes, std::vector<std::vector<uint64_t>>& indexs) const
-  {
-    return m_blockchain.get_tx_outputs_gindexs(tx_id, n_txes, indexs);
-  }
- 
- 
-  //-----------------------------------------------------------------------------------------------
-  bool core::handle_block_found(const block& b, block_verification_context &bvc)
-  {
-    bvc = {};
-    try
-    {
-     m_blockchain.add_new_block(b, bvc);
 
-    CHECK_AND_ASSERT_MES(!bvc.m_verifivation_failed, false, "mined block failed verification");
-    }
-     catch (const std::exception &e)
-    {
-      return false;
-    }
-    return true;
-  }
- 
    //-----------------------------------------------------------------------------------------------
   crypto::hash core::get_top_hash() const
   {
@@ -838,9 +739,25 @@ namespace cryptonote
  
   
   //-----------------------------------------------------------------------------------------------
-  bool core::handle_get_objects(NOTIFY_REQUEST_GET_OBJECTS::request& arg, NOTIFY_RESPONSE_GET_OBJECTS::request& rsp, cryptonote_peer_context& context)
+  bool core::handle_get_blocks(NOTIFY_REQUEST_GET_BLOCKS::request& req, NOTIFY_RESPONSE_GET_BLOCKS::request& rsp, cryptonote_peer_context& context)
   {
-    return m_blockchain.handle_get_objects(arg, rsp);
+     MTRACE("Blockchain::" << __func__);
+    db_rtxn_guard rtxn_guard (m_db);
+    rsp.chain_heigth = m_blockchain.get_chain_height();
+    rsp.span_start_height=req.span_start_height;
+    const auto & blocks=  m_blockchain.get_blocks(req.span_start_height, req.span_len);
+
+    for (auto & [bblob, b] : blocks)
+    {
+      block_complete_entry e{};
+
+      e.tbs=m_blockchain.get_transactions_blobs(b.tx_hashes );
+      e.blob = std::move(bblob);
+
+      rsp.bces.push_back(std::move(e));
+    }
+
+  return true;
   }
   //-----------------------------------------------------------------------------------------------
   crypto::hash core::get_block_hash_by_height(uint64_t height) const
@@ -920,8 +837,155 @@ namespace cryptonote
     raise(SIGTERM);
   }
 
-cryptonote::BlockTemplate core::get_block_template(const crypto::hash *prev_block, const account_public_address& adr, const blobdata& ex_nonce)
+//------------------------------------------------------------------
+bool core::add_new_block(const block& bl, block_verification_context& bvc)
 {
-  return m_blockchain.create_block_template(prev_block,adr,ex_nonce);
+  try
+  {
+
+  MTRACE("Blockchain::" << __func__);
+  crypto::hash bh = m_blockchain.get_block_hash(bl);
+  CRITICAL_REGION_LOCAL(m_tx_pool);//to avoid deadlock lets lock tx_pool for whole add/reorganize process
+  CRITICAL_REGION_LOCAL1(m_blockchain);
+  db_rtxn_guard rtxn_guard(m_db);
+  if(m_blockchain.have_block(bh))
+  {
+    MTRACE("block with bh = " << bh << " already exists");
+    bvc.m_already_exists = true;
+    return false;
+  }
+
+  //check that block refers to chain tail
+  if(bl.prev_id == get_top_hash())
+     return handle_block_to_main_chain(bl,  bvc);
+    
+  alt_block_data_t prev_data;
+  bool parent_in_alt = m_db.get_alt_block(bl.prev_id, &prev_data, NULL);
+  bool parent_in_main = m_db.block_exists(bl.prev_id);
+  if(!parent_in_main&& !parent_in_alt)
+  {
+    //block orphaned
+    bvc.m_marked_as_orphaned = true;
+    MERROR_VER("orphaned and rejected, bh = " << bh << ", height " << block_height
+        << ", parent in alt " << parent_in_alt << ", parent in main " << parent_in_main
+        << " (prev_id " << bl.prev_id << ", top hash" << m_blockchain.get_top_hash() << ", chain height " << m_blockchain.get_chain_height() << ")");
+    return false;
+  }
+
+  {
+    //chain switching or wrong block
+    bvc.m_added_to_main_chain = false;
+    rtxn_guard.stop();
+    const auto & alt_b = bl;
+    AltChain altChain(m_db,alt_b.prev_id);
+    const auto &alt_chain=altChain.alt_chain;
+
+  
+     bvc = cryptonote::validate_new_block(altChain,m_tx_pool,alt_b);
+     if(bvc.m_verifivation_failed)
+      return false;
+
+    if(!altChain.add_block({alt_b, block_to_blob(alt_b)})){
+      bvc.m_verifivation_failed=true;
+      return false;
+    }
+
+    const auto main_work = m_blockchain.get_chain_height();
+    const auto alt_height=  altChain.get_chain_height();
+    if(main_work < altChain.get_chain_height()) //check if difficulty bigger then in main chain
+    {
+      //do reorganize!
+      MGINFO_GREEN("###### REORGANIZE on height: " <<alt_height << " / " << main_work );
+
+      bool r = m_blockchain.switch_to_alternative_blockchain(alt_chain);
+      if (r)
+        bvc.m_added_to_main_chain = true;
+      else
+        bvc.m_verifivation_failed = true;
+      return r;
+    }
+    else
+    {
+      MGINFO_BLUE("----- BLOCK ADDED AS ALTERNATIVE ON HEIGHT " << alt_height << std::endl << "bh:" << bh );
+      return true;
+    }
+  }
+
+
+  }
+  catch (const std::exception &e)
+  {
+    LOG_ERROR("Exception at [add_new_block], what=" << e.what());
+    bvc.m_verifivation_failed = true;
+    return false;
+  }
 }
+
+
+
+
+std::vector<std::pair<Blockchain::block_extended_info,std::vector<crypto::hash>>> core::get_alternative_chains() const
+{
+  std::vector<std::pair<Blockchain::block_extended_info,std::vector<crypto::hash>>> chains;
+
+  blocks_ext_by_hash alt_blocks;
+  alt_blocks.reserve(m_db->get_alt_block_count());
+  m_db.for_all_alt_blocks([&alt_blocks](const crypto::hash &blkid, const cryptonote::alt_block_data_t &data, const cryptonote::blobdata_ref *blob) {
+    if (!blob)
+    {
+      MERROR("No blob, but blobs were requested");
+      return false;
+    }
+    cryptonote::block bl;
+    block_extended_info bei;
+    bei.bl=cryptonote::parse_block_from_blob(*blob);
+    {
+      bei.height = data.height;
+      bei.block_cumulative_weight = data.cumulative_weight;
+      bei.cum_diff = data.cumulative_difficulty_high;
+      bei.cum_diff = (bei.cum_diff << 64) + data.cumulative_difficulty_low;
+      bei.already_generated_coins = data.already_generated_coins;
+      alt_blocks.insert(std::make_pair(cryptonote::get_block_hash(bei.bl), std::move(bei)));
+    }
+
+    return true;
+  }, true);
+
+  for (const auto &i: alt_blocks)
+  {
+    const crypto::hash top = cryptonote::get_block_hash(i.second.bl);
+    bool found = false;
+    for (const auto &j: alt_blocks)
+    {
+      if (j.second.bl.prev_id == top)
+      {
+        found = true;
+        break;
+      }
+    }
+    if (!found)
+    {
+      std::vector<crypto::hash> chain;
+      auto h = i.second.bl.prev_id;
+      chain.push_back(top);
+      blocks_ext_by_hash::const_iterator prev;
+      while ((prev = alt_blocks.find(h)) != alt_blocks.end())
+      {
+        chain.push_back(h);
+        h = prev->second.bl.prev_id;
+      }
+      chains.push_back(std::make_pair(i.second, chain));
+    }
+  }
+  return chains;
+}
+//------------------------------------------------------------------
+size_t core::get_alternative_blocks_count() const
+{
+  MTRACE("Blockchain::" << __func__);
+  return m_db.get_alt_block_count();
+}
+
+
+
 }

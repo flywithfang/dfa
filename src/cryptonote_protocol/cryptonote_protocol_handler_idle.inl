@@ -110,7 +110,7 @@
   bool t_cryptonote_protocol_handler<t_core>::update_sync_search()
   {
     const uint64_t target = m_core.get_target_blockchain_height();
-    const uint64_t height = m_core.get_current_blockchain_height();
+    const uint64_t height = m_core.get_chain_height();
     if (target > height) // if we're not synced yet, don't do it
       return true;
 
@@ -195,7 +195,7 @@
     {
       
       peer_cxt.m_needed_blocks.clear();
-      peer_cxt.m_sync_start_height = m_core.get_current_blockchain_height();
+      peer_cxt.m_sync_start_height = m_core.get_chain_height();
       peer_cxt.m_last_request_time = boost::posix_time::microsec_clock::universal_time();
       peer_cxt.m_expect_response = NOTIFY_RESPONSE_CHAIN_ENTRY::ID;
       
@@ -244,12 +244,12 @@
     peer_cxt.m_remote_chain_height = peer_sync_info.current_height;
     peer_cxt.m_pruning_seed = peer_sync_info.pruning_seed;
 
-    const uint64_t target = m_core.get_target_blockchain_height()|| m_core.get_current_blockchain_height();
+    const uint64_t target = m_core.get_target_blockchain_height()|| m_core.get_chain_height();
 
     if(m_core.have_block(peer_sync_info.top_id))
     {
       peer_cxt.m_state = cryptonote_peer_context::state_normal;
-      if(is_inital  && peer_sync_info.current_height >= target && target == m_core.get_current_blockchain_height())
+      if(is_inital  && peer_sync_info.current_height >= target && target == m_core.get_chain_height())
         on_connection_synchronized();
       return true;
     }
@@ -260,9 +260,9 @@
     /* As I don't know if accessing peer_sync_info from core could be a good practice,
     I prefer pushing target height to the core at the same time it is pushed to the user.
     Nz. */
-    int64_t diff = static_cast<int64_t>(peer_sync_info.current_height) - static_cast<int64_t>(m_core.get_current_blockchain_height());
+    int64_t diff = static_cast<int64_t>(peer_sync_info.current_height) - static_cast<int64_t>(m_core.get_chain_height());
     uint64_t abs_diff = std::abs(diff);
-    MCLOG(is_inital ? el::Level::Info : el::Level::Debug, "global", el::Color::Yellow, peer_cxt <<  "Sync data returned a new top block candidate: " << m_core.get_current_blockchain_height() << " -> " << peer_sync_info.current_height
+    MCLOG(is_inital ? el::Level::Info : el::Level::Debug, "global", el::Color::Yellow, peer_cxt <<  "Sync data returned a new top block candidate: " << m_core.get_chain_height() << " -> " << peer_sync_info.current_height
       << " [Your node is " << abs_diff << " blocks (" << tools::get_human_readable_timespan(abs_diff * DIFFICULTY_TARGET) << ") "<< (0 <= diff ? std::string("behind") : std::string("ahead"))<< "] " << ENDL << "SYNCHRONIZATION started");
 
     

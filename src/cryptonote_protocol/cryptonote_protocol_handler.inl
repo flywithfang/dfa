@@ -385,7 +385,7 @@ namespace cryptonote
           peer_cxt.m_needed_blocks.clear();
           peer_cxt.m_state = cryptonote_peer_context::state_synchronizing;
           NOTIFY_REQUEST_CHAIN::request r {m_core.get_blockchain().get_short_chain_history()};
-          peer_cxt.m_sync_start_height = m_core.get_current_blockchain_height();
+          peer_cxt.m_sync_start_height = m_core.get_chain_height();
           peer_cxt.m_last_request_time = boost::posix_time::microsec_clock::universal_time();
           peer_cxt.m_expect_response = NOTIFY_RESPONSE_CHAIN_ENTRY::ID;
           MLOG_P2P_MESSAGE("-->>NOTIFY_REQUEST_CHAIN: m_block_ids.size()=" << r.block_ids.size() );
@@ -567,7 +567,7 @@ try{
   }
   //------------------------------------------------------------------------------------------------------------------------
   template<class t_core>
-  int t_cryptonote_protocol_handler<t_core>::handle_request_get_objects(int command, NOTIFY_REQUEST_GET_OBJECTS::request& arg, cryptonote_peer_context& peer_cxt)
+  int t_cryptonote_protocol_handler<t_core>::handle_request_get_blocks(int command, NOTIFY_REQUEST_GET_BLOCKS::request& arg, cryptonote_peer_context& peer_cxt)
   {
     if (peer_cxt.m_state == cryptonote_peer_context::state_before_handshake)
     {
@@ -576,18 +576,18 @@ try{
       return 1;
     }
     try{
-    MLOG_P2P_MESSAGE("Received NOTIFY_REQUEST_GET_OBJECTS " << arg.span_start_height<<","<<arg.span_len);
+    MLOG_P2P_MESSAGE("Received NOTIFY_REQUEST_GET_BLOCKS " << arg.span_start_height<<","<<arg.span_len);
    
-    NOTIFY_RESPONSE_GET_OBJECTS::request rsp;
-    if(!m_core.handle_get_objects(arg, rsp, peer_cxt))
+    NOTIFY_RESPONSE_GET_BLOCKS::request rsp;
+    if(!m_core.handle_get_blocks(arg, rsp, peer_cxt))
     {
-      MERROR(peer_cxt<<"failed to handle request NOTIFY_REQUEST_GET_OBJECTS, dropping connection");
+      MERROR(peer_cxt<<"failed to handle request NOTIFY_REQUEST_GET_BLOCKS, dropping connection");
       drop_connection(peer_cxt, false, false);
       return 1;
     }
     peer_cxt.m_last_request_time = boost::posix_time::microsec_clock::universal_time();
 
-    post_notify<NOTIFY_RESPONSE_GET_OBJECTS>(rsp, peer_cxt);
+    post_notify<NOTIFY_RESPONSE_GET_BLOCKS>(rsp, peer_cxt);
     //handler_response_blocks_now(sizeof(rsp)); // XXX
     //handler_response_blocks_now(200);
     return 1;
@@ -613,14 +613,14 @@ try{
   }
 
   template<class t_core>
-  int t_cryptonote_protocol_handler<t_core>::handle_response_get_objects(int command, NOTIFY_RESPONSE_GET_OBJECTS::request& rsp, cryptonote_peer_context& peer_cxt)
+  int t_cryptonote_protocol_handler<t_core>::handle_response_get_objects(int command, NOTIFY_RESPONSE_GET_BLOCKS::request& rsp, cryptonote_peer_context& peer_cxt)
   {
-    MLOG_P2P_MESSAGE("Received NOTIFY_RESPONSE_GET_OBJECTS (" << rsp.bces.size() << " blocks)");
+    MLOG_P2P_MESSAGE("Received NOTIFY_RESPONSE_GET_BLOCKS (" << rsp.bces.size() << " blocks)");
     MLOG_PEER_STATE("received objects");
 
- if (peer_cxt.m_expect_response != NOTIFY_RESPONSE_GET_OBJECTS::ID)
+ if (peer_cxt.m_expect_response != NOTIFY_RESPONSE_GET_BLOCKS::ID)
     {
-      MERROR(peer_cxt<<"Got NOTIFY_RESPONSE_GET_OBJECTS out of the blue, dropping connection");
+      MERROR(peer_cxt<<"Got NOTIFY_RESPONSE_GET_BLOCKS out of the blue, dropping connection");
       drop_connection(peer_cxt, true, false);
       return 1;
     }
@@ -655,7 +655,7 @@ try{
     m_sync_download_objects_size += size;
     MDEBUG(peer_cxt << " downloaded " << size << " bytes worth of blocks");
 
-    const auto local_height =m_core.get_current_blockchain_height() ;
+    const auto local_height =m_core.get_chain_height() ;
     if( rsp.chain_height <=local_height)
     {
       MERROR(peer_cxt<<"why sync with shorter chains?" << rsp.chain_height<<"/"<< local_height << ", dropping connection");
@@ -769,12 +769,12 @@ try{
             m_last_add_end_time = tools::get_tick_count();
         });
         m_sync_start_time = boost::posix_time::microsec_clock::universal_time();
-        m_sync_start_height = m_core.get_current_blockchain_height();
+        m_sync_start_height = m_core.get_chain_height();
         m_period_start_time = m_sync_start_time;
 
         while (1)
         {
-          const uint64_t local_height = m_core.get_current_blockchain_height();
+          const uint64_t local_height = m_core.get_chain_height();
           uint64_t start_height;
          
           boost::uuids::uuid span_con_id;
@@ -852,7 +852,7 @@ try{
 
           m_block_queue.remove_spans(span_con_id, start_height);
 
-          const uint64_t cur_chain_height = m_core.get_current_blockchain_height();
+          const uint64_t cur_chain_height = m_core.get_chain_height();
           if (cur_chain_height > local_height)
           {
             const uint64_t target_blockchain_height = m_core.get_target_blockchain_height();
@@ -1135,7 +1135,7 @@ skip:
       {
         size_t nspans = m_block_queue.get_num_filled_spans();
         size_t size = m_block_queue.get_data_size();
-        const uint64_t cur_chain_height = m_core.get_current_blockchain_height();
+        const uint64_t cur_chain_height = m_core.get_chain_height();
       
         const size_t block_queue_size_threshold = m_block_download_max_size ? m_block_download_max_size : BLOCK_QUEUE_SIZE_THRESHOLD;
         bool queue_proceed = nspans < BLOCK_QUEUE_NSPANS_THRESHOLD || size < block_queue_size_threshold;
@@ -1178,7 +1178,7 @@ skip:
           bool filled = false;
           boost::posix_time::ptime time;
           boost::uuids::uuid connection_id;
-          if (m_block_queue.has_next_span(m_core.get_current_blockchain_height(), filled, time, connection_id) && filled)
+          if (m_block_queue.has_next_span(m_core.get_chain_height(), filled, time, connection_id) && filled)
           {
             MDEBUG(peer_cxt, "No other thread is adding blocks, and next span needed is ready, resuming");
             MLOG_PEER_STATE("resuming");
@@ -1221,11 +1221,11 @@ skip:
 
       peer_cxt.m_state = cryptonote_peer_context::state_synchronizing;
 
-    MDEBUG(peer_cxt << " download_next_span: check " << check_having_blocks  << ", m_needed_blocks " << peer_cxt.m_needed_blocks.size() << " lrh " << peer_cxt.m_last_response_height << ", chain "<< m_core.get_current_blockchain_height() );
+    MDEBUG(peer_cxt << " download_next_span: check " << check_having_blocks  << ", m_needed_blocks " << peer_cxt.m_needed_blocks.size() << " lrh " << peer_cxt.m_last_response_height << ", chain "<< m_core.get_chain_height() );
     if(peer_cxt.m_needed_blocks.size())
     {
       //we know objects that we need, request this objects
-      NOTIFY_REQUEST_GET_OBJECTS::request req;
+      NOTIFY_REQUEST_GET_BLOCKS::request req;
       bool is_next = false;
       size_t count = 0;
    
@@ -1241,7 +1241,7 @@ skip:
         skip_unneeded_hashes(peer_cxt, false);
         if (peer_cxt.m_needed_blocks.empty() && peer_cxt.m_num_requested == 0)
         {
-          if (peer_cxt.m_remote_chain_height > m_block_queue.get_next_needed_height(m_core.get_current_blockchain_height()))
+          if (peer_cxt.m_remote_chain_height > m_block_queue.get_next_needed_height(m_core.get_chain_height()))
           {
             MERROR(peer_cxt << "Nothing we can request from this peer, and we did not request anything previously");
             return false;
@@ -1294,18 +1294,18 @@ skip:
        
         peer_cxt.m_last_request_time = boost::posix_time::microsec_clock::universal_time();
         peer_cxt.m_sync_start_height = span.first;
-        peer_cxt.m_expect_response = NOTIFY_RESPONSE_GET_OBJECTS::ID;
-        MLOG_P2P_MESSAGE("-->>NOTIFY_REQUEST_GET_OBJECTS: blocks.size()=" << req.blocks.size()
+        peer_cxt.m_expect_response = NOTIFY_RESPONSE_GET_BLOCKS::ID;
+        MLOG_P2P_MESSAGE("-->>NOTIFY_REQUEST_GET_BLOCKS: blocks.size()=" << req.blocks.size()
             << "requested blocks count=" << count ,< " from " << span.first << ", first hash " << req.blocks.front());
      
         peer_cxt.m_num_requested += req.blocks.size();
-        post_notify<NOTIFY_REQUEST_GET_OBJECTS>(req, peer_cxt);
+        post_notify<NOTIFY_REQUEST_GET_BLOCKS>(req, peer_cxt);
         MLOG_PEER_STATE("requesting objects");
         return true;
       }
 
       // we can do nothing, so drop this peer to make room for others unless we think we've downloaded all we need
-      const uint64_t blockchain_height = m_core.get_current_blockchain_height();
+      const uint64_t blockchain_height = m_core.get_chain_height();
       if (std::max(blockchain_height, m_block_queue.get_next_needed_height(blockchain_height)) >= m_core.get_target_blockchain_height())
       {
         peer_cxt.m_state = cryptonote_peer_context::state_normal;
@@ -1322,7 +1322,7 @@ skip:
     // we might have been called from the "received chain entry" handler, and end up
     // here because we can't use any of those blocks (maybe because all of them are
     // actually already requested). In this case, if we can add blocks instead, do so
-    if (m_core.get_current_blockchain_height() < m_core.get_target_blockchain_height())
+    if (m_core.get_chain_height() < m_core.get_target_blockchain_height())
     {
       const boost::unique_lock<boost::mutex> sync{m_sync_lock, boost::try_to_lock};
       if (sync.owns_lock())
@@ -1347,7 +1347,7 @@ skip:
     {//we have to fetch more objects ids, request blockchain entry
 
       NOTIFY_REQUEST_CHAIN::request r {m_core.get_blockchain().get_short_chain_history()};
-      peer_cxt.m_sync_start_height = m_core.get_current_blockchain_height();
+      peer_cxt.m_sync_start_height = m_core.get_chain_height();
       {
         // we'll want to start off from where we are on that peer, which may not be added yet
         if (peer_cxt.m_last_known_hash != crypto::null_hash && r.block_ids.front() != peer_cxt.m_last_known_hash)
@@ -1375,7 +1375,7 @@ skip:
       peer_cxt.m_state = cryptonote_peer_context::state_normal;
       if (peer_cxt.m_remote_chain_height >= m_core.get_target_blockchain_height())
       {
-        if (m_core.get_current_blockchain_height() >= m_core.get_target_blockchain_height())
+        if (m_core.get_chain_height() >= m_core.get_target_blockchain_height())
         {
           MGINFO_GREEN("SYNCHRONIZED OK");
           on_connection_synchronized();
@@ -1393,7 +1393,7 @@ skip:
   bool t_cryptonote_protocol_handler<t_core>::on_connection_synchronized()
   {
     bool val_expected = false;
-    uint64_t cur_chain_height = m_core.get_current_blockchain_height();
+    uint64_t cur_chain_height = m_core.get_chain_height();
     if( m_synchronized.compare_exchange_strong(val_expected, true))
     {
       if ((cur_chain_height > m_sync_start_height) && (m_sync_spans_downloaded > 0))
@@ -1508,9 +1508,9 @@ skip:
     return m_p2p->send_txs(std::move(arg.txs),  source, tx_relay) ;
   }
   template<class t_core>
-  uint64_t t_cryptonote_protocol_handler<t_core>::get_current_blockchain_height()const
+  uint64_t t_cryptonote_protocol_handler<t_core>::get_chain_height()const
   {
-    return m_core.get_current_blockchain_height();
+    return m_core.get_chain_height();
   }
   template<class t_core>
    void t_cryptonote_protocol_handler<t_core>::on_transactions_relayed(epee::span<const cryptonote::blobdata> tx_blobs, relay_method tx_relay) 
@@ -1567,7 +1567,7 @@ skip:
   template<class t_core>
   std::pair<uint32_t, uint32_t> t_cryptonote_protocol_handler<t_core>::get_next_needed_pruning_stripe() const
   {
-    const uint64_t cur_chain_height = m_core.get_current_blockchain_height();
+    const uint64_t cur_chain_height = m_core.get_chain_height();
     const uint64_t want_height_from_block_queue = m_block_queue.get_next_needed_height(cur_chain_height);
     const uint64_t want_height = std::max(cur_chain_height, want_height_from_block_queue);
     uint64_t blockchain_height = m_core.get_target_blockchain_height();
@@ -1607,7 +1607,7 @@ skip:
   bool t_cryptonote_protocol_handler<t_core>::needs_new_sync_connections() const
   {
     const uint64_t target = m_core.get_target_blockchain_height();
-    const uint64_t height = m_core.get_current_blockchain_height();
+    const uint64_t height = m_core.get_chain_height();
     if (target && target <= height)
       return false;
     size_t n_out_peers = 0;

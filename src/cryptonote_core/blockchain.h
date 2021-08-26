@@ -158,21 +158,6 @@ namespace cryptonote
      */
     bool get_blocks(uint64_t start_offset, size_t count, std::vector<BlobBlock>& blocks) const;
 
-    /**
-     * @brief compiles a list of all blocks stored as alternative chains
-     *
-     * @param blocks return-by-reference container to put result blocks in
-     *
-     * @return true
-     */
-    bool get_alternative_blocks(std::vector<block>& blocks) const;
-
-    /**
-     * @brief returns the number of alternative blocks stored
-     *
-     * @return the number of alternative blocks stored
-     */
-    size_t get_alternative_blocks_count() const;
 
     /**
      * @brief gets a block's hash given a height
@@ -232,7 +217,7 @@ namespace cryptonote
      *
      * @return the height
      */
-    uint64_t get_current_blockchain_height() const;
+    uint64_t get_chain_height() const;
 
     /**
      * @brief get the hash of the most recent block on the blockchain
@@ -253,14 +238,6 @@ namespace cryptonote
     std::tuple<crypto::hash,uint64_t> get_top_block_hash()const;
 
 
-    /**
-     * @brief check currently stored difficulties against difficulty checkpoints
-     *
-     * @return {flag, height} flag: true if all difficulty checkpoints pass, height: the last checkpoint height before the difficulty drift bug starts
-     */
-    std::pair<bool, uint64_t> check_difficulty_checkpoints() const;
-
- 
     /**
      * @brief adds a block to the blockchain
      *
@@ -292,7 +269,7 @@ namespace cryptonote
      * @return true if block template filled in successfully, else false
      */
 
-    cryptonote::BlockTemplate create_block_template(const crypto::hash *from_block, const account_public_address& miner_address, const blobdata& ex_nonc);
+    cryptonote::BlockTemplate create_block_template( const account_public_address& miner_address, const blobdata& ex_nonc);
 
     /**
      * @brief checks if a block is known about with a given hash
@@ -365,22 +342,6 @@ namespace cryptonote
     uint64_t find_blockchain_split_height(const std::list<crypto::hash>& qblock_ids) const;
 
 
-    /**
-     * @brief retrieves a set of blocks and their transactions, and possibly other transactions
-     *
-     * the request object encapsulates a list of block hashes and a (possibly empty) list of
-     * transaction hashes.  for each block hash, the block is fetched along with all of that
-     * block's transactions.  Any transactions requested separately are fetched afterwards.
-     *
-     * @param arg the request
-     * @param rsp return-by-reference the response to fill in
-     *
-     * @return true unless any blocks or transactions are missing
-     */
-    bool handle_get_objects(NOTIFY_REQUEST_GET_OBJECTS::request& arg, NOTIFY_RESPONSE_GET_OBJECTS::request& rsp);
-
-   
-
 
     /**
      * @brief gets specific outputs to mix with
@@ -397,44 +358,6 @@ namespace cryptonote
      */
     bool get_outs(const COMMAND_RPC_GET_OUTPUTS_BIN::request& req, COMMAND_RPC_GET_OUTPUTS_BIN::response& res) const;
 
-  
-
-    /**
-     * @brief gets per block distribution of outputs of a given amount
-     *
-     * @param amount the amount to get a ditribution for
-     * @param from_height the height before which we do not care about the data
-     * @param to_height the height after which we do not care about the data
-     * @param return-by-reference start_height the height of the first rct output
-     * @param return-by-reference distribution the start offset of the first rct output in this block (same as previous if none)
-     * @param return-by-reference base how many outputs of that amount are before the stated distribution
-     */
-    bool get_output_distribution(uint64_t from_height, uint64_t to_height, uint64_t &start_height, std::vector<uint64_t> &distribution) const;
-
-    /**
-     * @brief gets the global indices for outputs from a given transaction
-     *
-     * This function gets the global indices for all outputs belonging
-     * to a specific transaction.
-     *
-     * @param tx_id the hash of the transaction to fetch indices for
-     * @param indexs return-by-reference the global indices for the transaction's outputs
-     * @param n_txes how many txes in a row to get results for
-     *
-     * @return false if the transaction does not exist, or if no indices are found, otherwise true
-     */
-    bool get_tx_outputs_gindexs(const crypto::hash& tx_id, std::vector<uint64_t>& indexs) const;
-    bool get_tx_outputs_gindexs(const crypto::hash& tx_id, size_t n_txes, std::vector<std::vector<uint64_t>>& indexs) const;
-
-    /**
-     * @brief stores the blockchain
-     *
-     * If Blockchain is handling storing of the blockchain (rather than BlockchainDB),
-     * this initiates a blockchain save.
-     *
-     * @return true unless saving the blockchain fails
-     */
-    bool store_blockchain();
 
 
 
@@ -473,16 +396,6 @@ namespace cryptonote
      * @param enforce the new enforcement setting
      */
     void set_enforce_dns_checkpoints(bool enforce);
-
-    /**
-     * @brief loads new checkpoints from a file and optionally from DNS
-     *
-     * @param file_path the path of the file to look for and load checkpoints from
-     * @param check_dns whether or not to check for new DNS-based checkpoints
-     *
-     * @return false if any enforced checkpoint type fails to load, otherwise true
-     */
-    bool update_checkpoints(const std::string& file_path, bool check_dns);
 
 
     // user options, must be called before calling init()
@@ -642,21 +555,8 @@ namespace cryptonote
     }
 
    
-    /**
-     * @brief returns a set of known alternate chains
-     *
-     * @return a vector of chains
-     */
-    std::vector<std::pair<block_extended_info,std::vector<crypto::hash>>> get_alternative_chains() const;
+ 
 
-    void add_txpool_tx(const crypto::hash &txid, const cryptonote::blobdata &blob, const txpool_tx_meta_t &meta);
-    void update_txpool_tx(const crypto::hash &txid, const txpool_tx_meta_t &meta);
-    void remove_txpool_tx(const crypto::hash &txid);
-    uint64_t get_txpool_tx_count(bool include_sensitive = false) const;
-    bool get_txpool_tx_meta(const crypto::hash& txid, txpool_tx_meta_t &meta) const;
-    bool get_txpool_tx_blob(const crypto::hash& txid, cryptonote::blobdata &bd, relay_category tx_category) const;
-    cryptonote::blobdata get_txpool_tx_blob(const crypto::hash& txid, relay_category tx_category) const;
-    bool for_all_txpool_txes(std::function<bool(const crypto::hash&, const txpool_tx_meta_t&, const cryptonote::blobdata_ref*)>, bool include_blob = false, relay_category tx_category = relay_category::broadcasted) const;
     bool txpool_tx_matches_category(const crypto::hash& tx_hash, relay_category category);
 
    
@@ -668,32 +568,13 @@ namespace cryptonote
     void lock();
     void unlock();
 
-
-    /**
-     * @brief returns the timestamps of the last N blocks
-     */
-    std::vector<time_t> get_last_block_timestamps(unsigned int blocks) const;
-
     uint64_t get_block_timestamp(const uint64_t& height) const;
     uint64_t get_block_already_generated_coins(uint64_t height) const;
    
 
     difficulty_type get_block_cumulative_difficulty(uint64_t height) const;
   
-    /**
-     * @brief get the "adjusted time"
-     *
-     * Computes the median timestamp of the previous 60 blocks, projects it
-     * onto the current block to get an 'adjusted median time' which approximates
-     * what the current block's timestamp should be. Also projects the previous
-     * block's timestamp to estimate the current block's timestamp.
-     * 
-     * Returns the minimum of the two projections, or the current local time on
-     * the machine if less than 60 blocks are available.
-     *
-     * @return current time approximated from chain data
-     */
-    uint64_t get_adjusted_time(uint64_t height) const;
+
 
  /**
      * @brief validate a transaction's inputs and their keys
@@ -861,17 +742,7 @@ namespace cryptonote
 
     void return_tx_to_pool(std::vector<std::pair<transaction, blobdata>> &txs);
 
-    /**
-     * @brief make sure a transaction isn't attempting a double-spend
-     *
-     * @param tx the transaction to check
-     * @param keys_this_block a cumulative list of spent keys for the current block
-     *
-     * @return false if a double spend was detected, otherwise true
-     */
-    bool check_for_double_spend(const transaction& tx, key_images_container& keys_this_block) const;
 
- 
     /**
      * @brief loads block hashes from compiled-in data set
      *

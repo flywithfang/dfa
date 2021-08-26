@@ -103,8 +103,6 @@ namespace cryptonote
 /** a pair of <transaction hash, output index>, typedef for convenience */
 typedef std::pair<crypto::hash, uint64_t> tx_out_index;
 
-extern const command_line::arg_descriptor<std::string> arg_db_sync_mode;
-extern const command_line::arg_descriptor<bool, false> arg_db_salvage;
 
 enum class relay_category : uint8_t
 {
@@ -147,7 +145,7 @@ struct tx_data_t
 struct alt_block_data_t
 {
   uint64_t height;
-  uint64_t cumulative_weight;
+  uint64_t reserved;
   uint64_t cumulative_difficulty_low;
   uint64_t cumulative_difficulty_high;
   uint64_t already_generated_coins;
@@ -818,20 +816,6 @@ public:
    * @return the timestamp
    */
   virtual uint64_t get_block_timestamp(const uint64_t& height) const = 0;
-
-  /**
-   * @brief fetch a block's cumulative number of rct outputs
-   *
-   * The subclass should return the numer of rct outputs in the blockchain
-   * up to the block with the given height (inclusive).
-   *
-   * If the block does not exist, the subclass should throw BLOCK_DNE
-   *
-   * @param height the height requested
-   *
-   * @return the cumulative number of rct outputs
-   */
-  virtual std::vector<uint64_t> get_block_cumulative_rct_outputs(const std::vector<uint64_t> &heights) const = 0;
 
   /**
    * @brief fetch the top block's timestamp
@@ -1641,8 +1625,15 @@ private:
 };
 
 class db_rtxn_guard: public db_txn_guard {
- public: db_rtxn_guard(BlockchainDB *db): db_txn_guard(db, true) {} };
-class db_wtxn_guard: public db_txn_guard { public: db_wtxn_guard(BlockchainDB *db): db_txn_guard(db, false) {} };
+ public: 
+  db_rtxn_guard(BlockchainDB *db): db_txn_guard(db, true) {} 
+};
+
+class db_wtxn_guard: public db_txn_guard
+ {
+  public: 
+    db_wtxn_guard(BlockchainDB *db): db_txn_guard(db, false) {} 
+  };
 
 BlockchainDB *new_db();
 

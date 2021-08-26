@@ -44,31 +44,11 @@ using namespace epee;
 #include "crypto/hash.h"
 #include "ringct/rctSigs.h"
 #include "crypto/rx-hash.h"
-#include "cryptonote_core/alt_chain.hpp"
 
 using namespace crypto;
 
 namespace cryptonote
 {
-  //---------------------------------------------------------------
-  void classify_addresses(const std::vector<tx_destination_entry> &dsts, const boost::optional<cryptonote::account_public_address>& change_addr, size_t &num_stdaddresses)
-  {
-    num_stdaddresses = 0;
-    std::unordered_set<cryptonote::account_public_address> unique_dst_addresses;
-    for(const tx_destination_entry& dst_entr: dsts)
-    {
-      if (change_addr && dst_entr.addr == change_addr)
-        continue;
-      if (unique_dst_addresses.count(dst_entr.addr) == 0)
-      {
-        unique_dst_addresses.insert(dst_entr.addr);
-        {
-          ++num_stdaddresses;
-        }
-      }
-    }
-    MINFO("dsts include " << num_stdaddresses << " standard addresses " );
-  }
 
   //---------------------------------------------------------------
   std::tuple<bool, transaction> construct_miner_tx(size_t height, uint64_t fee, const account_public_address &miner_address, const varbinary& blob_reserve,  uint8_t hard_fork_version) {
@@ -111,28 +91,7 @@ namespace cryptonote
     MDEBUG("construct_miner_tx: reward " << print_money(block_reward) <<", fee " << fee << ",height "<<height<<",extra size "<<tx.extra.size());
     return std::make_tuple(true,tx);
   }
-  //---------------------------------------------------------------
-  crypto::public_key get_destination_view_key_pub(const std::vector<tx_destination_entry> &dsts, const boost::optional<cryptonote::account_public_address>& change_addr)
-  {
-    account_public_address addr = {null_pkey, null_pkey};
-    size_t count = 0;
-    for (const auto &i : dsts)
-    {
-      if (i.amount == 0)
-        continue;
-      if (change_addr && i.addr == *change_addr)
-        continue;
-      if (i.addr == addr)
-        continue;
-      if (count > 0)
-        return null_pkey;
-      addr = i.addr;
-      ++count;
-    }
-    if (count == 0 && change_addr)
-      return change_addr->m_view_public_key;
-    return addr.m_view_public_key;
-  }
+  
 
  bool   generate_otk(const crypto::secret_key &tx_sec,const cryptonote::tx_destination_entry &dst_entr, const size_t output_index,rct::key & shared_sec,  crypto::public_key &otk) {
 
@@ -278,21 +237,6 @@ namespace cryptonote
     return true;
   }
 
-  bool find_nonce_for_given_block( const Blockchain *pbc,block& bl, const difficulty_type& diffic, uint64_t height)
-  {
-    for(; bl.nonce != std::numeric_limits<uint32_t>::max(); bl.nonce++)
-    {
-      crypto::hash h=cryptonote::get_block_pow(*pbc, bl, height);
-      if(cryptonote::check_hash(h, diffic))
-      {
-        bl.invalidate_hashes();
-        MINFO("find_nonce_for_given_block "<<h<<"/"<<diffic<<","<<bl.prev_id<<",n="<<bl.nonce<<",h="<<height);
-        return true;
-      }
-    }
-    bl.invalidate_hashes();
-    return false;
-  }
   //---------------------------------------------------------------
   block make_genesis_block( std::string const & genesis_tx , uint32_t nonce    )
   {
@@ -307,42 +251,21 @@ namespace cryptonote
     bl.minor_version = CURRENT_BLOCK_MINOR_VERSION;
     bl.timestamp = 0;
     bl.nonce = nonce;
-    find_nonce_for_given_block(nullptr,bl, 1, 0);
+    for(; bl.nonce != std::numeric_limits<uint32_t>::max(); bl.nonce++)
+    {
+        blobdata bd = get_block_hashing_blob(bl);
+        crypto::hash K{};
+        const auto pow = rx_slow_hash(K, bd.data(), bd.size());
+        if(cryptonote::check_hash(pow, 1))
+        {
+          MINFO("find_nonce_for_given_block "<<h<<"/"<<diffic<<","<<bl.prev_id<<",n="<<bl.nonce<<",h="<<height);
+          break;
+        }
+    }
     bl.invalidate_hashes();
     return bl;
   }
-  //---------------------------------------------------------------
-   crypto::hash  get_altblock_pow(const AltChain &bc, const block& b, const uint64_t chain_height)
-  {
-    blobdata bd = get_block_hashing_blob(b);
-    
-    crypto::hash K{};
-    if (chain_height>0)
-    {
-      const auto K_heigth = rx_seedheight(chain_height);
-      K = bc.get_block_hash_by_height(K_heigth);
-    } 
-    auto pow = rx_slow_hash(K, bd.data(), bd.size());
-    return pow;
-  }
-
-
-  crypto::hash get_block_pow(const Blockchain &bc, const block& b, const uint64_t chain_height)
-  {
-  
-    blobdata bd = get_block_hashing_blob(b);
-    
-    crypto::hash K{};
-    if (chain_height>0)
-    {
-      const auto K_heigth = rx_seedheight(chain_height);
-      K = bc.get_block_hash_by_height(K_heigth);
-    } 
-    auto pow = rx_slow_hash(K, bd.data(), bd.size());
-    return pow;
-  }
-
-
+ 
  bool  verify_keys(const crypto::secret_key &secret_key, const crypto::public_key &public_key) {
       crypto::public_key calculated_pub;
       bool r = crypto::secret_key_to_public_key(secret_key, calculated_pub);

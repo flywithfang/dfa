@@ -273,7 +273,6 @@ namespace cryptonote
       uint64_t block_height;
       uint64_t block_timestamp;
       uint64_t received_timestamp;
-      std::vector<uint64_t> output_indices;
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(tx_hash)
@@ -284,7 +283,6 @@ namespace cryptonote
         {
           KV_SERIALIZE(block_height)
           KV_SERIALIZE(block_timestamp)
-          KV_SERIALIZE(output_indices)
         }
        
       END_KV_SERIALIZE_MAP()
@@ -343,31 +341,6 @@ namespace cryptonote
     typedef epee::misc_utils::struct_init<response_t> response;
   };
 
-  //-----------------------------------------------
-  struct COMMAND_RPC_GET_TX_GLOBAL_OUTPUTS_INDEXES
-  {
-    struct request_t: public rpc_request_base
-    {
-      crypto::hash txid;
-      BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE_PARENT(rpc_request_base)
-        KV_SERIALIZE_VAL_POD_AS_BLOB(txid)
-      END_KV_SERIALIZE_MAP()
-    };
-    typedef epee::misc_utils::struct_init<request_t> request;
-
-
-    struct response_t: public rpc_response_base
-    {
-      std::vector<uint64_t> o_indexes;
-
-      BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE_PARENT(rpc_response_base)
-        KV_SERIALIZE(o_indexes)
-      END_KV_SERIALIZE_MAP()
-    };
-    typedef epee::misc_utils::struct_init<response_t> response;
-  };
   //-----------------------------------------------
   struct get_outputs_out
   {
@@ -1954,67 +1927,6 @@ namespace cryptonote
     typedef epee::misc_utils::struct_init<response_t> response;
   };
 
-struct output_distribution_data
-{
-  std::vector<std::uint64_t> distribution;
-  std::uint64_t start_height;
-};
-
-
-  struct COMMAND_RPC_GET_OUTPUT_DISTRIBUTION
-  {
-    struct request_t: public rpc_request_base
-    {
-     
-      uint64_t from_height;
-      uint64_t to_height;
-      bool binary;
-
-      BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE_PARENT(rpc_request_base)
-        KV_SERIALIZE_OPT(from_height, (uint64_t)0)
-        KV_SERIALIZE_OPT(to_height, (uint64_t)0)
-        KV_SERIALIZE_OPT(binary, true)
-      END_KV_SERIALIZE_MAP()
-    };
-    typedef epee::misc_utils::struct_init<request_t> request;
-
-    struct distribution
-    {
-      output_distribution_data data;
-      bool binary;
-
-      BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE_N(data.start_height, "start_height")
-        KV_SERIALIZE(binary)
-        if (this_ref.binary)
-        {
-          if (is_store)
-          {
-              KV_SERIALIZE_CONTAINER_POD_AS_BLOB_N(data.distribution, "distribution")
-          }
-          else
-          {
-         
-              KV_SERIALIZE_CONTAINER_POD_AS_BLOB_N(data.distribution, "distribution")
-          }
-        }
-        else
-          KV_SERIALIZE_N(data.distribution, "distribution")
-      END_KV_SERIALIZE_MAP()
-    };
-
-    struct response_t: public rpc_response_base
-    {
-      distribution dist;
-
-      BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE_PARENT(rpc_response_base)
-        KV_SERIALIZE(dist)
-      END_KV_SERIALIZE_MAP()
-    };
-    typedef epee::misc_utils::struct_init<response_t> response;
-  };
 
   struct COMMAND_RPC_ACCESS_INFO
   {

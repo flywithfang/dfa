@@ -222,7 +222,7 @@ namespace cryptonote
   /************************************************************************/
   /*                                                                      */
   /************************************************************************/
-  struct NOTIFY_REQUEST_GET_OBJECTS
+  struct NOTIFY_REQUEST_GET_BLOCKS
   {
     const static int ID = BC_COMMANDS_POOL_BASE + 3;
 
@@ -239,7 +239,7 @@ namespace cryptonote
     typedef epee::misc_utils::struct_init<request_t> request;
   };
 
-  struct NOTIFY_RESPONSE_GET_OBJECTS
+  struct NOTIFY_RESPONSE_GET_BLOCKS
   {
     const static int ID = BC_COMMANDS_POOL_BASE + 4;
 

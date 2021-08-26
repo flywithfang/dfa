@@ -124,7 +124,7 @@ namespace
             return false;
         }
 
-        virtual uint64_t get_current_blockchain_height() const final
+        virtual uint64_t get_chain_height() const final
         {
             return 0;
         }

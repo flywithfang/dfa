@@ -44,7 +44,7 @@ namespace cryptonote
     AltChain(BlockchainDB&db,const crypto::hash &prev_id);
 
 
-    uint64_t height(){
+    uint64_t get_chain_height()const{
     	return split_b_height+alt_chain.size()+1;
     }
     uint64_t coins_generated();
@@ -54,6 +54,8 @@ namespace cryptonote
 	uint64_t get_block_already_generated_coins(uint64_t height) const;
 
 	std::tuple<crypto::hash,uint64_t> get_top_block_hash()const;
+    bool tx_exists(const crypto::hash& h) const ;
+    add_block()
   };
 
 }

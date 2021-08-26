@@ -104,7 +104,7 @@ namespace cryptonote
      *
      * @param bchs a Blockchain class instance, for getting chain info
      */
-    tx_memory_pool(Blockchain& bchs);
+    tx_memory_pool(BlockchainDB& bchs);
 
 
 
@@ -295,25 +295,7 @@ namespace cryptonote
      */
     size_t get_transactions_count(bool include_sensitive = false) const;
 
-     /**
-     * @brief remove transactions from the pool which are no longer valid
-     *
-     * With new versions of the currency, what conditions render a transaction
-     * invalid may change.  This function clears those which were received
-     * before a version change and no longer conform to requirements.
-     *
-     * @param version the version the transactions must conform to
-     *
-     * @return the number of transactions removed
-     */
-    size_t validate(uint8_t version);
-
-     /**
-      * @brief return the cookie
-      *
-      * @return the cookie
-      */
-    uint64_t cookie() const { return m_cookie; }
+    
 
     /**
      * @brief get the cumulative txpool weight in bytes
@@ -430,8 +412,6 @@ namespace cryptonote
 
     std::atomic<uint64_t> m_cookie; //!< incremented at each change
 
-
-    Blockchain& m_blockchain;  //!< reference to the Blockchain object
 
     size_t m_txpool_max_weight;
     size_t m_txpool_weight;

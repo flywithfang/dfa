@@ -2,13 +2,30 @@
 #include "cryptonote_basic/difficulty.h"
 
 namespace cryptonote{
+
 template<class Blockchain>
-  bool check_block_timestamp(blockChain & chain,const block& b) const {
+   crypto::hash get_block_pow(const Blockchain &bc, const block& b, const uint64_t chain_height)
+  {
+  
+    blobdata bd = get_block_hashing_blob(b);
+    
+    crypto::hash K{};
+    {
+      const auto K_heigth = rx_seedheight(chain_height);
+      K = bc.get_block_hash_by_height(K_heigth);
+    } 
+    auto pow = rx_slow_hash(K, bd.data(), bd.size());
+    return pow;
+  }
+
+
+template<class Blockchain>
+  bool check_block_timestamp(const blockChain & chain,const block& b) const {
 
   const auto max_time =  (uint64_t)time(NULL) + BLOCK_MINE_TIME_LIMIT;
   if(b.timestamp > max_time)
   {
-    MERROR_VER("Timestamp of block with id: " << get_block_hash(b) << ", " << b.timestamp << ", bigger than local time + 2 hours");
+    MERROR_VER("Timestamp of block with bh: " << get_block_hash(b) << ", " << b.timestamp << ", bigger than local time + 2 hours");
     return false;
   }
 
@@ -25,7 +42,7 @@ template<class Blockchain>
   }
 }
 template<class Blockchain>
-difficulty_type get_blockchain_diff(blockChain & chain)
+difficulty_type get_blockchain_diff(const blockChain & chain)
 {
  	 MTRACE("Blockchain::" << __func__);
 
@@ -103,7 +120,95 @@ bool validate_miner_transaction(const block& b,  uint64_t fee,  uint8_t version)
   return true;
 }
 
-block_verification_context validate_block(const block &bl){
+template<class Blockchain>
+block_verification_context validate_new_block(const Blockchain & chain, const tx_memory_pool & pool, const block &bl){
+  block_verification_context bvc{};
+
+  db_rtxn_guard rtxn_guard(m_db);
+  const auto bh = get_block_hash(bl);
+  const auto chain_height= chain.get_chain_height();
+
+  if(chain_height>0){
+      const auto [top_hash,top_height] chain.get_top_block_hash();
+      if(bl.prev_id != top_hash)
+      {
+        MERROR_VER("Block has wrong prev_id: " << bl.prev_id << std::endl << "expected: " << top_hash);
+        bvc.m_verifivation_failed = true;
+
+        return bvc;
+      }
+  }
+
+  // make sure block timestamp is not less than the median timestamp
+  // of a set number of the most recent blocks.
+  if(!check_block_timestamp(chain,bl))
+  {
+    MERROR_VER("Block with bh: " << bh << std::endl << "has invalid timestamp: " << bl.timestamp);
+    bvc.m_verifivation_failed = true;
+    return bvc;
+  }
+
+    const auto new_b_height=chain_height;
+
+  // get the target difficulty for the block.
+  // the calculation can overflow, among other failure cases,
+  // so we need to check the return type.
+  // FIXME: get_blockchain_diff can also assert, look into
+  // changing this to throwing exceptions instead so we can clean up.
+  const auto block_diff = get_blockchain_diff(chain);
+
+  const auto pow = get_block_pow(chain, bl, new_b_height);
+  if(!check_hash(pow, block_diff))
+  {
+    MERROR_VER("Block with bh: " << bh << std::endl << "does not have enough proof of work: " << pow << " at height " << new_b_height << ", unexpected difficulty: " << block_diff);
+    bvc.m_verifivation_failed = true;
+    bvc.m_bad_pow = true;
+    return bvc;
+  }
+
+  // sanity check basic miner tx properties;
+  if(!prevalidate_miner_transaction(bl, new_b_height))
+  {
+    MERROR_VER("Block with bh: " << bh << " failed to pass prevalidation");
+    bvc.m_verifivation_failed = true;
+    return bvc;
+  }
+  uint64_t fee=0;
+ for (const auto& tx_hash : bl.tx_hashes)
+  {
+    transaction tx_tmp;
+    blobdata txblob;
+  // XXX old code does not check whether tx exists
+    if (m_db->tx_exists(tx_hash))
+    {
+      MERROR("Block with bh: " << bh << " attempting to add transaction already in blockchain with bh: " << tx_hash);
+      bvc.m_verifivation_failed = true;
+      return bvc;
+    }
+
+    // get transaction with hash <tx_hash> from tx_pool
+    if(!pool.have_tx(tx_hash, relay_category::all))
+    {
+      MERROR_VER("Block with bh: " << bh  << " has at least one unknown transaction with bh: " << tx_hash);
+      bvc.m_verifivation_failed = true;
+      return bvc;
+    }
+
+    fee += tx.fee();
+  }
+
+  if(!validate_miner_transaction(bl,  fee, m_hardfork->get_current_version()))
+  {
+    MERROR_VER("Block with bh: " << bh << " has incorrect miner transaction");
+    bvc.m_verifivation_failed = true;
+    return bvc;
+  }
+  return bvc;
+}
+
+
+block_verification_context Blockchain::validate_sync_block(const BlobBlock& bb, std::vector<BlobTx> &tx_ps){
+
   block_verification_context bvc{};
 
   db_rtxn_guard rtxn_guard(m_db);
@@ -111,6 +216,7 @@ block_verification_context validate_block(const block &bl){
   const auto chain_height= m_db.height();
   const auto top_hash = chain_height==0 ? null_hash : get_top_hash();
   const auto new_b_height=chain_height;
+  const auto & bl = bb.b;
   if(bl.prev_id != top_hash)
   {
     MERROR_VER("Block with id: " << id << std::endl << "has wrong prev_id: " << bl.prev_id << std::endl << "expected: " << top_hash);
@@ -133,7 +239,7 @@ block_verification_context validate_block(const block &bl){
   // so we need to check the return type.
   // FIXME: get_blockchain_diff can also assert, look into
   // changing this to throwing exceptions instead so we can clean up.
-  const difficulty_type block_diff = get_blockchain_diff(*this);
+  const difficulty_type block_diff = get_blockchain_diff();
 
   const auto pow = get_block_pow(*this, bl, new_b_height);
   if(!check_hash(pow, block_diff))
@@ -151,6 +257,12 @@ block_verification_context validate_block(const block &bl){
     bvc.m_verifivation_failed = true;
     return bvc;
   }
+
+  if(bl.tx_hashes.size()!=tx_ps.size()){
+     bvc.m_verifivation_failed = true;
+    return bvc;
+  }
+
   uint64_t fee=0;
  for (const auto& tx_hash : bl.tx_hashes)
   {
@@ -183,7 +295,20 @@ block_verification_context validate_block(const block &bl){
     bvc.m_verifivation_failed = true;
     return bvc;
   }
+
+  for(auto & e : tx_ps){
+    const auto & h2= get_transaction_hash(e.tx);
+    if(std::find(bl.tx_hashes.begin(),bl.tx_hashes.end(),h2)==b.tx_hashes.end()){
+      MERROR("cannot find tx hash in block"<<h2);
+       bvc.m_verifivation_failed = true;
+        return bvc;
+    }
+  }
   return bvc;
+
 }
+ bool swap_chain(Blockchain main,Blockchain alt){
+
+ }
 
 }

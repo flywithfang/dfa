@@ -294,9 +294,9 @@ namespace cryptonote
   uint64_t bi_coins;
   uint64_t bi_diff_lo;
   uint64_t bi_diff_hi;
-  crypto::hash bi_hash;
-  uint64_t bi_cum_rct;
   uint64_t reserved;
+  uint64_t reserved;
+  crypto::hash bi_hash;
 };
 
 
@@ -704,17 +704,6 @@ void BlockchainLMDB::__add_block(const block& blk,   const difficulty_type& cum_
   bi.bi_diff_hi = ((cum_diff >> 64) & 0xffffffffffffffff).convert_to<uint64_t>();
   bi.bi_diff_lo = (cum_diff & 0xffffffffffffffff).convert_to<uint64_t>();
   bi.bi_hash = blk_hash;
-   auto n = 0;
-  if (m_height>0)
-  {
-    uint64_t last_height = m_height-1;
-    MDB_val_set(h, last_height);
-    if ((result = mdb_cursor_get(m_cur_block_info, (MDB_val *)&zerokval, &h, MDB_GET_BOTH)))
-        throw1(BLOCK_DNE(lmdb_error("Failed to get block info: ", result).c_str()));
-    const mdb_block_info *bi_prev = (const mdb_block_info*)h.mv_data;
-    n += bi_prev->bi_cum_rct;
-  }
-  bi.bi_cum_rct = n+num_rct_outs;
 
   MDB_val_set(val, bi);
   result = mdb_cursor_put(m_cur_block_info, (MDB_val *)&zerokval, &val, MDB_APPENDDUP);
@@ -2247,61 +2236,6 @@ uint64_t BlockchainLMDB::get_block_timestamp(const uint64_t& height) const
   return ret;
 }
 
-std::vector<uint64_t> BlockchainLMDB::get_block_cumulative_rct_outputs(const std::vector<uint64_t> &heights) const
-{
-  MVERBOSE("BlockchainLMDB::" << __func__);
-  check_open();
-  std::vector<uint64_t> res;
-  int result;
-
-  if (heights.empty())
-    return {};
-  res.reserve(heights.size());
-
-  TXN_PREFIX_RDONLY();
-  RCURSOR(block_info);
-
-  MDB_val v;
-
-  uint64_t prev_height = heights[0];
-  uint64_t range_begin = 0, range_end = 0;
-  for (uint64_t height: heights)
-  {
-    if (height >= range_begin && height < range_end)
-    {
-      // nohting to do
-    }
-    else
-    {
-      if (height == prev_height + 1)
-      {
-        MDB_val k2;
-        result = mdb_cursor_get(m_cur_block_info, &k2, &v, MDB_NEXT_MULTIPLE);
-        range_begin = ((const mdb_block_info*)v.mv_data)->bi_height;
-        range_end = range_begin + v.mv_size / sizeof(mdb_block_info); // whole records please
-        if (height < range_begin || height >= range_end)
-          throw0(DB_ERROR(("Height " + std::to_string(height) + " not included in multuple record range: " + std::to_string(range_begin) + "-" + std::to_string(range_end)).c_str()));
-      }
-      else
-      {
-        v.mv_size = sizeof(uint64_t);
-        v.mv_data = (void*)&height;
-        result = mdb_cursor_get(m_cur_block_info, (MDB_val *)&zerokval, &v, MDB_GET_BOTH);
-        range_begin = height;
-        range_end = range_begin + 1;
-      }
-      if (result)
-        throw0(DB_ERROR(lmdb_error("Error attempting to retrieve rct distribution from the db: ", result).c_str()));
-    }
-
-    const mdb_block_info *bi = ((const mdb_block_info *)v.mv_data) + (height - range_begin);
-    res.push_back(bi->bi_cum_rct);
-    prev_height = height;
-  }
-
-  TXN_POSTFIX_RDONLY();
-  return res;
-}
 
 uint64_t BlockchainLMDB::get_top_block_timestamp() const
 {

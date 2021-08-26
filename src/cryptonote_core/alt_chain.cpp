@@ -57,7 +57,7 @@ namespace cryptonote{
       const auto alt_root = alt_chain.front();
       // make sure alt chain doesn't somehow start past the end of the main chain
       const auto alt_root_height =alt_root.height;
-      const auto main_block_heigth = m_db->height()-1;
+      const auto main_block_heigth = m_db.height()-1;
       if(main_block_heigth < alt_root_height)
         throw_and_log("main blockchain wrong height"<<main_block_heigth);
 
@@ -93,7 +93,7 @@ namespace cryptonote{
     if(block_height<=split_b_height)
       return m_db.get_block_hash_from_height(height);
 
-    const auto chain_height= height();
+    const auto chain_height= get_chain_height();
     if(block_height>=chain_height)
       throw_and_log("bad alt block height "<<block_height<<"/"<<chain_height);
     const auto index = block_height - split_b_height-1;
@@ -105,7 +105,7 @@ namespace cryptonote{
        if(block_height<=split_b_height)
       return m_db.get_block_timestamp(height);
 
-    const auto chain_height= height();
+    const auto chain_height= get_chain_height();
     if(block_height>=chain_height)
       throw_and_log("bad alt block height "<<block_height<<"/"<<chain_height);
 
@@ -118,7 +118,7 @@ namespace cryptonote{
        if(block_height<=split_b_height)
         return m_db.get_block_cumulative_difficulty(height);
 
-      const auto chain_height= height();
+      const auto chain_height= get_chain_height();
       if(block_height>=chain_height)
         throw_and_log("bad alt block height "<<block_height<<"/"<<chain_height);
 
@@ -131,7 +131,7 @@ namespace cryptonote{
        if(block_height<=split_b_height)
         return m_db.get_block_already_generated_coins(height);
 
-      const auto chain_height= height();
+      const auto chain_height= get_chain_height();
       if(block_height>=chain_height)
         throw_and_log("bad alt block height "<<block_height<<"/"<<chain_height);
 
@@ -145,7 +145,7 @@ namespace cryptonote{
          if(block_height<=split_b_height)
           return m_db->get_top_block_hash(height);
 
-        const auto chain_height= height();
+        const auto chain_height= get_chain_height();
         if(block_height>=chain_height)
           throw_and_log("bad alt block height "<<block_height<<"/"<<chain_height);
 
@@ -156,6 +156,48 @@ namespace cryptonote{
         return {hash,alt.height};
 
       }
+
+       bool tx_exists(const crypto::hash& tx_hash) const{
+        for(auto & bei: alt_chain){
+
+          const auto it = std::find(bei.b.tx_hashes.begin(),bei.b.tx_hashes.end(),tx_hash);
+          if(it!= bei.b.tx_hashes.end())
+            return true;
+        }
+        return m_db.tx_exists(tx_hash);
+
+       }
+
+    bool add_block(const BlobBlock & bb){
+      const auto &[alt_b,blob]=bb;
+        // FIXME: consider moving away from block_extended_info at some point
+     const auto & bh = get_block_hash(alt_b);
+       // add block to alternate blocks storage,
+    // as well as the current "alt chain" container
+      CHECK_AND_ASSERT_MES(!m_db.get_alt_block(bh, NULL, NULL), false, "insertion of new alternative block returned as it already exists");
+
+          const auto chain_height = get_chain_height();  
+         const uint64_t block_reward = get_outs_money_amount(alt_b.miner_tx);
+         const uint64_t coins_generated = get_block_already_generated_coins(chain_height-1) +  block_reward;
+         const auto cum_diff =  block_diff + get_block_cumulative_difficulty(chain_height-1);
+        block_extended_info bei = {};
+        bei.bl = alt_b;
+        bei.height = altChain.get_chain_height();
+        bei.cum_diff = cum_diff;
+        bei.already_generated_coins = coins_generated;
+
+      
+        cryptonote::alt_block_data_t data;
+        data.height = bei.height;
+        data.cumulative_difficulty_low = (bei.cum_diff & 0xffffffffffffffff).convert_to<uint64_t>();
+        data.cumulative_difficulty_high = ((bei.cum_diff >> 64) & 0xffffffffffffffff).convert_to<uint64_t>();
+        data.already_generated_coins = bei.already_generated_coins;
+
+        m_db->add_alt_block(bh, data,blob);
+
+        alt_chain.push_back(bei);
+        return true;
+    }
 
 
 }

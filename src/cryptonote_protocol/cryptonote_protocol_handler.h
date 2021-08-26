@@ -86,8 +86,8 @@ namespace cryptonote
             HANDLE_NOTIFY_T2(NOTIFY_REQUEST_FLUFFY_MISSING_TX, &cryptonote_protocol_handler::handle_request_fluffy_missing_tx)            
 
 
-            HANDLE_NOTIFY_T2(NOTIFY_REQUEST_GET_OBJECTS, &cryptonote_protocol_handler::handle_request_get_objects)
-            HANDLE_NOTIFY_T2(NOTIFY_RESPONSE_GET_OBJECTS, &cryptonote_protocol_handler::handle_response_get_objects)
+            HANDLE_NOTIFY_T2(NOTIFY_REQUEST_GET_BLOCKS, &cryptonote_protocol_handler::handle_request_get_blocks)
+            HANDLE_NOTIFY_T2(NOTIFY_RESPONSE_GET_BLOCKS, &cryptonote_protocol_handler::handle_response_get_objects)
             HANDLE_NOTIFY_T2(NOTIFY_REQUEST_CHAIN, &cryptonote_protocol_handler::handle_request_chain)
             HANDLE_NOTIFY_T2(NOTIFY_RESPONSE_CHAIN_ENTRY, &cryptonote_protocol_handler::handle_response_chain_entry)
          
@@ -135,7 +135,7 @@ namespace cryptonote
     //----------------- i_bc_protocol_layout ---------------------------------------
     virtual bool relay_block(const blobdata& blob, const uint64_t b_height, cryptonote_peer_context& exclude_context);
     virtual bool relay_transactions(NOTIFY_NEW_TRANSACTIONS::request& arg, const boost::uuids::uuid& source, epee::net_utils::zone zone, relay_method tx_relay);
-    virtual uint64_t get_current_blockchain_height()const;
+    virtual uint64_t get_chain_height()const;
     virtual void on_transactions_relayed(epee::span<const cryptonote::blobdata> tx_blobs, relay_method tx_relay) ;
      virtual bool is_synchronized() const {
      return !no_sync() && m_synchronized;
@@ -144,8 +144,8 @@ namespace cryptonote
   private:
     //----------------- commands handlers ----------------------------------------------
     int handle_notify_new_transactions(int command, NOTIFY_NEW_TRANSACTIONS::request& arg, cryptonote_peer_context& context);
-    int handle_request_get_objects(int command, NOTIFY_REQUEST_GET_OBJECTS::request& arg, cryptonote_peer_context& context);
-    int handle_response_get_objects(int command, NOTIFY_RESPONSE_GET_OBJECTS::request& arg, cryptonote_peer_context& context);
+    int handle_request_get_blocks(int command, NOTIFY_REQUEST_GET_BLOCKS::request& arg, cryptonote_peer_context& context);
+    int handle_response_get_objects(int command, NOTIFY_RESPONSE_GET_BLOCKS::request& arg, cryptonote_peer_context& context);
     int handle_request_chain(int command, NOTIFY_REQUEST_CHAIN::request& arg, cryptonote_peer_context& context);
     int handle_response_chain_entry(int command, NOTIFY_RESPONSE_CHAIN_ENTRY::request& arg, cryptonote_peer_context& context);
     int handle_notify_new_fluffy_block(int command, NOTIFY_NEW_FLUFFY_BLOCK::request& arg, cryptonote_peer_context& context);

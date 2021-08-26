@@ -97,12 +97,12 @@ namespace cryptonote
      core();
 
     /**
-     * @copydoc Blockchain::handle_get_objects
+     * @copydoc Blockchain::handle_get_blocks
      *
-     * @note see Blockchain::handle_get_objects()
+     * @note see Blockchain::handle_get_blocks()
      * @param context connection context associated with the request
      */
-     bool handle_get_objects(NOTIFY_REQUEST_GET_OBJECTS::request& arg, NOTIFY_RESPONSE_GET_OBJECTS::request& rsp, cryptonote_peer_context& context);
+     bool handle_get_blocks(NOTIFY_REQUEST_GET_BLOCKS::request& arg, NOTIFY_RESPONSE_GET_BLOCKS::request& rsp, cryptonote_peer_context& context);
 
      /**
       * @brief calls various idle routines
@@ -164,29 +164,6 @@ namespace cryptonote
        return handle_incoming_txs(epee::to_span(tx_blobs), epee::to_mut_span(tvc), tx_relay, relayed);
      }
 
-
-     //-------------------- i_miner_handler -----------------------
-
-     /**
-      * @brief stores and relays a block found by a miner
-      *
-      * Updates the miner's target block, attempts to store the found
-      * block in Blockchain, and -- on success -- relays that block to
-      * the network.
-      *
-      * @param b the block found
-      * @param bvc returns the block verification flags
-      *
-      * @return true if the block was added to the main chain, otherwise false
-      */
-     virtual bool handle_block_found(const block& b, block_verification_context &bvc) ;
-
-     /**
-      * @copydoc Blockchain::create_block_template
-      *
-      * @note see Blockchain::create_block_template
-      */
-     virtual cryptonote::BlockTemplate get_block_template(const crypto::hash *prev_block, const account_public_address& adr, const blobdata& ex_nonce);
 
      /**
       * @brief called when a transaction is relayed.
@@ -258,11 +235,11 @@ namespace cryptonote
      bool get_test_drop_download_height() const;
 
      /**
-      * @copydoc Blockchain::get_current_blockchain_height
+      * @copydoc Blockchain::get_chain_height
       *
-      * @note see Blockchain::get_current_blockchain_height()
+      * @note see Blockchain::get_chain_height()
       */
-     virtual uint64_t get_current_blockchain_height() const final;
+     virtual uint64_t get_chain_height() const final;
 
      /**
       * @brief get the hash and height of the most recent block
@@ -327,13 +304,6 @@ namespace cryptonote
       * @param enforce_dns enforce DNS checkpoints or not
       */
      void set_enforce_dns_checkpoints(bool enforce_dns);
-
-     /**
-      * @brief set a listener for txes being added to the txpool
-      *
-      * @param callable to notify, or empty function to disable.
-      */
-     void set_txpool_listener(boost::function<void(std::vector<txpool_event>)> zmq_pub);
 
      /**
       * @brief set whether or not to enable or disable DNS checkpoints
@@ -413,19 +383,13 @@ namespace cryptonote
 
  
      /**
-      * @copydoc Blockchain::get_tx_outputs_gindexs
-      *
-      * @note see Blockchain::get_tx_outputs_gindexs
-      */
-     bool get_tx_outputs_gindexs(const crypto::hash& tx_id, std::vector<uint64_t>& indexs) const;
-     bool get_tx_outputs_gindexs(const crypto::hash& tx_id, size_t n_txes, std::vector<std::vector<uint64_t>>& indexs) const;
-
-     /**
       * @copydoc Blockchain::get_top_hash
       *
       * @note see Blockchain::get_top_hash
       */
      crypto::hash get_top_hash() const;
+
+   
 
      /**
       * @copydoc Blockchain::get_block_cumulative_difficulty
@@ -442,20 +406,18 @@ namespace cryptonote
      bool get_outs(const COMMAND_RPC_GET_OUTPUTS_BIN::request& req, COMMAND_RPC_GET_OUTPUTS_BIN::response& res) const;
 
      /**
-      * @copydoc Blockchain::get_output_distribution
-      *
-      * @brief get per block distribution of outputs of a given amount
-      */
-     bool get_output_distribution( uint64_t from_height, uint64_t to_height, uint64_t &start_height, std::vector<uint64_t> &distribution) const;
-
-    
-
-     /**
       * @brief gets the Blockchain instance
       *
       * @return a reference to the Blockchain instance
       */
      Blockchain& get_blockchain(){return m_blockchain;}
+
+   /**
+     * @brief returns a set of known alternate chains
+     *
+     * @return a vector of chains
+     */
+    std::vector<std::pair<block_extended_info,std::vector<crypto::hash>>> get_alternative_chains() const;
 
      /**
       * @brief gets the Blockchain instance (const)
@@ -682,28 +644,19 @@ namespace cryptonote
       */
      bool check_disk_space();
 
-     /**
-      * @brief checks block rate, and warns if it's too slow
-      *
-      * @return true on success, false otherwise
-      */
-     bool check_block_rate();
-
      bool m_test_drop_download = true; //!< whether or not to drop incoming blocks (for testing)
 
      uint64_t m_test_drop_download_height = 0; //!< height under which to drop incoming blocks, if doing so
 
      tx_memory_pool m_mempool; //!< transaction pool instance
      Blockchain m_blockchain; //!< Blockchain instance
-
+     std::unique_ptr<BlockchainDB> m_db;
 
      epee::critical_section m_incoming_tx_lock; //!< incoming transaction lock
 
      std::string m_config_folder; //!< folder to look in for configs and other files
 
 
-    epee::math_helper::once_a_time_seconds<90, false> m_block_rate_interval; //!< interval for checking block rate
-    
      epee::math_helper::once_a_time_seconds<60*60*12, false> m_store_blockchain_interval; //!< interval for manual storing of Blockchain, if enabled
      epee::math_helper::once_a_time_seconds<60*60*2, true> m_fork_moaner; //!< interval for checking HardFork status
      epee::math_helper::once_a_time_seconds<60*60*12, true> m_check_updates_interval; //!< interval for checking for new versions
@@ -732,6 +685,7 @@ namespace cryptonote
      time_t start_time;
 
 
+
      enum {
        UPDATES_DISABLED,
        UPDATES_NOTIFY,
@@ -745,12 +699,6 @@ namespace cryptonote
 
      bool m_offline;
 
-    /* `boost::function` is used because the implementation never allocates if
-       the callable object has a single `std::shared_ptr` or `std::weap_ptr`
-       internally. Whereas, the libstdc++ `std::function` will allocate. */
-
-     std::shared_ptr<tools::Notify> m_block_rate_notify;
-     boost::function<void(std::vector<txpool_event>)> m_zmq_pub;
    };
 }
 

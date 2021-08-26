@@ -44,7 +44,7 @@ namespace cryptonote
     virtual bool relay_block(const blobdata& blob, const uint64_t b_height, cryptonote_peer_context& exclude_context)=0;
     virtual bool relay_transactions(NOTIFY_NEW_TRANSACTIONS::request& arg, const boost::uuids::uuid& source, epee::net_utils::zone zone, relay_method tx_relay)=0;
   
-    virtual uint64_t get_current_blockchain_height() const = 0;
+    virtual uint64_t get_chain_height() const = 0;
     virtual void on_transactions_relayed(epee::span<const cryptonote::blobdata> tx_blobs, relay_method tx_relay) = 0;
   };
 

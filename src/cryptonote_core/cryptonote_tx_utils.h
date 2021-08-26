@@ -79,46 +79,11 @@ namespace cryptonote
     END_SERIALIZE()
   };
 
-  //---------------------------------------------------------------
-  crypto::public_key get_destination_view_key_pub(const std::vector<tx_destination_entry> &destinations, const boost::optional<cryptonote::account_public_address>& change_addr);
-
   bool construct_tx(const account_keys& sender_account_keys, std::vector<tx_source_entry>& sources, std::vector<tx_destination_entry>& destinations,  const blobdata &extra, transaction& tx, uint64_t unlock_time, crypto::secret_key &tx_sec);
 
   block make_genesis_block( std::string const & genesis_tx, uint32_t nonce);
 
-  class Blockchain;
  
-  crypto::hash  get_altblock_pow(const AltChain &bc, const block& b, const uint64_t chain_height);
-  
-  crypto::hash get_block_pow(const Blockchain&pb, const block& b, const uint64_t height);
  bool  verify_keys(const crypto::secret_key &secret_key, const crypto::public_key &public_key) ;
 }
 
-BOOST_CLASS_VERSION(cryptonote::tx_source_entry, 1)
-BOOST_CLASS_VERSION(cryptonote::tx_destination_entry, 2)
-
-namespace boost
-{
-  namespace serialization
-  {
-    template <class Archive>
-    inline void serialize(Archive &a, cryptonote::tx_source_entry &x, const boost::serialization::version_type ver)
-    {
-      a & x.decoys;
-      a & x.real_output;
-      a & x.real_out_tx_key;
-      a & x.real_output_in_tx_index;
-      a & x.amount;
-      a & x.noise;
-      if (ver < 1)
-        return;
-    }
-
-    template <class Archive>
-    inline void serialize(Archive& a, cryptonote::tx_destination_entry& x, const boost::serialization::version_type ver)
-    {
-      a & x.amount;
-      a & x.addr;
-    }
-  }
-}

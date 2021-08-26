@@ -55,7 +55,6 @@
     }
 
    
-    m_block_rate_interval.do_call(boost::bind(&core::check_block_rate, this));
     m_check_updates_interval.do_call(boost::bind(&core::check_updates, this));
     m_check_disk_space_interval.do_call(boost::bind(&core::check_disk_space, this));
 
@@ -194,47 +193,6 @@
       return true;
 
     MCERROR("updates", "Download/update not implemented yet");
-    return true;
-  }
-
-   //-----------------------------------------------------------------------------------------------
-  bool core::check_block_rate()
-  {
-    if (m_offline || m_nettype == FAKECHAIN || m_target_blockchain_height > get_current_blockchain_height() || m_target_blockchain_height == 0)
-    {
-      MDEBUG("Not checking block rate, offline or syncing");
-      return true;
-    }
-
-    static constexpr double threshold = 1. / (864000 / DIFFICULTY_TARGET); // one false positive every 10 days
-    static constexpr unsigned int max_blocks_checked = 150;
-
-    const time_t now = time(NULL);
-    const std::vector<time_t> timestamps = m_blockchain.get_last_block_timestamps(max_blocks_checked);
-
-    static const unsigned int seconds[] = { 5400, 3600, 1800, 1200, 600 };
-    for (size_t n = 0; n < sizeof(seconds)/sizeof(seconds[0]); ++n)
-    {
-      unsigned int b = 0;
-      const time_t time_boundary = now - static_cast<time_t>(seconds[n]);
-      for (time_t ts: timestamps) b += ts >= time_boundary;
-      const double p = probability(b, seconds[n] / DIFFICULTY_TARGET);
-      MDEBUG("blocks in the last " << seconds[n] / 60 << " minutes: " << b << " (probability " << p << ")");
-      if (p < threshold)
-      {
-        MWARNING("There were " << b << (b == max_blocks_checked ? " or more" : "") << " blocks in the last " << seconds[n] / 60 << " minutes, there might be large hash rate changes, or we might be partitioned, cut off from the Monero network or under attack, or your computer's time is off. Or it could be just sheer bad luck.");
-
-        std::shared_ptr<tools::Notify> block_rate_notify = m_block_rate_notify;
-        if (block_rate_notify)
-        {
-          auto expected = seconds[n] / DIFFICULTY_TARGET;
-          block_rate_notify->notify("%t", std::to_string(seconds[n] / 60).c_str(), "%b", std::to_string(b).c_str(), "%e", std::to_string(expected).c_str(), NULL);
-        }
-
-        break; // no need to look further
-      }
-    }
-
     return true;
   }
 

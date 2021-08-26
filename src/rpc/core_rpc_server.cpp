@@ -325,7 +325,6 @@ namespace cryptonote
         res.cum_diff, res.wide_cumulative_difficulty, res.cumulative_difficulty_top64);
     res.block_size_limit =0 ;
     res.block_size_median = res.block_weight_median = 0;
-    res.adjusted_time = m_core.get_blockchain().get_adjusted_time(res.height);
 
     res.start_time = restricted ? 0 : (uint64_t)m_core.get_start_time();
     res.free_space = restricted ? std::numeric_limits<uint64_t>::max() : m_core.get_free_space();
@@ -461,24 +460,6 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
     return true;
   }
   //------------------------------------------------------------------------------------------------------------------------------
-  bool core_rpc_server::on_get_indexes(const COMMAND_RPC_GET_TX_GLOBAL_OUTPUTS_INDEXES::request& req, COMMAND_RPC_GET_TX_GLOBAL_OUTPUTS_INDEXES::response& res, const connection_context *ctx)
-  {
-    RPC_TRACKER(get_indexes);
-
-
-    
-
-    bool r = m_core.get_tx_outputs_gindexs(req.txid, res.o_indexes);
-    if(!r)
-    {
-      res.status = "Failed";
-      return true;
-    }
-    res.status = CORE_RPC_STATUS_OK;
-    MINFO("COMMAND_RPC_GET_TX_GLOBAL_OUTPUTS_INDEXES: [" << res.o_indexes.size() << "]");
-    return true;
-  }
-  //------------------------------------------------------------------------------------------------------------------------------
   bool core_rpc_server::on_get_transactions(const COMMAND_RPC_GET_TRANSACTIONS::request& req, COMMAND_RPC_GET_TRANSACTIONS::response& res, const connection_context *ctx)
   {
     RPC_TRACKER(get_transactions);
@@ -566,15 +547,6 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
         e.received_timestamp = 0;
       }
 
-      // output indices too if not in pool
-      {
-        bool r = m_core.get_tx_outputs_gindexs(tx_hash, e.output_indices);
-        if (!r)
-        {
-          res.status = "Failed";
-          return true;
-        }
-      }
     }
 
     for(const auto& miss_tx: missed_txs)
@@ -641,7 +613,6 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
       {
         
       }
-      
       // Fixing of high orphan issue for most pools
       // Thanks Boolberry!
       const block b =parse_block_from_blob(blockblob);
@@ -656,7 +627,7 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
       if(bvc.m_added_to_main_chain)
       {
         cryptonote_peer_context exclude_context = {};
-        const auto b_height = m_core.get_current_blockchain_height();
+        const auto b_height = m_core.get_chain_height();
         const blob = cryptonote::block_to_blob(b);
 
         m_p2p.get_crypto_protocol().relay_block(blob,b_height, exclude_context);
@@ -891,8 +862,6 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
   bool core_rpc_server::on_get_transaction_pool_hashes(const COMMAND_RPC_GET_TRANSACTION_POOL_HASHES::request& req, COMMAND_RPC_GET_TRANSACTION_POOL_HASHES::response& res, const connection_context *ctx)
   {
     RPC_TRACKER(get_transaction_pool_hashes);
-   
-
 
     const bool restricted = m_restricted && ctx;
     const bool request_has_rpc_origin = ctx != NULL;
@@ -933,7 +902,7 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
   {
     RPC_TRACKER(getblockcount);
    
-    res.count = m_core.get_current_blockchain_height();
+    res.count = m_core.get_chain_height();
     res.status = CORE_RPC_STATUS_OK;
     return true;
   }
@@ -949,10 +918,10 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
       return false;
     }
     uint64_t h = req[0];
-    if(m_core.get_current_blockchain_height() <= h)
+    if(m_core.get_chain_height() <= h)
     {
       error_resp.code = CORE_RPC_ERROR_CODE_TOO_BIG_HEIGHT;
-      error_resp.message = std::string("Requested block height: ") + std::to_string(h) + " greater than current top block height: " +  std::to_string(m_core.get_current_blockchain_height() - 1);
+      error_resp.message = std::string("Requested block height: ") + std::to_string(h) + " greater than current top block height: " +  std::to_string(m_core.get_chain_height() - 1);
     }
     res = string_tools::pod_to_hex(m_core.get_block_hash_by_height(h));
     return true;
@@ -999,17 +968,8 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
    
 
     cryptonote::difficulty_type wdiff;
-    crypto::hash prev_block=crypto::null_hash;
-    if (!req.prev_block.empty())
-    {
-      if (!epee::string_tools::hex_to_pod(req.prev_block, prev_block))
-      {
-        error_resp.code = CORE_RPC_ERROR_CODE_INTERNAL_ERROR;
-        error_resp.message = "Invalid prev_block";
-        return false;
-      }
-    }
-    const auto bt= m_core.get_block_template(prev_block==crypto::null_hash ? nullptr:&prev_block, miner_addr,blob_reserve);
+  
+    const auto bt= m_core.get_blockchain().create_block_template( miner_addr,blob_reserve);
   
     res.seed_hash = string_tools::pod_to_hex(bt.seed_hash);
     res.next_seed_hash = string_tools::pod_to_hex(bt.n_seed_hash);
@@ -1044,7 +1004,7 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
     response.nonce = blk.nonce;
     response.orphan_status = orphan_status;
     response.height = height;
-    response.depth = m_core.get_current_blockchain_height() - height - 1;
+    response.depth = m_core.get_chain_height() - height - 1;
     response.hash = string_tools::pod_to_hex(hash);
     store_difficulty(m_core.get_blockchain().block_difficulty(height),
         response.difficulty, response.wide_difficulty, response.difficulty_top64);
@@ -1160,7 +1120,7 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
     RPC_TRACKER(get_block_headers_range);
    
 
-    const uint64_t bc_height = m_core.get_current_blockchain_height();
+    const uint64_t bc_height = m_core.get_chain_height();
     if (req.start_height >= bc_height || req.end_height >= bc_height || req.start_height > req.end_height)
     {
       error_resp.code = CORE_RPC_ERROR_CODE_TOO_BIG_HEIGHT;
@@ -1218,10 +1178,10 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
     RPC_TRACKER(get_block_header_by_height);
   
 
-    if(m_core.get_current_blockchain_height() <= req.height)
+    if(m_core.get_chain_height() <= req.height)
     {
       error_resp.code = CORE_RPC_ERROR_CODE_TOO_BIG_HEIGHT;
-      error_resp.message = std::string("Requested block height: ") + std::to_string(req.height) + " greater than current top block height: " +  std::to_string(m_core.get_current_blockchain_height() - 1);
+      error_resp.message = std::string("Requested block height: ") + std::to_string(req.height) + " greater than current top block height: " +  std::to_string(m_core.get_chain_height() - 1);
       return false;
     }
     
@@ -1262,10 +1222,10 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
     }
     else
     {
-      if(m_core.get_current_blockchain_height() <= req.height)
+      if(m_core.get_chain_height() <= req.height)
       {
         error_resp.code = CORE_RPC_ERROR_CODE_TOO_BIG_HEIGHT;
-        error_resp.message = std::string("Requested block height: ") + std::to_string(req.height) + " greater than current top block height: " +  std::to_string(m_core.get_current_blockchain_height() - 1);
+        error_resp.message = std::string("Requested block height: ") + std::to_string(req.height) + " greater than current top block height: " +  std::to_string(m_core.get_chain_height() - 1);
         return false;
       }
       block_hash = m_core.get_block_hash_by_height(req.height);
@@ -1429,7 +1389,7 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
     RPC_TRACKER(get_alternate_chains);
     try
     {
-      std::vector<std::pair<Blockchain::block_extended_info, std::vector<crypto::hash>>> chains = m_core.get_blockchain().get_alternative_chains();
+      std::vector<std::pair<Blockchain::block_extended_info, std::vector<crypto::hash>>> chains = m_core.get_alternative_chains();
       for (const auto &i: chains)
       {
         difficulty_type wdiff = i.first.cum_diff;
@@ -1658,99 +1618,8 @@ bool core_rpc_server::on_get_alt_blocks_hashes(const COMMAND_RPC_GET_ALT_BLOCKS_
     res.status = CORE_RPC_STATUS_OK;
     return true;
   }
-   //------------------------------------------------------------------------------------------------------------------------------
-  bool core_rpc_server::on_get_output_distribution_bin(const COMMAND_RPC_GET_OUTPUT_DISTRIBUTION::request& req, COMMAND_RPC_GET_OUTPUT_DISTRIBUTION::response& res, const connection_context *ctx)
-  {
-    RPC_TRACKER(get_output_distribution_bin);
-
-    res.status = "Failed";
-
-    if (!req.binary)
-    {
-      res.status = "Binary only call";
-      return true;
-    }
-    try
-    {
-     // 0 is placeholder for the whole chain
-      const uint64_t to = req.to_height ? req.to_height : (m_core.get_current_blockchain_height() - 1);
-        uint64_t start_height{};
-        std::vector<uint64_t> dist;
-        auto r =  m_core.get_output_distribution( req.from_height, to, start_height, dist); 
-        if (!r)
-        {
-          res.status = "Failed to get output distribution";
-          return false;
-        }
-
-        res.dist={ {std::move(dist), start_height}, req.binary};
-    }
-    catch (const std::exception &e)
-    {
-      res.status = "Failed to get output distribution";
-      return true;
-    }
-
-    res.status = CORE_RPC_STATUS_OK;
-    return true;
-  }
   //------------------------------------------------------------------------------------------------------------------------------
-  bool core_rpc_server::on_get_output_distribution(const COMMAND_RPC_GET_OUTPUT_DISTRIBUTION::request& req, COMMAND_RPC_GET_OUTPUT_DISTRIBUTION::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
-  {
-    RPC_TRACKER(get_output_distribution);
 
-    try
-    {
-      // 0 is placeholder for the whole chain
-      const uint64_t to = req.to_height ? req.to_height : (m_core.get_current_blockchain_height() - 1);
-        uint64_t start_height{};
-        std::vector<uint64_t> dist;
-        auto r =  m_core.get_output_distribution( req.from_height, to, start_height, dist); 
-        if (!r)
-        {
-          error_resp.code = CORE_RPC_ERROR_CODE_INTERNAL_ERROR;
-          error_resp.message = "Failed to get output distribution";
-          return false;
-        }
-
-        res.dist={ {std::move(dist), start_height}, req.binary};
-    }
-    catch (const std::exception &e)
-    {
-      error_resp.code = CORE_RPC_ERROR_CODE_INTERNAL_ERROR;
-      error_resp.message = "Failed to get output distribution";
-      return false;
-    }
-
-    res.status = CORE_RPC_STATUS_OK;
-    return true;
-  }
- 
-  //------------------------------------------------------------------------------------------------------------------------------
-  bool core_rpc_server::on_prune_blockchain(const COMMAND_RPC_PRUNE_BLOCKCHAIN::request& req, COMMAND_RPC_PRUNE_BLOCKCHAIN::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
-  {
-    RPC_TRACKER(prune_blockchain);
-
-    try
-    {
-      if (!(req.check ? m_core.check_blockchain_pruning() : m_core.prune_blockchain()))
-      {
-        error_resp.code = CORE_RPC_ERROR_CODE_INTERNAL_ERROR;
-        error_resp.message = req.check ? "Failed to check blockchain pruning" : "Failed to prune blockchain";
-        return false;
-      }
-      res.pruning_seed = m_core.get_blockchain_pruning_seed();
-      res.pruned = res.pruning_seed != 0;
-    }
-    catch (const std::exception &e)
-    {
-      error_resp.code = CORE_RPC_ERROR_CODE_INTERNAL_ERROR;
-      error_resp.message = "Failed to prune blockchain";
-      return false;
-    }
-    res.status = CORE_RPC_STATUS_OK;
-    return true;
-  }
  
   bool core_rpc_server::on_sync_balance(const COMMAND_RPC_SYNC_BALANCE::request& req, COMMAND_RPC_SYNC_BALANCE::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
   {

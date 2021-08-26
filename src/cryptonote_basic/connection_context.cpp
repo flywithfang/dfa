@@ -46,9 +46,9 @@ namespace cryptonote
 
     case cryptonote::NOTIFY_NEW_TRANSACTIONS::ID:
       return 1024 * 1024 * 128; // 128 MB (max packet is a bit less than 100 MB though)
-    case cryptonote::NOTIFY_REQUEST_GET_OBJECTS::ID:
+    case cryptonote::NOTIFY_REQUEST_GET_BLOCKS::ID:
       return 1024 * 1024 * 2; // 2 MB
-    case cryptonote::NOTIFY_RESPONSE_GET_OBJECTS::ID:
+    case cryptonote::NOTIFY_RESPONSE_GET_BLOCKS::ID:
       return 1024 * 1024 * 128; // 128 MB (max packet is a bit less than 100 MB though)
     case cryptonote::NOTIFY_REQUEST_CHAIN::ID:
       return 512 * 1024; // 512 kB

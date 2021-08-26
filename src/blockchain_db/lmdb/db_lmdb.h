@@ -210,7 +210,6 @@ public:
 
   virtual cryptonote::blobdata get_block_blob_from_height(const uint64_t& height) const;
 
-  virtual std::vector<uint64_t> get_block_cumulative_rct_outputs(const std::vector<uint64_t> &heights) const;
 
   virtual uint64_t get_block_timestamp(const uint64_t& height) const;
 
@@ -286,21 +285,7 @@ public:
   virtual void get_output_tx_and_index_from_global(const std::vector<uint64_t> &global_indices,
       std::vector<tx_out_index> &tx_out_indices) const;
 
-/**
-     * @brief gets the global indices for outputs from a given transaction
-     *
-     * This function gets the global indices for all outputs belonging
-     * to a specific transaction.
-     *
-     * @param tx_id the hash of the transaction to fetch indices for
-     * @param indexs return-by-reference the global indices for the transaction's outputs
-     * @param n_txes how many txes in a row to get results for
-     *
-     * @return false if the transaction does not exist, or if no indices are found, otherwise true
-     */
-    bool get_tx_outputs_gindexs(const crypto::hash& tx_id, std::vector<uint64_t>& indexs) const;
-    bool get_tx_outputs_gindexs(const crypto::hash& tx_id, size_t n_txes, std::vector<std::vector<uint64_t>>& indexs) const;
-    
+
   virtual std::vector<std::vector<uint64_t>> get_tx_output_indices(const uint64_t tx_id, size_t n_txes) const;
 
   virtual bool has_key_image(const crypto::key_image& img) const;

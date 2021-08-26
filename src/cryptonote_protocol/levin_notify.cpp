@@ -119,9 +119,9 @@ namespace levin
         return remote_heights[n-1];
     }
 
-    uint64_t get_blockchain_height(shared_state& p2p, const i_cryptonote_protocol* crypto_protocol)
+    uint64_t get_chain_height(shared_state& p2p, const i_cryptonote_protocol* crypto_protocol)
     {
-      const uint64_t local_blockchain_height = crypto_protocol->get_current_blockchain_height();
+      const uint64_t local_blockchain_height = crypto_protocol->get_chain_height();
       if (crypto_protocol->is_synchronized())
       {
         return local_blockchain_height;
@@ -151,7 +151,7 @@ namespace levin
 
     std::vector<boost::uuids::uuid> get_out_connections(shared_state& p2p, const i_cryptonote_protocol* crypto_protocol)
     {
-      return get_out_connections(p2p, get_blockchain_height(p2p, crypto_protocol));
+      return get_out_connections(p2p, get_chain_height(p2p, crypto_protocol));
     }
 
     epee::levin::message_writer make_tx_message(std::vector<blobdata>&& txs, const bool fluff)
