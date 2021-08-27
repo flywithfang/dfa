@@ -39,7 +39,6 @@ namespace cryptonote
 
   std::tuple<bool, transaction> construct_miner_tx(size_t height, uint64_t fee, const account_public_address &miner_address,  const varbinary& extra_nonce = varbinary(),  uint8_t hard_fork_version = 1);
   
-  struct AltChain;
 
   struct tx_source_entry
   {
@@ -82,7 +81,8 @@ namespace cryptonote
   bool construct_tx(const account_keys& sender_account_keys, std::vector<tx_source_entry>& sources, std::vector<tx_destination_entry>& destinations,  const blobdata &extra, transaction& tx, uint64_t unlock_time, crypto::secret_key &tx_sec);
 
   block make_genesis_block( std::string const & genesis_tx, uint32_t nonce);
-
+  
+  bool is_tx_spendtime_unlocked(uint64_t chain_height,uint64_t unlock_time) ;
  
  bool  verify_keys(const crypto::secret_key &secret_key, const crypto::public_key &public_key) ;
 }

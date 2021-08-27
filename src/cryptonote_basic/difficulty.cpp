@@ -120,39 +120,6 @@ namespace cryptonote {
     return !carry;
   }
 
-  uint64_t next_difficulty_64(std::vector<std::uint64_t> tss, std::vector<uint64_t> diffs, size_t target_seconds) {
-
-    if(tss.size() > DIFFICULTY_WINDOW)
-    {
-      tss.resize(DIFFICULTY_WINDOW);
-      diffs.resize(DIFFICULTY_WINDOW);
-    }
-
-
-    size_t length = tss.size();
-    assert(length == diffs.size());
-    if (length <= 1) {
-      return 1;
-    }
-    static_assert(DIFFICULTY_WINDOW >= 2, "Window is too small");
-    assert(length <= DIFFICULTY_WINDOW);
-    sort(tss.begin(), tss.end());
-    assert(/*cut_begin >= 0 &&*/ cut_begin + 2 <= cut_end && cut_end <= length);
-    uint64_t time_span = tss[length - 1] - tss[0];
-    if (time_span == 0) {
-      time_span = 1;
-    }
-    uint64_t total_work = diffs[length - 1] - diffs[0];
-    assert(total_work > 0);
-    uint64_t low, high;
-    mul(total_work, target_seconds, low, high);
-    // blockchain errors "difficulty overhead" if this function returns zero.
-    // TODO: consider throwing an exception instead
-    if (high != 0 || low + time_span - 1 < low) {
-      return 0;
-    }
-    return (low + time_span - 1) / time_span;
-  }
 
 #if defined(_MSC_VER)
 #ifdef max
@@ -188,28 +155,7 @@ namespace cryptonote {
       return check_hash_128(hash, difficulty);
   }
 
-  difficulty_type next_difficulty(std::vector<uint64_t> tss, std::vector<difficulty_type> diffs, size_t block_time) {
 
-    size_t length = tss.size();
-    assert(length == diffs.size());
-    if (length <= 1) {
-      return 1;
-    }
-    static_assert(DIFFICULTY_WINDOW >= 2, "Window is too small");
-    assert(length <= DIFFICULTY_WINDOW);
-
-    int64_t time_span = tss[length - 1] - tss[0];
-    if (time_span<= 0) {
-      time_span = 1;
-    }
-    const auto total_work = diffs[length - 1] - diffs[0];
-    assert(total_work > 0);
-    boost::multiprecision::uint256_t d =  (boost::multiprecision::uint256_t(total_work) * block_time + time_span - 1) / time_span;
-    
-     const auto block_diff = d.convert_to<difficulty_type>();
-     MDEBUG("block_diff" << static_cast<uint64_t>(block_diff) << ",total_work "<<total_work<<", time_span "<<time_span);
-     return block_diff;
-  }
 
   std::string hex(difficulty_type v)
   {

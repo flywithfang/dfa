@@ -146,10 +146,31 @@ struct alt_block_data_t
 {
   uint64_t height;
   uint64_t reserved;
-  uint64_t cumulative_difficulty_low;
-  uint64_t cumulative_difficulty_high;
+  uint64_t cum_diff_low;
+  uint64_t cum_diff_high;
   uint64_t already_generated_coins;
 };
+
+ struct mdb_block_info
+{
+  uint64_t bi_height;
+  uint64_t bi_timestamp;
+  uint64_t bi_coins;
+  uint64_t bi_diff_lo;
+  uint64_t bi_diff_hi;
+  uint64_t reserved;
+  uint64_t reserved;
+  crypto::hash bi_hash;
+};
+
+ struct block_extended_info
+  {
+    block   bl; //!< the block
+    uint64_t height; //!< the height of the block in the blockchain
+    uint64_t reserved; //!< the weight of the block
+    difficulty_type cum_diff; //!< the accumulated difficulty after that block
+    uint64_t already_generated_coins; //!< the total coins minted after that block
+  };
 
 /**
  * @brief a struct containing txpool per transaction metadata
@@ -217,7 +238,14 @@ struct txpool_tx_meta_t
     std::vector<crypto::hash> hashes;
   };
 
- 
+
+ struct ChainSection{
+  std::vector<block> blocks;
+  std::unordered_map<crypto::hash, transaction> tx_map;
+
+  std::vector<BlobTx> pop_block_txs(const block&b);
+ };
+
 #define DBF_SAFE       1
 #define DBF_FAST       2
 #define DBF_FASTEST    4
@@ -690,7 +718,7 @@ public:
    *
    * @return the height of the chain post-addition
    */
-  virtual uint64_t add_block( const std::pair<block, blobdata>& blk,  const difficulty_type& block_diff,  const std::vector<std::pair<transaction, blobdata>>& txs)=0;
+  virtual uint64_t add_block( const std::pair<block, blobdata>& blk,  const difficulty_type& block_diff,  const std::vector<BlobTx>& txs)=0;
 
  /**
    * <!--
@@ -712,7 +740,7 @@ public:
    * @param blk return-by-reference the block which was popped
    * @param txs return-by-reference the transactions from the popped block
    */
-  virtual void pop_block(block& blk, std::vector<transaction>& txs)=0;
+  virtual std::tuple<block,mdb_block_info,std::vector<transaction>> pop_block()=0;
 
   /**
    * @brief checks if a block exists
@@ -855,15 +883,6 @@ public:
    */
   virtual difficulty_type get_block_difficulty(const uint64_t& height) const = 0;
 
-  /**
-   * @brief correct blocks cumulative difficulties that were incorrectly calculated due to the 'difficulty drift' bug
-   *
-   * If the block does not exist, the subclass should throw BLOCK_DNE
-   *
-   * @param start_height the height where the drift starts
-   * @param new_cumulative_difficulties new cumulative difficulties to be stored
-   */
-  virtual void correct_block_cumulative_difficulties(const uint64_t& start_height, const std::vector<difficulty_type>& new_cumulative_difficulties) = 0;
 
   /**
    * @brief fetch a block's already generated coins
@@ -1361,19 +1380,8 @@ public:
    */
   virtual bool check_pruning() = 0;
 
-  /**
-   * @brief get the max block size
-   */
-  virtual uint64_t get_max_block_size() = 0;
+  virtual mdb_block_info get_block_info(const uint64_t& height)const=0;
 
-  /**
-   * @brief add a new max block size
-   *
-   * The max block size will be the maximum of sz and the current block size
-   *
-   * @param: sz the block size
-   */
-  virtual void add_max_block_size(uint64_t sz) = 0;
 
   /**
    * @brief add a new alternative block

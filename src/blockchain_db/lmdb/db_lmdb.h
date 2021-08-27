@@ -220,7 +220,6 @@ public:
 
   virtual difficulty_type get_block_difficulty(const uint64_t& height) const;
 
-  virtual void correct_block_cumulative_difficulties(const uint64_t& start_height, const std::vector<difficulty_type>& new_cumulative_difficulties);
 
   virtual uint64_t get_block_already_generated_coins(const uint64_t& height) const;
 
@@ -240,7 +239,8 @@ public:
   virtual bool tx_exists(const crypto::hash& h, uint64_t& tx_index) const;
 
   virtual uint64_t get_tx_unlock_time(const crypto::hash& h) const;
-
+  
+  mdb_block_info get_block_info(const uint64_t& height)const=0;
   // return tx with hash <h>
   // throw if no such tx exists
   /**
@@ -317,7 +317,7 @@ public:
   virtual bool for_all_outputs(  const uint64_t start_height,std::function<bool(uint64_t,const output_data_t&)>& f) const;
   virtual bool for_all_alt_blocks(std::function<bool(const crypto::hash &blkid, const alt_block_data_t &data, const cryptonote::blobdata_ref *blob)> f, bool include_blob = false) const;
 
-  virtual uint64_t add_block( const std::pair<block, blobdata>& blk, const difficulty_type& b_diff, const std::vector<std::pair<transaction, blobdata>>& txs);
+  virtual uint64_t add_block( const std::pair<block, blobdata>& blk, const difficulty_type& b_diff, const std::vector<BlobTx>& txs);
 
   virtual void set_batch_transactions(bool batch_transactions);
   virtual bool batch_start();
@@ -334,7 +334,7 @@ public:
 
   bool block_rtxn_start(MDB_txn **mtxn, mdb_txn_cursors **mcur) const;
 
-  virtual void pop_block(block& blk, std::vector<transaction>& txs);
+  virtual std::tuple<block,mdb_block_info,std::vector<transaction>> pop_block();
 
   virtual bool can_thread_bulk_indices() const { return true; }
 
@@ -349,11 +349,11 @@ private:
 
   bool need_resize(uint64_t threshold_size=0) const;
 
-  void __add_block( const block& blk,  const difficulty_type& cum_diff, const uint64_t& coins_generated, uint64_t num_rct_outs, const crypto::hash& block_hash);
+  void __add_block( const block& blk,  const difficulty_type& cum_diff, const uint64_t& coins_generated, const crypto::hash& block_hash);
 
   void __remove_block();
 
-  uint64_t add_transaction_data(const crypto::hash& blk_hash, const std::pair<transaction, blobdata_ref>& tx, const crypto::hash& tx_hash, const crypto::hash& tx_prunable_hash);
+  uint64_t add_transaction_data( const std::pair<transaction, blobdata_ref>& tx, const crypto::hash& tx_hash, const crypto::hash& tx_prunable_hash);
 
   void    __remove_transaction(const crypto::hash& tx_hash);
   void remove_transaction_data(const crypto::hash& tx_hash, const transaction& tx);
@@ -382,10 +382,6 @@ private:
 
   virtual uint64_t get_database_size() const;
 
-  std::vector<uint64_t> get_block_info_64bit_fields(uint64_t start_height, size_t count, off_t offset) const;
-
-  uint64_t get_max_block_size();
-  void add_max_block_size(uint64_t sz);
   /**
    * @brief helper function for add_transactions, to add each individual transaction
    *
@@ -397,7 +393,7 @@ private:
    * @param tx_hash_ptr the hash of the transaction, if already calculated
    * @param tx_prunable_hash_ptr the hash of the prunable part of the transaction, if already calculated
    */
-  void __add_transaction(const crypto::hash& blk_hash, const std::pair<transaction, blobdata_ref>& tx, const crypto::hash* tx_hash_ptr = NULL, const crypto::hash* tx_prunable_hash_ptr = NULL);
+  void __add_transaction(const std::pair<transaction, blobdata_ref>& tx);
   
 
   void cleanup_batch();

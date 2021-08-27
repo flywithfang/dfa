@@ -92,8 +92,8 @@ DISABLE_VS_WARNINGS(4267)
 
 
 //------------------------------------------------------------------
-Blockchain::Blockchain(tx_memory_pool& tx_pool) :
-  m_db(), m_tx_pool(tx_pool), m_hardfork(NULL), 
+Blockchain::Blockchain() :
+  m_db(),  m_hardfork(NULL), 
 {
   MTRACE("Blockchain::" << __func__);
 }
@@ -136,13 +136,12 @@ uint64_t Blockchain::get_chain_height() const
 //------------------------------------------------------------------
 //FIXME: possibly move this into the constructor, to avoid accidentally
 //       dereferencing a null BlockchainDB pointer
-bool Blockchain::init(BlockchainDB* db, const network_type nettype, bool offline, const cryptonote::test_options *test_options, const GetCheckpointsCallback& get_checkpoints/* = nullptr*/)
+bool Blockchain::init(BlockchainDB* db, const network_type nettype, bool offline, const cryptonote::test_options *test_options)
 {
   MTRACE("Blockchain::" << __func__);
 
   CHECK_AND_ASSERT_MES(nettype != FAKECHAIN || test_options, false, "fake chain network type used without options");
 
-  CRITICAL_REGION_LOCAL(m_tx_pool);
   CRITICAL_REGION_LOCAL1(m_blockchain_lock);
 
   if (db == nullptr)
@@ -242,72 +241,6 @@ bool Blockchain::deinit()
   delete m_db;
   m_db = NULL;
   return true;
-}
-//------------------------------------------------------------------
-// This function tells BlockchainDB to remove the top block from the
-// blockchain and then returns all transactions (except the miner tx, of course)
-// from it to the tx_pool
-block Blockchain::pop_block_from_blockchain()
-{
-  MTRACE("Blockchain::" << __func__);
-  CRITICAL_REGION_LOCAL(m_blockchain_lock);
-
-  block popped_block;
-  std::vector<transaction> popped_txs;
-
-  CHECK_AND_ASSERT_THROW_MES(m_db->height() > 1, "Cannot pop the genesis block");
-
-  try
-  {
-    m_db->pop_block(popped_block, popped_txs);
-  }
-  // anything that could cause this to throw is likely catastrophic,
-  // so we re-throw
-  catch (const std::exception& e)
-  {
-    LOG_ERROR("Error popping block from blockchain: " << e.what());
-    throw;
-  }
-  catch (...)
-  {
-    LOG_ERROR("Error popping block from blockchain, throwing!");
-    throw;
-  }
-
-  // return transactions from popped block to the tx_pool
-  size_t pruned = 0;
-  for (transaction& tx : popped_txs)
-  {
-    if (tx.pruned)
-    {
-      ++pruned;
-      continue;
-    }
-    if (!is_coinbase(tx))
-    {
-      cryptonote::tx_verification_context tvc{};
-
-      // FIXME: HardFork
-      // Besides the below, popping a block should also remove the last entry
-      // in hf_versions.
-      uint8_t version = get_ideal_hard_fork_version(m_db->height());
-
-      // We assume that if they were in a block, the transactions are already
-      // known to the network as a whole. However, if we had mined that block,
-      // that might not be always true. Unlikely though, and always relaying
-      // these again might cause a spike of traffic as many nodes re-relay
-      // all the transactions in a popped block when a reorg happens.
-      bool r = m_tx_pool.add_tx(tx, tvc, relay_method::block, true, version);
-      if (!r)
-      {
-        LOG_ERROR("Error returning transaction to tx_pool");
-      }
-    }
-  }
-  if (pruned)
-    MWARNING(pruned << " pruned txes could not be added back to the txpool");
-
-  return popped_block;
 }
 
 //------------------------------------------------------------------
@@ -463,157 +396,28 @@ bool Blockchain::get_block_by_hash(const crypto::hash &h, block &blk, bool *orph
 
 
 //------------------------------------------------------------------
-// This function removes blocks from the blockchain until it gets to the
-// position where the blockchain switch started and then re-adds the blocks
-// that had been removed.
-bool Blockchain::rollback_blockchain_switching(std::list<block>& original_chain, uint64_t rollback_height)
+// This function tells BlockchainDB to remove the top block from the
+// blockchain and then returns all transactions (except the miner tx, of course)
+// from it to the tx_pool
+ChainSection Blockchain::pop_block_from_blockchain(uint64_t chain_height )
 {
   MTRACE("Blockchain::" << __func__);
   CRITICAL_REGION_LOCAL(m_blockchain_lock);
 
-  // fail if rollback_height passed is too high
-  if (rollback_height > m_db->height())
-  {
-    return true;
-  }
 
-  // remove blocks from blockchain until we get back to where we should be.
-  while (m_db->height() != rollback_height)
-  {
-    pop_block_from_blockchain();
-  }
+  CHECK_AND_ASSERT_THROW_MES(m_db->height() > 1, "Cannot pop the genesis block");
 
-  //return back original chain
-  for (auto& bl : original_chain)
+  ChainSection sect;
+  while (m_db->height()> chain_height)
   {
-    block_verification_context bvc = {};
-    bool r = handle_block_to_main_chain(bl, bvc, false);
-    CHECK_AND_ASSERT_MES(r && bvc.m_added_to_main_chain, false, "PANIC! failed to add (again) block while chain switching during the rollback!");
+    auto [b, popped_txs]  = m_db->pop_block();
+    sect.blocks.push_back(b);
+    for( auto &tx : popped_txs){
+      sect.tx_map[get_transaction_hash(tx)]=tx;
   }
-
-  m_hardfork->reorganize_from_chain_height(rollback_height);
-
-  MINFO("Rollback to height " << rollback_height << " was successful.");
-  if (!original_chain.empty())
-  {
-    MINFO("Restoration to previous blockchain successful as well.");
-  }
-  return true;
+  return sect;
 }
-//------------------------------------------------------------------
-// This function attempts to switch to an alternate chain, returning
-// boolean based on success therein.
-bool Blockchain::switch_to_alternative_blockchain(AltChain& alt_chain, bool discard_disconnected_chain)
-{
-  MWARNING("switch_to_alternative_blockchain" );
 
-  CRITICAL_REGION_LOCAL(m_blockchain_lock);
-
-  // if empty alt chain passed (not sure how that could happen), return false
-  CHECK_AND_ASSERT_MES(alt_chain.size(), false, "switch_to_alternative_blockchain: empty chain passed");
-
-  // verify that main chain has front of alt chain's parent block
-  if (!m_db->block_exists(alt_chain.front().bl.prev_id))
-  {
-    LOG_ERROR("Attempting to move to an alternate chain, but it doesn't appear to connect to the main chain!");
-    return false;
-  }
-
-  // pop blocks from the blockchain until the top block is the parent
-  // of the front block of the alt chain.
-  std::list<block> popped_blocks;
-  while (m_db->top_block_hash() != alt_chain.front().bl.prev_id)
-  {
-    block b = pop_block_from_blockchain();
-    popped_blocks.push_front(b);
-  }
-
-  auto split_height = m_db->height();
-
-  //connecting new alternative chain
-  for(auto alt_ch_iter = alt_chain.begin(); alt_ch_iter != alt_chain.end(); alt_ch_iter++)
-  {
-    const auto &bei = *alt_ch_iter;
-    block_verification_context bvc = {};
-
-    // add block to main chain
-    bool r = handle_block_to_main_chain(bei.bl, bvc, false);
-
-    // if adding block to main chain failed, rollback to previous state and
-    // return false
-    if(!r || !bvc.m_added_to_main_chain)
-    {
-      MERROR("Failed to switch to alternative blockchain");
-
-      // rollback_blockchain_switching should be moved to two different
-      // functions: rollback and apply_chain, but for now we pretend it is
-      // just the latter (because the rollback was done above).
-      rollback_blockchain_switching(popped_blocks, split_height);
-
-      // FIXME: Why do we keep invalid blocks around?  Possibly in case we hear
-      // about them again so we can immediately dismiss them, but needs some
-      // looking into.
-      const crypto::hash blkid = cryptonote::get_block_hash(bei.bl);
-
-      MERROR("The block was inserted as invalid while connecting new alternative chain, block_id: " << blkid);
-      m_db->remove_alt_block(blkid);
-      alt_ch_iter++;
-
-      for(auto it = alt_ch_iter; it != alt_chain.end(); )
-      {
-        const auto &bei = *it++;
-        const crypto::hash blkid = cryptonote::get_block_hash(bei.bl);
-        m_db->remove_alt_block(blkid);
-      }
-      return false;
-    }
-  }
-
-  // if we're to keep the disconnected blocks, add them as alternates
-  
-    //pushing old chain as alternative chain
-    for (auto& b : popped_blocks)
-    {
-      block_verification_context bvc = {};
-      bool r = handle_alternative_block(b, bvc);
-      m_db->getbl
-      const alt_block_data_t alt_info={
-
-      };
-      m_db->add_alt_block(get_block_hash(b),alt_info,block_to_blob(b));
-      if(!r)
-      {
-        MERROR("Failed to push ex-main chain blocks to alternative chain ");
-        // previously this would fail the blockchain switching, but I don't
-        // think this is bad enough to warrant that.
-      }
-    }
-  
-
-  //removing alt_chain entries from alternative chains container
-  for (const auto &bei: alt_chain)
-  {
-    m_db->remove_alt_block(cryptonote::get_block_hash(bei.bl));
-  }
-
-  std::shared_ptr<tools::Notify> reorg_notify = m_reorg_notify;
-  if (reorg_notify)
-    reorg_notify->notify("%s", std::to_string(split_height).c_str(), "%h", std::to_string(m_db->height()).c_str(),
-        "%n", std::to_string(m_db->height() - split_height).c_str(), "%d", std::to_string(discarded_blocks).c_str(), NULL);
-
-  for (const auto& notifier : m_block_notifiers)
-  {
-    std::size_t notify_height = split_height;
-    for (const auto& bei: alt_chain)
-    {
-      notifier(notify_height, {std::addressof(bei.bl), 1});
-      ++notify_height;
-    }
-  }
-
-  MGINFO_GREEN("REORGANIZE SUCCESS! on height: " << split_height << ", new blockchain size: " << m_db->height());
-  return true;
-}
 
 //------------------------------------------------------------------
 std::vector<BlobBlock> Blockchain::get_blocks(uint64_t start_height, size_t count) const
@@ -636,45 +440,6 @@ std::vector<BlobBlock> Blockchain::get_blocks(uint64_t start_height, size_t coun
     blocks.push_back({std::moved(blob),std::move(b)});
   }
   return blocks;
-}
-
-
-//------------------------------------------------------------------
-bool Blockchain::get_outs(const COMMAND_RPC_GET_OUTPUTS_BIN::request& req, COMMAND_RPC_GET_OUTPUTS_BIN::response& res) const
-{
-  MTRACE("Blockchain::" << __func__);
-  CRITICAL_REGION_LOCAL(m_blockchain_lock);
-
-  res.outs.clear();
-  res.outs.reserve(req.outputs.size());
-
-  
-  try
-  {
-    std::vector<uint64_t>  offsets;
-    for (const auto &[index]: req.outputs)
-    {
-      offsets.push_back(index);
-    }
-    std::vector<cryptonote::output_data_t> data= m_db->get_output_keys( offsets);
-    if (data.size() != req.outputs.size())
-    {
-      MERROR("Unexpected output data size: expected " << req.outputs.size() << ", got " << data.size());
-      return false;
-    }
-    const uint8_t hf_version = m_hardfork->get_current_version();
-    for (const auto &out: data)
-    {
-      res.outs.push_back({out.otk, out.commitment, is_tx_spendtime_unlocked(out.unlock_time, hf_version), out.height, out.tx_hash});
-    }
-
-    
-  }
-  catch (const std::exception &e)
-  {
-    return false;
-  }
-  return true;
 }
 
 
@@ -702,11 +467,11 @@ difficulty_type Blockchain::block_difficulty(uint64_t i) const
 //       alternatively, return true only if no transactions missed
 std::vector<tx_blob_pruned_entry> Blockchain::get_pruned_transactions_blobs(const std::vector<crypto::hash>& tx_hashes) const
 {
-  std::vector<tx_blob_pruned_entry> txs;
+  std::vector<tx_blob_pruned_entry> tx_ps;
   MTRACE("Blockchain::" << __func__);
   CRITICAL_REGION_LOCAL(m_blockchain_lock);
 
-  txs.reserve(tx_hashes.size());
+  tx_ps.reserve(tx_hashes.size());
   for (const auto& tx_hash : tx_hashes)
   {
       cryptonote::blobdata tx_blob;
@@ -720,9 +485,9 @@ std::vector<tx_blob_pruned_entry> Blockchain::get_pruned_transactions_blobs(cons
         {
           throw_and_log("Prunable hash not found for " << tx_hash);
         }
-      txs.push_back({std::move(tx_blob),prunable_hash});
+      tx_ps.push_back({std::move(tx_blob),prunable_hash});
   }
-  return txs;
+  return tx_ps;
 }
 //------------------------------------------------------------------
  std::vector<tx_blob_entry> Blockchain::get_transactions_blobs(const std::vector<crypto::hash>& tx_hashes) const
@@ -730,7 +495,7 @@ std::vector<tx_blob_pruned_entry> Blockchain::get_pruned_transactions_blobs(cons
   MTRACE("Blockchain::" << __func__);
   CRITICAL_REGION_LOCAL(m_blockchain_lock);
 
-   std::vector<tx_blob_entry> txs;
+   std::vector<tx_blob_entry> tx_ps;
   for (const auto& tx_hash : tx_hashes)
   {
       tx_blob_entry tbe{};
@@ -751,9 +516,9 @@ std::vector<tx_blob_pruned_entry> Blockchain::get_pruned_transactions_blobs(cons
     else{
       throw_and_log("Prunable transaction data hash not found for " << tx_hash);
     }
-    txs.push_back(std::move(tbe));
+    tx_ps.push_back(std::move(tbe));
   }
-  return txs;
+  return tx_ps;
 }
 
 //------------------------------------------------------------------
@@ -887,32 +652,6 @@ bool Blockchain::have_tx_keyimges_as_spent(const transaction &tx) const
 }
 
 
-//------------------------------------------------------------------
-// This function checks to see if a tx is unlocked.  unlock_time is either
-// a block index or a unix time.
-bool Blockchain::is_tx_spendtime_unlocked(uint64_t unlock_time, uint8_t _) const
-{
-  MTRACE("Blockchain::" << __func__);
-  if(unlock_time < CRYPTONOTE_MAX_BLOCK_NUMBER)
-  {
-    // ND: Instead of calling get_chain_height(), call m_db->height()
-    //    directly as get_chain_height() locks the recursive mutex.
-    if(m_db->height()-1 + CRYPTONOTE_LOCKED_TX_ALLOWED_DELTA_BLOCKS >= unlock_time)
-      return true;
-    else
-      return false;
-  }
-  else
-  {
-    //interpret as time
-    const uint64_t current_time =  static_cast<uint64_t>(time(NULL));
-    if(current_time +  CRYPTONOTE_LOCKED_TX_ALLOWED_DELTA_SECONDS >= unlock_time)
-      return true;
-    else
-      return false;
-  }
-  return false;
-}
 
  uint64_t Blockchain::get_block_timestamp(const uint64_t& height) const
  {
@@ -927,96 +666,9 @@ bool Blockchain::is_tx_spendtime_unlocked(uint64_t unlock_time, uint8_t _) const
   return m_db->get_block_already_generated_coins(height);
  }
 //------------------------------------------------------------------
-void Blockchain::return_tx_to_pool(std::vector<std::pair<transaction, blobdata>> &txs)
-{
-  uint8_t version = get_current_hard_fork_version();
-  for (auto& tx : txs)
-  {
-    cryptonote::tx_verification_context tvc{};
-    // We assume that if they were in a block, the transactions are already
-    // known to the network as a whole. However, if we had mined that block,
-    // that might not be always true. Unlikely though, and always relaying
-    // these again might cause a spike of traffic as many nodes re-relay
-    // all the transactions in a popped block when a reorg happens.
-    const crypto::hash tx_hash = get_transaction_hash(tx.first);
-    if (!m_tx_pool.add_tx(tx.first, tx_hash, tx.second,  tvc, relay_method::block, true, version))
-    {
-      MERROR("Failed to return taken transaction with hash: " << get_transaction_hash(tx.first) << " to tx_pool");
-    }
-  }
-}
-
-//------------------------------------------------------------------
-bool Blockchain::handle_block_to_main_chain(const block& bl, block_verification_context& bvc, bool notify/* = true*/)
-{
-  MTRACE("Blockchain::" << __func__);
-  const crypto::hash bh = get_block_hash(bl);
-
-  CRITICAL_REGION_LOCAL(m_blockchain_lock);
-
-  const auto chain_height= m_db.height();
-  const auto top_hash = chain_height==0 ? null_hash : get_top_hash();
-  const auto new_b_height=chain_height;
- 
-  bvc = cryptonote::validate_new_block(*this,m_tx_pool,bl);
-  std::vector<std::pair<transaction, blobdata>> txs;
-
-  // Iterate over the block's transaction hashes, grabbing each
-  // from the tx_pool and validating them.  Each is then added
-  // to txs.  Keys spent in each are added to <keys> by the double spend check.
-  txs.reserve(bl.tx_hashes.size());
-  for (const auto& tx_hash : bl.tx_hashes)
-  {
-    transaction tx_tmp;
-    blobdata txblob;
-    // get transaction with hash <tx_hash> from tx_pool
-    if(!m_tx_pool.pop_tx(tx_hash, tx_tmp, txblob))
-    {
-      MERROR_VER("Block with bh: " << bh  << " has at least one unknown transaction with bh: " << tx_hash);
-      bvc.m_verifivation_failed = true;
-      return_tx_to_pool(txs);
-      goto leave;
-    }
-
-    // add the transaction to the temp list of transactions, so we can either
-    // store the list of transactions all at once or return the ones we've
-    // taken from the tx_pool back to it if the block fails verification.
-    txs.push_back(std::make_pair(std::move(tx_tmp), std::move(txblob)));
-  }
-
-   // populate various metadata about the block to be stored alongside it.
-    try
-    {
-      cryptonote::blobdata bd = cryptonote::block_to_blob(bl);
-      MDEBUG("add_block hex "<<string_tools::buff_to_hex_nodelimer(bd));
-      const difficulty_type block_diff = get_blockchain_diff(*this);
-     m_db->add_block(std::make_pair(std::move(bl), std::move(bd)),  block_diff, txs);
-
-    }
-    catch (const std::exception& e)
-    {
-      //TODO: figure out the best way to deal with this failure
-      LOG_ERROR("Error adding block with hash: " << bh << " to blockchain, what = " << e.what());
-      bvc.m_verifivation_failed = true;
-      return_tx_to_pool(txs);
-      return false;
-    }
-
-  MINFO("add block" << std::endl << "bh: " << bh << std::endl << "PoW: " << pow << std::endl << "HEIGHT " << new_b_height << ", block_diff: " << block_diff <<std::endl << "block reward: " << print_money(get_outs_money_amount(bl))  ) ;
-
-
-  bvc.m_added_to_main_chain = true;
-
-  for (const auto& notifier: m_block_notifiers)
-    notifier(new_b_height, {std::addressof(bl), 1});
-
-  return true;
-}
-//------------------------------------------------------------------
 bool Blockchain::prune_blockchain(uint32_t pruning_seed)
 {
-  m_tx_pool.lock();
-  epee::misc_utils::auto_scope_leave_caller unlocker = epee::misc_utils::create_scope_leave_handler([&](){m_tx_pool.unlock();});
+
   CRITICAL_REGION_LOCAL(m_blockchain_lock);
 
   return m_db->prune_blockchain(pruning_seed);
@@ -1024,8 +676,7 @@ bool Blockchain::prune_blockchain(uint32_t pruning_seed)
 //------------------------------------------------------------------
 bool Blockchain::update_blockchain_pruning()
 {
-  m_tx_pool.lock();
-  epee::misc_utils::auto_scope_leave_caller unlocker = epee::misc_utils::create_scope_leave_handler([&](){m_tx_pool.unlock();});
+
   CRITICAL_REGION_LOCAL(m_blockchain_lock);
 
   return m_db->update_pruning();
@@ -1033,49 +684,15 @@ bool Blockchain::update_blockchain_pruning()
 //------------------------------------------------------------------
 bool Blockchain::check_blockchain_pruning()
 {
-  m_tx_pool.lock();
-  epee::misc_utils::auto_scope_leave_caller unlocker = epee::misc_utils::create_scope_leave_handler([&](){m_tx_pool.unlock();});
+
   CRITICAL_REGION_LOCAL(m_blockchain_lock);
 
   return m_db->check_pruning();
 }
 //------------------------------------------------------------------
 
-block_verification_context  Blockchain::add_sync_block(const std::pair<block,blobdata>& b_p, std::vector<std::pair<transaction, blobdata>> &txs )
-{
-  block_verification_context bvc;
-  try
-  {
 
-  CRITICAL_REGION_LOCAL(m_blockchain_lock);
 
-    bvc = validate_sync_block(bl);
-    if(bvc.m_verifivation_failed)
-      return bvc;
- 
-      const difficulty_type block_diff = get_blockchain_diff();
-     m_db->add_block(b_p, block_diff, txs);
-
-    MINFO("add sync block" << "HEIGHT " << new_b_height << ", block_diff: " << block_diff <<std::endl );
-    bvc.m_added_to_main_chain = true;
-  }
-  catch (const std::exception &e)
-  {
-    LOG_ERROR("Exception at [add_new_block], what=" << e.what());
-    bvc.m_verifivation_failed = true;
-    return false;
-  }
-
-}
-
-void Blockchain::add_block_notify(boost::function<void(std::uint64_t, epee::span<const block>)>&& notify)
-{
-  if (notify)
-  {
-    CRITICAL_REGION_LOCAL(m_blockchain_lock);
-    m_block_notifiers.push_back(std::move(notify));
-  }
-}
 HardFork::State Blockchain::get_hard_fork_state() const
 {
   return m_hardfork->get_state();
@@ -1117,14 +734,4 @@ bool Blockchain::for_all_outputs(  const uint64_t start_height,std::function<boo
 {
   return m_db->for_all_outputs(start_height, f);
 }
-
-
-#include "blockchain_block_template.inl"
-
-namespace cryptonote {
-template bool Blockchain::get_transactions(const std::vector<crypto::hash>&, std::vector<transaction>&, std::vector<crypto::hash>&) const;
-template bool Blockchain::get_split_transactions_blobs(const std::vector<crypto::hash>&, std::vector<std::tuple<crypto::hash, cryptonote::blobdata, crypto::hash, cryptonote::blobdata>>&, std::vector<crypto::hash>&) const;
-}
-
-
 

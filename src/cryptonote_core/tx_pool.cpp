@@ -129,7 +129,7 @@ namespace cryptonote
       throw std::runtime_error{"Unexpected time_t (system clock) value"};
   }
   //---------------------------------------------------------------------------------
-  bool tx_memory_pool::add_tx(transaction &tx,  const crypto::hash &tx_hash, const cryptonote::blobdata &blob, size_t tx_weight, tx_verification_context& tvc, relay_method tx_relay, bool relayed, uint8_t version)
+  bool tx_memory_pool::add_tx(transaction &tx,  const crypto::hash &tx_hash, const cryptonote::blobdata &blob,  tx_verification_context& tvc, relay_method tx_relay, bool relayed, uint8_t version)
   {
     const bool kept_by_block = (tx_relay == relay_method::block);
 
@@ -138,6 +138,13 @@ namespace cryptonote
 
     PERF_TIMER(add_tx);
 
+    if(have_tx(tx_hash, relay_category::legacy))
+      {
+        MWARNING("tx " << tx_hash << "already have transaction in tx_pool");
+       tvc.m_verifivation_failed = true;
+       return tvc;
+      }
+   
 
     if(!cryptonote::check_tx_semantic(tx) || tx.pruned)
     {
@@ -218,10 +225,10 @@ namespace cryptonote
           //update transactions container
           meta.last_relayed_time = last_relayed_time;
           meta.receive_time = receive_time;
-          meta.weight = tx_weight;
+          meta.weight = get_transaction_weight(tx);
           meta.fee = fee;
           meta.relayed = relayed;
-          meta.pruned = tx.pruned;
+          meta.pruned = tx.is_pruned();
           meta.bf_padding = 0;
           memset(meta.padding, 0, sizeof(meta.padding));
 
@@ -230,7 +237,7 @@ namespace cryptonote
 
           m_db.remove_txpool_tx(tx_hash);
           m_db.add_txpool_tx(tx_hash, blob, meta);
-          m_txs_by_fee_and_time.emplace(std::pair<double, std::time_t>(fee / (double)(tx_weight ? tx_weight : 1), receive_time), tx_hash);
+          m_txs_by_fee_and_time.emplace(std::pair<double, std::time_t>(fee / (double)(meta.weight), receive_time), tx_hash);
         }
         lock.commit();
       }
@@ -318,17 +325,15 @@ namespace cryptonote
     return true;
   }
   //---------------------------------------------------------------------------------
-  bool tx_memory_pool::pop_tx(const crypto::hash &tx_hash, transaction &tx, cryptonote::blobdata &txblob)
+  BlobTx tx_memory_pool::pop_tx(const crypto::hash &tx_hash)
   {
     CRITICAL_REGION_LOCAL(m_transactions_lock);
 
-    try
-    {
       LockedTXN lock(m_db);
      
-      txblob = m_db.get_txpool_tx_blob(tx_hash, relay_category::all);
+      const auto tx_blob = m_db.get_txpool_tx_blob(tx_hash, relay_category::all);
       
-      tx=parse_tx_from_blob(txblob);
+      const auto tx=parse_tx_from_blob(tx_blob);
      
       tx.set_hash(tx_hash);
 
@@ -336,17 +341,14 @@ namespace cryptonote
       m_db.remove_txpool_tx(tx_hash);
 
       remove_transaction_keyimages(tx);
+
       lock.commit();
-    }
-    catch (const std::exception &e)
-    {
-      MERROR("Failed to remove tx from txpool: " << e.what());
-      return false;
-    }
+   
     auto sorted_it = find_tx_in_sorted_container(tx_hash);
     if (sorted_it != m_txs_by_fee_and_time.end())
       m_txs_by_fee_and_time.erase(sorted_it);
-    return true;
+    
+     return {std::move(tx_blob),tx};
   }
   //---------------------------------------------------------------------------------
   std::vector<cryptonote::blobdata>  tx_memory_pool::get_transaction_blobs_ex(const std::vector<crypto::hash> &excludes) const

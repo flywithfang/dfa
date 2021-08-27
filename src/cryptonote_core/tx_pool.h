@@ -111,11 +111,11 @@ namespace cryptonote
     /**
      * @copydoc add_tx(transaction&, tx_verification_context&, bool, bool, uint8_t)
      *
-     * @param id the transaction's hash
+     * @param tx_hash the transaction's hash
      * @tx_relay how the transaction was received
      * @param tx_weight the transaction's weight
      */
-    bool add_tx(transaction &tx, const crypto::hash &id, const cryptonote::blobdata &blob, size_t tx_weight, tx_verification_context& tvc, relay_method tx_relay, bool relayed, uint8_t version);
+    bool add_tx(transaction &tx, const crypto::hash &tx_hash, const cryptonote::blobdata &blob, size_t tx_weight, tx_verification_context& tvc, relay_method tx_relay, bool relayed, uint8_t version);
 
     /**
      * @brief add a transaction to the transaction pool
@@ -138,7 +138,7 @@ namespace cryptonote
     /**
      * @brief takes a transaction with the given hash from the pool
      *
-     * @param id the hash of the transaction
+     * @param tx_hash the hash of the transaction
      * @param tx return-by-reference the transaction taken
      * @param txblob return-by-reference the transaction as a blob
      * @param tx_weight return-by-reference the transaction's weight
@@ -150,17 +150,17 @@ namespace cryptonote
      *
      * @return true unless the transaction cannot be found in the pool
      */
-    bool pop_tx(const crypto::hash &id, transaction &tx, cryptonote::blobdata &txblob, size_t& tx_weight, uint64_t& fee, bool &relayed, bool &do_not_relay, bool &pruned);
+    BlobTx pop_tx(const crypto::hash &tx_hash);
 
     /**
      * @brief checks if the pool has a transaction with the given hash
      *
-     * @param id the hash to look for
+     * @param tx_hash the hash to look for
      * @param tx_category a filter for txes
      *
      * @return true if the transaction is in the pool and meets tx_category requirements
      */
-    bool have_tx(const crypto::hash &id, relay_category tx_category) const;
+    bool have_tx(const crypto::hash &tx_hash, relay_category tx_category) const;
 
 
     /**
@@ -380,11 +380,11 @@ namespace cryptonote
     /**
      * @brief get an iterator to a transaction in the sorted container
      *
-     * @param id the hash of the transaction to look for
+     * @param tx_hash the hash of the transaction to look for
      *
      * @return an iterator, possibly to the end of the container if not found
      */
-    sorted_tx_container::iterator find_tx_in_sorted_container(const crypto::hash& id) const;
+    sorted_tx_container::iterator find_tx_in_sorted_container(const crypto::hash& tx_hash) const;
 
     //TODO: confirm the below comments and investigate whether or not this
     //      is the desired behavior

@@ -266,6 +266,33 @@ namespace cryptonote
     return bl;
   }
  
+
+//------------------------------------------------------------------
+// This function checks to see if a tx is unlocked.  unlock_time is either
+// a block index or a unix time.
+bool is_tx_spendtime_unlocked(uint64_t chain_height,uint64_t unlock_time) 
+{
+  MTRACE("Blockchain::" << __func__);
+  if(unlock_time < CRYPTONOTE_MAX_BLOCK_NUMBER)
+  {
+    // ND: Instead of calling get_chain_height(), call m_db->height()
+    //    directly as get_chain_height() locks the recursive mutex.
+    if(chain_height-1 + CRYPTONOTE_LOCKED_TX_ALLOWED_DELTA_BLOCKS >= unlock_time)
+      return true;
+    else
+      return false;
+  }
+  else
+  {
+    //interpret as time
+    const uint64_t current_time =  static_cast<uint64_t>(time(NULL));
+    if(current_time +  CRYPTONOTE_LOCKED_TX_ALLOWED_DELTA_SECONDS >= unlock_time)
+      return true;
+    else
+      return false;
+  }
+  return false;
+}
  bool  verify_keys(const crypto::secret_key &secret_key, const crypto::public_key &public_key) {
       crypto::public_key calculated_pub;
       bool r = crypto::secret_key_to_public_key(secret_key, calculated_pub);

@@ -277,7 +277,7 @@ void test_block_template(const string &arg){
 
   const auto addr = acc.get_address();
   blobdata b(17,0);
-  const auto bt=m_core.chain.create_block_template(nullptr,addr,b);
+  const auto bt=m_core.create_block_template(nullptr,addr,b);
   const auto & bd= t_serializable_object_to_blob(bt.b);
   cout<<string_tools::buff_to_hex_nodelimer(bd);
   const auto b2 = parse_block_from_blob(bd);

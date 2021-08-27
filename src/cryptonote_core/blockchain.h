@@ -90,14 +90,7 @@ namespace cryptonote
     /**
      * @brief container for passing a block and metadata about it on the blockchain
      */
-    struct block_extended_info
-    {
-      block   bl; //!< the block
-      uint64_t height; //!< the height of the block in the blockchain
-      uint64_t block_cumulative_weight; //!< the weight of the block
-      difficulty_type cum_diff; //!< the accumulated difficulty after that block
-      uint64_t already_generated_coins; //!< the total coins minted after that block
-    };
+ 
 
     /**
      * @brief Blockchain constructor
@@ -123,7 +116,7 @@ namespace cryptonote
      *
      * @return true on success, false if any initialization steps fail
      */
-    bool init(BlockchainDB* db, const network_type nettype = MAINNET, bool offline = false, const cryptonote::test_options *test_options = NULL,  const GetCheckpointsCallback& get_checkpoints = nullptr);
+    bool init(BlockchainDB* db, const network_type nettype = MAINNET, bool offline = false, const cryptonote::test_options *test_options = NULL);
 
     /**
      * @brief Initialize the Blockchain state
@@ -238,39 +231,7 @@ namespace cryptonote
     std::tuple<crypto::hash,uint64_t> get_top_block_hash()const;
 
 
-    /**
-     * @brief adds a block to the blockchain
-     *
-     * Adds a new block to the blockchain.  If the block's parent is not the
-     * current top of the blockchain, the block may be added to an alternate
-     * chain.  If the block does not belong, is already in the blockchain
-     * or an alternate chain, or is invalid, return false.
-     *
-     * @param bl_ the block to be added
-     * @param bvc metadata about the block addition's success/failure
-     *
-     * @return true on successful addition to the blockchain, else false
-     */
-    bool add_new_block(const block& bl_, block_verification_context& bvc);
-
-    block_verification_context add_sync_block(const block& bl_, std::vector<std::pair<transaction, blobdata>> &txs );
-
-    /**
-     * @brief creates a new block to mine against
-     *
-     * @param b return-by-reference block to be filled in
-     * @param from_block optional block hash to start mining from (main chain tip if NULL)
-     * @param miner_address address new coins for the block will go to
-     * @param di return-by-reference tells the miner what the difficulty target is
-     * @param height return-by-reference tells the miner what height it's mining against
-     * @param expected_reward return-by-reference the total reward awarded to the miner finding this block, including transaction fees
-     * @param ex_nonce extra data to be added to the miner transaction's extra
-     *
-     * @return true if block template filled in successfully, else false
-     */
-
-    cryptonote::BlockTemplate create_block_template( const account_public_address& miner_address, const blobdata& ex_nonc);
-
+    
     /**
      * @brief checks if a block is known about with a given hash
      *
@@ -344,24 +305,6 @@ namespace cryptonote
 
 
     /**
-     * @brief gets specific outputs to mix with
-     *
-     * This function takes an RPC request for outputs to mix with
-     * and creates an RPC response with the resultant output indices.
-     *
-     * Outputs to mix with are specified in the request.
-     *
-     * @param req the outputs to return
-     * @param res return-by-reference the resultant output indices and keys
-     *
-     * @return true
-     */
-    bool get_outs(const COMMAND_RPC_GET_OUTPUTS_BIN::request& req, COMMAND_RPC_GET_OUTPUTS_BIN::response& res) const;
-
-
-
-
-    /**
      * @brief gets the difficulty of the block with a given height
      *
      * @param i the height
@@ -369,7 +312,6 @@ namespace cryptonote
      * @return the difficulty
      */
     difficulty_type block_difficulty(uint64_t i) const;
-
    
     /**
      * @brief gets transactions based on a list of transaction hashes
@@ -390,32 +332,6 @@ namespace cryptonote
     //debug functions
 
   
-    /**
-     * @brief configure whether or not to enforce DNS-based checkpoints
-     *
-     * @param enforce the new enforcement setting
-     */
-    void set_enforce_dns_checkpoints(bool enforce);
-
-
-    // user options, must be called before calling init()
-
-
-    /**
-     * @brief sets a block notify object to call for every new block
-     *
-     * @param notify the notify object to call at every new block
-     */
-    void add_block_notify(boost::function<void(std::uint64_t, epee::span<const block>)> &&notify);
-
-    /**
-     * @brief sets a reorg notify object to call for every reorg
-     *
-     * @param notify the notify object to call at every reorg
-     */
-    void set_reorg_notify(const std::shared_ptr<tools::Notify> &notify) { m_reorg_notify = notify; }
-
- 
     /**
      * @brief set whether or not to show/print time statistics
      *
@@ -554,12 +470,6 @@ namespace cryptonote
       return *m_db;
     }
 
-   
- 
-
-    bool txpool_tx_matches_category(const crypto::hash& tx_hash, relay_category category);
-
-   
     uint32_t get_blockchain_pruning_seed() const { return m_db->get_blockchain_pruning_seed(); }
     bool prune_blockchain(uint32_t pruning_seed = 0);
     bool update_blockchain_pruning();
@@ -570,198 +480,17 @@ namespace cryptonote
 
     uint64_t get_block_timestamp(const uint64_t& height) const;
     uint64_t get_block_already_generated_coins(uint64_t height) const;
-   
 
     difficulty_type get_block_cumulative_difficulty(uint64_t height) const;
-  
-
-
- /**
-     * @brief validate a transaction's inputs and their keys
-     *
-     * This function validates transaction inputs and their keys.  Previously
-     * it also performed double spend checking, but that has been moved to its
-     * own function.
-     * The transaction's rct signatures, if any, are expanded.
-     *
-     * If pmax_related_block_height is not NULL, its value is set to the height
-     * of the most recent block which contains an output used in any input set
-     *
-     * Currently this function calls ring signature validation for each
-     * transaction.
-     *
-     * @param tx the transaction to validate
-     * @param tvc returned information about tx verification
-     * @param pmax_related_block_height return-by-pointer the height of the most recent block in the input set
-     *
-     * @return false if any validation step fails, otherwise true
-     */
-    bool check_tx_inputs(transaction& tx, tx_verification_context &tvc) const;
-#ifndef IN_UNIT_TESTS
-  private:
-#endif
-       // TODO: evaluate whether or not each of these typedefs are left over from blockchain_storage
-    typedef std::unordered_set<crypto::key_image> key_images_container;
-
-    typedef std::unordered_map<crypto::hash, block_extended_info> blocks_ext_by_hash;
-
-
-    /**
-     * @brief performs a blockchain reorganization according to the longest chain rule
-     *
-     * This function aggregates all the actions necessary to switch to a
-     * newly-longer chain.  If any step in the reorganization process fails,
-     * the blockchain is reverted to its previous state.
-     *
-     * @param alt_chain the chain to switch to
-     * @param discard_disconnected_chain whether or not to keep the old chain as an alternate
-     *
-     * @return false if the reorganization fails, otherwise true
-     */
-    bool switch_to_alternative_blockchain(std::list<block_extended_info>& alt_chain, bool discard_disconnected_chain);
 
     /**
      * @brief removes the most recent block from the blockchain
      *
      * @return the block removed
      */
-    block pop_block_from_blockchain();
+    ChainSection pop_block_from_blockchain(uint64_t chain_height )
 
-    /**
-     * @brief validate and add a new block to the end of the blockchain
-     *
-     * This function is merely a convenience wrapper around the other
-     * of the same name.  This one passes the block's hash to the other
-     * as well as the block and verification context.
-     *
-     * @param bl the block to be added
-     * @param bvc metadata concerning the block's validity
-     * @param notify if set to true, sends new block notification on success
-     *
-     * @return true if the block was added successfully, otherwise false
-     */
-    bool handle_block_to_main_chain(const block& bl, block_verification_context& bvc, bool notify = true);
-
-    block_verification_context validate_block(const block &b);
-    
-    /**
-     * @brief validate and add a new block to an alternate blockchain
-     *
-     * If a block to be added does not belong to the main chain, but there
-     * is an alternate chain to which it should be added, that is handled
-     * here.
-     *
-     * @param b the block to be added
-     * @param id the hash of the block
-     * @param bvc metadata concerning the block's validity
-     *
-     * @return true if the block was added successfully, otherwise false
-     */
-    bool handle_alternative_block(const block& b, block_verification_context& bvc);
-
-    /**
-     * @brief builds a list of blocks connecting a block to the main chain
-     *
-     * @param prev_id the block hash of the tip of the alt chain
-     * @param alt_chain the chain to be added to
-     * @param timestamps returns the timestamps of previous blocks
-     * @param bvc the block verification context for error return
-     *
-     * @return true on success, false otherwise
-     */
-    bool build_alt_chain(const crypto::hash &prev_id, std::list<block_extended_info>& alt_chain, std::vector<uint64_t> &timestamps, block_verification_context& bvc) const;
-
-    /**
-     * @brief gets the difficulty requirement for a new block on an alternate chain
-     *
-     * @param alt_chain the chain to be added to
-     * @param bei the block being added (and metadata, see ::block_extended_info)
-     *
-     * @return the difficulty requirement
-     */
-    difficulty_type get_next_difficulty_for_alternative_chain(const std::list<block_extended_info>& alt_chain, block_extended_info& bei) const;
-
-    /**
-     * @brief validates a miner (coinbase) transaction
-     *
-     * This function makes sure that the miner calculated his reward correctly
-     * and that his miner transaction totals reward + fee.
-     *
-     * @param b the block containing the miner transaction to be validated
-     * @param cumulative_block_weight the block's weight
-     * @param fee the total fees collected in the block
-     * @param base_reward return-by-reference the new block's generated coins
-     * @param already_generated_coins the amount of currency generated prior to this block
-     * @param partial_block_reward return-by-reference true if miner accepted only partial reward
-     * @param version hard fork version for that transaction
-     *
-     * @return false if anything is found wrong with the miner transaction, otherwise true
-     */
-    bool validate_miner_transaction(const block& b,  uint64_t fee, uint64_t& base_reward, uint8_t version);
-
-    /**
-     * @brief reverts the blockchain to its previous state following a failed switch
-     *
-     * If Blockchain fails to switch to an alternate chain when it means
-     * to do so, this function reverts the blockchain to how it was before
-     * the attempted switch.
-     *
-     * @param original_chain the chain to switch back to
-     * @param rollback_height the height to revert to before appending the original chain
-     *
-     * @return false if something goes wrong with reverting (very bad), otherwise true
-     */
-    bool rollback_blockchain_switching(std::list<block>& original_chain, uint64_t rollback_height);
-
-
-    /**
-     * @brief gets block long term weight median
-     *
-     * get the block long term weight median of <count> blocks starting at <start_height>
-     *
-     * @param start_height the block height of the first block to query
-     * @param count the number of blocks to get weights for
-     *
-     * @return the long term median block weight
-     */
-    uint64_t get_long_term_block_weight_median(uint64_t start_height, size_t count) const;
-
-    /**
-     * @brief checks if a transaction is unlocked (its outputs spendable)
-     *
-     * This function checks to see if a transaction is unlocked.
-     * unlock_time is either a block index or a unix time.
-     *
-     * @param unlock_time the unlock parameter (height or time)
-     * @param hf_version the consensus rules version to use
-     *
-     * @return true if spendable, otherwise false
-     */
-    bool is_tx_spendtime_unlocked(uint64_t unlock_time, uint8_t hf_version) const;
-
-
-    void return_tx_to_pool(std::vector<std::pair<transaction, blobdata>> &txs);
-
-
-    /**
-     * @brief loads block hashes from compiled-in data set
-     *
-     * A (possibly empty) set of block hashes can be compiled into the
-     * monero daemon binary.  This function loads those hashes into
-     * a useful state.
-     * 
-     * @param get_checkpoints if set, will be called to get checkpoints data
-     */
-    void load_compiled_in_block_hashes(const GetCheckpointsCallback& get_checkpoints);
-
-
-    /**
-     * @brief stores a new cached block template
-     *
-     * At some point, may be used to push an update to miners
-     */
-    void cache_block_template(const block &b, const cryptonote::account_public_address &address, const blobdata &nonce, const difficulty_type &diff, uint64_t height, uint64_t expected_reward, uint64_t seed_height, const crypto::hash &seed_hash, uint64_t pool_cookie);
-
+   
 
 #ifndef IN_UNIT_TESTS
   private:
@@ -778,12 +507,6 @@ namespace cryptonote
     network_type m_nettype;
     bool m_offline;
 
-    /* `boost::function` is used because the implementation never allocates if
-       the callable object has a single `std::shared_ptr` or `std::weap_ptr`
-       internally. Whereas, the libstdc++ `std::function` will allocate. */
-
-    std::vector<boost::function<void(std::uint64_t, epee::span<const block>)>> m_block_notifiers;
-    std::shared_ptr<tools::Notify> m_reorg_notify;
 
   };
 }  // namespace cryptonote

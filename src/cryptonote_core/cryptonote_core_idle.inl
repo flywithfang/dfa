@@ -59,7 +59,7 @@
     m_check_disk_space_interval.do_call(boost::bind(&core::check_disk_space, this));
 
     m_blockchain_pruning_interval.do_call(boost::bind(&core::update_blockchain_pruning, this));
-    m_mempool.on_idle();
+    m_tx_pool.on_idle();
     return true;
   }
 

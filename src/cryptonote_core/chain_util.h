@@ -46,28 +46,32 @@ difficulty_type get_blockchain_diff(const blockChain & chain)
 {
  	 MTRACE("Blockchain::" << __func__);
 
-    const auto [ _,cur_height]= chain.get_top_block_hash(); // get it again now that we have the lock
-    const uint64_t  height= cur_height+1;
+    const uint64_t  chain_height= chain.get_chain_height();
 
     const auto  W = DIFFICULTY_WINDOW;
-
-    const int64_t end_h = height-W-height%W;
-    const int64_t start_h=end_h-W;
-    if(start_h<0)
+    if(chain_height<W)
       return 1;
+
+    const int64_t end_h = chain_height-1
+    const int64_t start_h=chain_height-W;
 
     std::vector<uint64_t> tss;
     std::vector<difficulty_type> difficulties;
-   
-    for (auto h = start_h;h<end_h;++h)
-    {
-      tss.push_back(chain.get_block_timestamp(h));
-      difficulties.push_back(chain.get_block_cumulative_difficulty(h));
-    }
 
-  const difficulty_type diff = next_difficulty(tss, difficulties, DIFFICULTY_TARGET);
+    const uint64_t ts1=chain.get_block_timestamp(start_h);
+    const uint64_t ts2=chain.get_block_timestamp(end_h);
+   const difficulty_type d1=chain.get_block_cumulative_difficulty(start_h);
+   const difficulty_type d2=chain.get_block_cumulative_difficulty(end_h);
+  
+    const auto total_work = d2-d1;
+    const auto p = ts2>ts1? ts2-ts1:1;
 
-  return diff;
+    boost::multiprecision::uint256_t d =  (boost::multiprecision::uint256_t(total_work) *  DIFFICULTY_TARGET + p - 1) / p;
+    
+     const auto block_diff = d.convert_to<difficulty_type>();
+     MDEBUG("block_diff" << static_cast<uint64_t>(block_diff) << ",total_work "<<total_work<<", time_span "<<p);
+     return block_diff;
+
 }
 
 bool prevalidate_miner_transaction(const block& b, uint64_t height)
@@ -206,15 +210,15 @@ block_verification_context validate_new_block(const Blockchain & chain, const tx
   return bvc;
 }
 
-
-block_verification_context Blockchain::validate_sync_block(const BlobBlock& bb, std::vector<BlobTx> &tx_ps){
+template<class Blockchain>
+block_verification_context Blockchain::validate_sync_block(const Blockchain & chain,const BlobBlock& bb, std::vector<BlobTx> &tx_ps){
 
   block_verification_context bvc{};
 
   db_rtxn_guard rtxn_guard(m_db);
 
   const auto chain_height= m_db.height();
-  const auto top_hash = chain_height==0 ? null_hash : get_top_hash();
+  const auto top_hash = chain_height==0 ? null_hash : chain.get_top_hash();
   const auto new_b_height=chain_height;
   const auto & bl = bb.b;
   if(bl.prev_id != top_hash)
@@ -307,6 +311,8 @@ block_verification_context Blockchain::validate_sync_block(const BlobBlock& bb, 
   return bvc;
 
 }
+
+template<class Blockchain>
  bool swap_chain(Blockchain main,Blockchain alt){
 
  }

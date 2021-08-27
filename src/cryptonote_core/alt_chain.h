@@ -36,12 +36,13 @@
 namespace cryptonote
 {
 
-	struct AltChain{
+	struct AltChain
+    {
 	uint64_t split_b_height;
+    crypto::hash split_b_hash;
     std::list<block_extended_info> alt_chain;
-    std::vector<uint64_t> &timestamps
     BlockchainDB & m_db;
-    AltChain(BlockchainDB&db,const crypto::hash &prev_id);
+    AltChain(BlockchainDB&db,const block & b);
 
 
     uint64_t get_chain_height()const{
@@ -55,7 +56,8 @@ namespace cryptonote
 
 	std::tuple<crypto::hash,uint64_t> get_top_block_hash()const;
     bool tx_exists(const crypto::hash& h) const ;
-    add_block()
+    bool add_block(const BlobBlock & bb);
   };
 
+ 
 }

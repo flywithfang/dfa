@@ -150,17 +150,18 @@ static bool check_fee( uint64_t fee) const
   return true;
 }
 
-static std::vector<rct::ctkey> fill_mix_ring( const txin_to_key& txin) const
+static std::vector<rct::ctkey> fill_mix_ring(BlockchainDB&db, const txin_to_key& txin) const
 {
   MTRACE("Blockchain::" << __func__);
   std::vector<rct::ctkey> decoys;
 
-  const auto oids = relative_output_offsets_to_absolute(tx_in_to_key.key_offsets);
+  const auto oids = cryptonote::relative_output_offsets_to_absolute(tx_in_to_key.key_offsets);
   const auto outputs=m_db->get_output_keys(oids);
   
-  for (const auto & out: oids)
+  const auto chain_height=db.get_chain_height();
+  for (const auto & out: outputs)
   {
-      if (!is_tx_spendtime_unlocked(out.unlock_time, 0))
+      if (!is_tx_spendtime_unlocked(chain_height,out.unlock_time))
       {
         MERROR_VER("One of outputs for one of inputs has wrong tx.unlock_time = " << out.unlock_time);
         return false;
@@ -247,7 +248,7 @@ bool check_tx_inputs(BlockchainDB& db,transaction& tx, tx_verification_context &
     // make sure that output being spent matches up correctly with the
     // signature spending it.
     auto & decoys = mix_rings[sig_index];
-    decoys=fill_mix_ring(in_to_key);
+    decoys=fill_mix_ring(db,in_to_key);
    
     sig_index++;
   }

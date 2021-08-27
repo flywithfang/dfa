@@ -96,14 +96,6 @@ namespace cryptonote
        */
      core();
 
-    /**
-     * @copydoc Blockchain::handle_get_blocks
-     *
-     * @note see Blockchain::handle_get_blocks()
-     * @param context connection context associated with the request
-     */
-     bool handle_get_blocks(NOTIFY_REQUEST_GET_BLOCKS::request& arg, NOTIFY_RESPONSE_GET_BLOCKS::request& rsp, cryptonote_peer_context& context);
-
      /**
       * @brief calls various idle routines
       *
@@ -239,7 +231,7 @@ namespace cryptonote
       *
       * @note see Blockchain::get_chain_height()
       */
-     virtual uint64_t get_chain_height() const final;
+     uint64_t get_chain_height() const ;
 
      /**
       * @brief get the hash and height of the most recent block
@@ -259,16 +251,40 @@ namespace cryptonote
       */
      crypto::hash get_block_hash_by_height(uint64_t height) const;
 
-    
+/**
+     * @brief creates a new block to mine against
+     *
+     * @param b return-by-reference block to be filled in
+     * @param from_block optional block hash to start mining from (main chain tip if NULL)
+     * @param miner_address address new coins for the block will go to
+     * @param di return-by-reference tells the miner what the difficulty target is
+     * @param height return-by-reference tells the miner what height it's mining against
+     * @param expected_reward return-by-reference the total reward awarded to the miner finding this block, including transaction fees
+     * @param ex_nonce extra data to be added to the miner transaction's extra
+     *
+     * @return true if block template filled in successfully, else false
+     */
 
-     /**
-      * @copydoc Blockchain::get_transactions
-      *
-      * @note see Blockchain::get_transactions
-      */
-     bool get_split_transactions_blobs(const std::vector<crypto::hash>& txs_ids, std::vector<std::tuple<crypto::hash, cryptonote::blobdata, crypto::hash, cryptonote::blobdata>>& txs, std::vector<crypto::hash>& missed_txs) const;
+    cryptonote::BlockTemplate create_block_template( const account_public_address& miner_address, const blobdata& ex_nonc);
 
     
+    /**
+     * @brief adds a block to the blockchain
+     *
+     * Adds a new block to the blockchain.  If the block's parent is not the
+     * current top of the blockchain, the block may be added to an alternate
+     * chain.  If the block does not belong, is already in the blockchain
+     * or an alternate chain, or is invalid, return false.
+     *
+     * @param bl_ the block to be added
+     * @param bvc metadata about the block addition's success/failure
+     *
+     * @return true on successful addition to the blockchain, else false
+     */
+    bool add_new_block(const block& bl_, block_verification_context& bvc);
+
+    block_verification_context add_sync_block(const block& bl_, std::vector<std::pair<transaction, blobdata>> &txs );
+
 
      /**
       * @copydoc Blockchain::get_block_by_hash
@@ -297,13 +313,6 @@ namespace cryptonote
       * @param path the path to set ours as
       */
      void set_checkpoints_file_path(const std::string& path);
-
-     /**
-      * @brief set whether or not we enforce DNS checkpoints
-      *
-      * @param enforce_dns enforce DNS checkpoints or not
-      */
-     void set_enforce_dns_checkpoints(bool enforce_dns);
 
      /**
       * @brief set whether or not to enable or disable DNS checkpoints
@@ -398,12 +407,6 @@ namespace cryptonote
       */
      difficulty_type get_block_cumulative_difficulty(uint64_t height) const;
 
-     /**
-      * @copydoc Blockchain::get_outs
-      *
-      * @note see Blockchain::get_outs
-      */
-     bool get_outs(const COMMAND_RPC_GET_OUTPUTS_BIN::request& req, COMMAND_RPC_GET_OUTPUTS_BIN::response& res) const;
 
      /**
       * @brief gets the Blockchain instance
@@ -426,7 +429,7 @@ namespace cryptonote
       */
      const Blockchain& get_blockchain()const{return m_blockchain;}
 
-     const tx_memory_pool& get_tx_pool()const{return m_mempool;}
+     const tx_memory_pool& get_tx_pool()const{return m_tx_pool;}
 
 
      /**
@@ -644,11 +647,69 @@ namespace cryptonote
       */
      bool check_disk_space();
 
+  /**
+     * @brief reverts the blockchain to its previous state following a failed switch
+     *
+     * If Blockchain fails to switch to an alternate chain when it means
+     * to do so, this function reverts the blockchain to how it was before
+     * the attempted switch.
+     *
+     * @param original_chain the chain to switch back to
+     * @param rollback_height the height to revert to before appending the original chain
+     *
+     * @return false if something goes wrong with reverting (very bad), otherwise true
+     */
+    void rollback_blockchain_switching(ChainSection & sect, uint64_t rollback_height);
+
+    /**
+     * @brief performs a blockchain reorganization according to the longest chain rule
+     *
+     * This function aggregates all the actions necessary to switch to a
+     * newly-longer chain.  If any step in the reorganization process fails,
+     * the blockchain is reverted to its previous state.
+     *
+     * @param alt_chain the chain to switch to
+     * @param discard_disconnected_chain whether or not to keep the old chain as an alternate
+     *
+     * @return false if the reorganization fails, otherwise true
+     */
+    bool switch_to_alternative_blockchain(AltChain & altChain);
+
+ /**
+     * @brief validate and add a new block to the end of the blockchain
+     *
+     * This function is merely a convenience wrapper around the other
+     * of the same name.  This one passes the block's hash to the other
+     * as well as the block and verification context.
+     *
+     * @param bl the block to be added
+     * @param bvc metadata concerning the block's validity
+     * @param notify if set to true, sends new block notification on success
+     *
+     * @return true if the block was added successfully, otherwise false
+     */
+    bool handle_block_to_main_chain(const block& bl, block_verification_context& bvc, bool notify = true);
+  
+    /**
+     * @brief sets a block notify object to call for every new block
+     *
+     * @param notify the notify object to call at every new block
+     */
+    void add_block_notify(boost::function<void(std::uint64_t, epee::span<const block>)> &&notify);
+
+    /**
+     * @brief sets a reorg notify object to call for every reorg
+     *
+     * @param notify the notify object to call at every reorg
+     */
+    void set_reorg_notify(const std::shared_ptr<tools::Notify> &notify) { m_reorg_notify = notify; }
+    void return_tx_to_pool(std::vector<std::pair<transaction, blobdata>> &txs);
+
      bool m_test_drop_download = true; //!< whether or not to drop incoming blocks (for testing)
 
      uint64_t m_test_drop_download_height = 0; //!< height under which to drop incoming blocks, if doing so
 
-     tx_memory_pool m_mempool; //!< transaction pool instance
+     tx_memory_pool m_tx_pool; //!< transaction pool instance
      Blockchain m_blockchain; //!< Blockchain instance
      std::unique_ptr<BlockchainDB> m_db;
 
@@ -657,13 +718,11 @@ namespace cryptonote
      std::string m_config_folder; //!< folder to look in for configs and other files
 
 
-     epee::math_helper::once_a_time_seconds<60*60*12, false> m_store_blockchain_interval; //!< interval for manual storing of Blockchain, if enabled
      epee::math_helper::once_a_time_seconds<60*60*2, true> m_fork_moaner; //!< interval for checking HardFork status
      epee::math_helper::once_a_time_seconds<60*60*12, true> m_check_updates_interval; //!< interval for checking for new versions
      epee::math_helper::once_a_time_seconds<60*10, true> m_check_disk_space_interval; //!< interval for checking for disk space
  
      epee::math_helper::once_a_time_seconds<60*60*5, true> m_blockchain_pruning_interval; //!< interval for incremental blockchain pruning
-     epee::math_helper::once_a_time_seconds<60*60*24*7, false> m_diff_recalc_interval; //!< interval for recalculating difficulties
 
      std::atomic<bool> m_starter_message_showed; //!< has the "daemon will sync now" message been shown?
 
@@ -685,6 +744,12 @@ namespace cryptonote
      time_t start_time;
 
 
+    /* `boost::function` is used because the implementation never allocates if
+       the callable object has a single `std::shared_ptr` or `std::weap_ptr`
+       internally. Whereas, the libstdc++ `std::function` will allocate. */
+
+    std::vector<boost::function<void(std::uint64_t, epee::span<const block>)>> m_block_notifiers;
+    std::shared_ptr<tools::Notify> m_reorg_notify;
 
      enum {
        UPDATES_DISABLED,

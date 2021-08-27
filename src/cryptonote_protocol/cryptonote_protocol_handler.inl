@@ -567,8 +567,9 @@ try{
   }
   //------------------------------------------------------------------------------------------------------------------------
   template<class t_core>
-  int t_cryptonote_protocol_handler<t_core>::handle_request_get_blocks(int command, NOTIFY_REQUEST_GET_BLOCKS::request& arg, cryptonote_peer_context& peer_cxt)
+  int t_cryptonote_protocol_handler<t_core>::handle_request_get_blocks(int command, NOTIFY_REQUEST_GET_BLOCKS::request& req, cryptonote_peer_context& peer_cxt)
   {
+    MLOG_P2P_MESSAGE("Received NOTIFY_REQUEST_GET_BLOCKS " << req.span_start_height<<","<<req.span_len);
     if (peer_cxt.m_state == cryptonote_peer_context::state_before_handshake)
     {
       MERROR(peer_cxt<<"Requested objects before handshake, dropping connection");
@@ -576,15 +577,22 @@ try{
       return 1;
     }
     try{
-    MLOG_P2P_MESSAGE("Received NOTIFY_REQUEST_GET_BLOCKS " << arg.span_start_height<<","<<arg.span_len);
-   
     NOTIFY_RESPONSE_GET_BLOCKS::request rsp;
-    if(!m_core.handle_get_blocks(arg, rsp, peer_cxt))
+
+    rsp.chain_heigth = m_core.get_blockchain().get_chain_height();
+    rsp.span_start_height=req.span_start_height;
+    const auto & blocks=  m_core.get_blockchain().get_blocks(req.span_start_height, req.span_len);
+
+    for (auto & [bblob, b] : blocks)
     {
-      MERROR(peer_cxt<<"failed to handle request NOTIFY_REQUEST_GET_BLOCKS, dropping connection");
-      drop_connection(peer_cxt, false, false);
-      return 1;
+      block_complete_entry e{};
+
+      e.tbs=m_core.get_blockchain().get_transactions_blobs(b.tx_hashes );
+      e.blob = std::move(bblob);
+
+      rsp.bces.push_back(std::move(e));
     }
+
     peer_cxt.m_last_request_time = boost::posix_time::microsec_clock::universal_time();
 
     post_notify<NOTIFY_RESPONSE_GET_BLOCKS>(rsp, peer_cxt);
@@ -592,8 +600,9 @@ try{
     //handler_response_blocks_now(200);
     return 1;
   }catch(std::exception& ex){
+    MERROR(peer_cxt<<"failed to handle request NOTIFY_REQUEST_GET_BLOCKS, dropping connection"<<ex.what());
       drop_connection(peer_cxt, false, false);
-        return 1;
+      return 1;
   }
   }
   //------------------------------------------------------------------------------------------------------------------------

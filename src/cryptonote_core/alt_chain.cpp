@@ -32,8 +32,10 @@
 #include "crypto/rx-hash.h"
 namespace cryptonote{
 
-  AltChain::AltChain(BlockchainDB&db,const crypto::hash &prev_id):m_db(db){
+  AltChain::AltChain(BlockchainDB&db,const block & b):m_db(db){
       //build alternative subchain, front -> mainchain, back -> alternative head
+
+   const crypto::hash &prev_id=b.prev_id;
     cryptonote::alt_block_data_t alt_block;
     cryptonote::blobdata blob;
     bool found = m_db.get_alt_block(prev_id, &alt_block, &blob);
@@ -42,9 +44,8 @@ namespace cryptonote{
       block_extended_info bei;
       bei.bl = cryptonote::parse_block_from_blob(blob);
       bei.height = alt_block.height;
-      bei.block_cumulative_weight = alt_block.cumulative_weight;
-      bei.cum_diff = alt_block.cumulative_difficulty_high;
-      bei.cum_diff = (bei.cum_diff << 64) + alt_block.cumulative_difficulty_low;
+      bei.cum_diff = alt_block.cum_diff_high;
+      bei.cum_diff = (bei.cum_diff << 64) + alt_block.cum_diff_low;
       bei.already_generated_coins = alt_block.already_generated_coins;
       alt_chain.push_front(std::move(bei));//push_front
       found = m_db.get_alt_block(bei.bl.prev_id, &alt_block, &blob);
@@ -69,8 +70,8 @@ namespace cryptonote{
       }
 
       // make sure block connects correctly to the main chain
-      const split_pos = alt_root.height - 1;
-      auto split_hash = m_db.get_block_hash_from_height(split_pos);
+      split_b_height = alt_root.height - 1;
+      split_b_hash = m_db.get_block_hash_from_height(split_b_height);
       if(split_hash != alt_root.bl.prev_id)
         throw_and_log("alternative chain has wrong connection to main chain");
     }
@@ -79,10 +80,12 @@ namespace cryptonote{
     {
       // if block parent is not part of main chain or an alternate chain,
       // we ignore it
-      bool parent_in_main = m_db->block_exists(prev_id);
+      bool parent_in_main = m_db.block_exists(prev_id);
       if(!parent_in_main)
         throw_and_log("internal error: broken imperative condition: parent_in_main");
 
+      split_b_height = m_db.get_block_height(prev_id);
+      split_b_hash = m_db.get_block_hash_from_height(split_b_height);
     }
   }
 
@@ -176,10 +179,11 @@ namespace cryptonote{
     // as well as the current "alt chain" container
       CHECK_AND_ASSERT_MES(!m_db.get_alt_block(bh, NULL, NULL), false, "insertion of new alternative block returned as it already exists");
 
-          const auto chain_height = get_chain_height();  
-         const uint64_t block_reward = get_outs_money_amount(alt_b.miner_tx);
-         const uint64_t coins_generated = get_block_already_generated_coins(chain_height-1) +  block_reward;
-         const auto cum_diff =  block_diff + get_block_cumulative_difficulty(chain_height-1);
+        const auto chain_height = get_chain_height();  
+        const uint64_t block_reward = get_outs_money_amount(alt_b.miner_tx);
+        const uint64_t coins_generated = get_block_already_generated_coins(chain_height-1) +  block_reward;
+        const auto block_diff= get_blockchain_diff(*this);
+        const auto cum_diff =  block_diff + get_block_cumulative_difficulty(chain_height-1);
         block_extended_info bei = {};
         bei.bl = alt_b;
         bei.height = altChain.get_chain_height();
@@ -189,8 +193,8 @@ namespace cryptonote{
       
         cryptonote::alt_block_data_t data;
         data.height = bei.height;
-        data.cumulative_difficulty_low = (bei.cum_diff & 0xffffffffffffffff).convert_to<uint64_t>();
-        data.cumulative_difficulty_high = ((bei.cum_diff >> 64) & 0xffffffffffffffff).convert_to<uint64_t>();
+        data.cum_diff_low = (bei.cum_diff & 0xffffffffffffffff).convert_to<uint64_t>();
+        data.cum_diff_high = ((bei.cum_diff >> 64) & 0xffffffffffffffff).convert_to<uint64_t>();
         data.already_generated_coins = bei.already_generated_coins;
 
         m_db->add_alt_block(bh, data,blob);
@@ -200,6 +204,19 @@ namespace cryptonote{
     }
 
 
+
+std::vector<BlobTx> ChainSection::pop_block_txs(const block&b)
+{
+  std::vector<BlobTx> v;
+  for(auto & tx_hash: b.tx_hashes){
+    const auto & tx = tx_map.at(tx_hash);
+    const auto blob = t_serializable_object_to_blob(tx);
+    v.push_back({std::move(tx),std::move(blob)});
+    tx_map.erase(tx_hash);
+
+  }
+  return v;
+}
 }
 
 
